@@ -62,9 +62,14 @@ are never overwritten. There are no tap updates, changelog commits, or pushes.
 After publication, a four-runner matrix installs latest using the plain mise
 GitHub backend in fresh cache/config/data/state directories and checks the
 expected version. This live check necessarily follows publication and cannot
-roll it back. Until a release is authorized and published, record live mise
-installation as **pending**, not passed. First-release publication is not
-part of local implementation verification.
+roll it back. The first release, `v0.1.0`, passed this live check on all four
+runners. For subsequent releases, check the release run's matrix results;
+local packaging alone does not verify live mise installation.
+
+The [Homebrew tap](https://github.com/brettinternet/homebrew-tap) installs the
+same release archives and checksums. Its update workflow checks for new releases
+every six hours. Install with `brew install brettinternet/tap/tell` (see the
+[installation instructions](../README.md#installation) for initial trust).
 
 ## Layout
 

@@ -14,8 +14,14 @@ It has no daemon, queue, database, or retries.
 
 ## Installation
 
-Release packaging is implemented; the first published release and live mise
-installation checks are pending. Once a stable release is published:
+Install with Homebrew:
+
+```sh
+brew trust --formula brettinternet/tap/tell
+brew install brettinternet/tap/tell
+```
+
+Or use mise:
 
 ```sh
 mise exec github:brettinternet/tell@latest -- tell --version
@@ -37,8 +43,7 @@ tell --version
 ```
 
 Archives contain `bin/tell`. Checksums detect corruption, not publisher identity.
-The brettinternet Homebrew tap formula is **pending** (TELL-13); no working
-`brew install` command is promised yet. Windows is not supported.
+Homebrew and mise support macOS and Linux on arm64 and x64. Windows is not supported.
 
 Tell itself needs no provider runtime for inspection or stderr delivery.
 Optional routes require their external executable on PATH: Apprise with its
