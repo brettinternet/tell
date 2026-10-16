@@ -1,0 +1,9 @@
+# Merge this job into your repo's noon.yaml; replace paths/command before use.
+# Routing belongs in the service user's Tell config, not shared tell.yaml.
+jobs:
+  checks:
+    run: [task, test]
+    schedule: every 1h
+    overlap: skip
+    on_success: [/bin/sh, /absolute/path/to/repo/scripts/noon-notify.sh]
+    on_failure: [/bin/sh, /absolute/path/to/repo/scripts/noon-notify.sh]

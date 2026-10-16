@@ -123,6 +123,13 @@ D-Bus, usually via `DBUS_SESSION_BUS_ADDRESS`; Tell inherits it, not discovers i
 Focus / Do Not Disturb can hide banners. Posted means accepted, not seen or
 acknowledged. See [desktop behavior](docs/design.md#desktop-delivery).
 
+## Scheduler hooks
+
+Use the [Noon hook example](examples/noon/README.md) to report failure/recovery
+transitions from repo automation. The caller owns history and notification
+policy; Tell sends one message and exits. The example includes service setup,
+readiness checks, and isolated integration verification.
+
 ## Development
 
 ```sh

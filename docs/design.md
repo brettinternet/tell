@@ -261,6 +261,9 @@ Logs and errors must not echo credentials or raw message contents.
 
 ## Scheduler hooks
 
+The [worked Noon example](../examples/noon/README.md) includes a repo-owned
+transition hook, job config, service setup, and isolated integration fixtures.
+
 Schedulers call Tell like any script. A small hook script translates the
 scheduler's context (job, status, run ID) into Tell arguments; Tell has no
 scheduler-specific protocol. Literal notify arguments do not consume a hook's

@@ -5,6 +5,7 @@ package integration_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,5 +94,126 @@ func TestBinary(t *testing.T) {
 	output, code = run([]string{}, "--config", explicit, "config", "check")
 	if code != 0 {
 		t.Fatalf("explicit config without HOME: %d %s", code, output)
+	}
+}
+
+// Catch repeated-alert spam, accidental forwarding of hook JSON/log secrets,
+// and retries or failed hooks caused by a failed notification.
+func TestNoonHook(t *testing.T) {
+	binary, err := filepath.Abs("../bin/tell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook, err := filepath.Abs("../examples/noon/notify.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name, previous, status string
+		send, providerFails    bool
+	}{
+		{name: "first failure", previous: "succeeded", status: "failed", send: true},
+		{name: "timeout", previous: "succeeded", status: "timed_out", send: true},
+		{name: "repeat failure", previous: "failed", status: "failed"},
+		{name: "same failure episode", previous: "failed", status: "timed_out"},
+		{name: "recovery", previous: "timed_out", status: "succeeded", send: true},
+		{name: "repeat success", previous: "succeeded", status: "succeeded"},
+		{name: "no baseline", status: "failed"},
+		{name: "unknown predecessor", previous: "unknown", status: "failed"},
+		{name: "provider failure", previous: "succeeded", status: "failed", send: true, providerFails: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			project := filepath.Join(root, "project with spaces")
+			bin := filepath.Join(root, "bin")
+			config := filepath.Join(root, "config", "tell")
+			for _, dir := range []string{project, bin, config} {
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write := func(path, content string) {
+				t.Helper()
+				if err := os.WriteFile(path, []byte(content), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(binary, filepath.Join(bin, "tell")); err != nil {
+				t.Fatal(err)
+			}
+			provider := filepath.Join(bin, "provider")
+			write(provider, `#!/bin/sh
+printf '%s\n' "$@" > "$CAPTURE.destination"
+printf '%s\n' "$TELL_PROJECT" "$TELL_TYPE" > "$CAPTURE.metadata"
+printf 'attempt\n' >> "$CAPTURE.attempts"
+/bin/cat > "$CAPTURE.body"
+exit "$PROVIDER_EXIT"
+`)
+			write(filepath.Join(config, "config.yaml"), fmt.Sprintf("version: 1\nnotify:\n  via: command\n  command: [%q, fixture-inbox]\n", provider))
+			const job = "checks; literal"
+			run := func(id int, status string) map[string]any {
+				return map[string]any{"id": id, "job": job, "project": project, "status": status}
+			}
+			write(filepath.Join(root, "job.log"), "PRIVATE LOG MUST NOT BE SENT")
+			code := "0"
+			if tt.providerFails {
+				code = "7"
+			}
+			command := exec.Command("/bin/sh", hook)
+			command.Dir = project
+			command.Env = []string{
+				"HOME=" + root, "XDG_CONFIG_HOME=" + filepath.Dir(config),
+				"PATH=" + bin + ":/usr/bin:/bin",
+				"NOON_PROJECT=" + project, "NOON_JOB=" + job,
+				"NOON_RUN_ID=42", "NOON_STATUS=" + tt.status,
+				"NOON_EXIT_CODE=0", "NOON_LOG_FILE=" + filepath.Join(root, "job.log"),
+				"CAPTURE=" + filepath.Join(root, "capture"), "PROVIDER_EXIT=" + code,
+			}
+			var previous any
+			if tt.previous != "" {
+				command.Env = append(command.Env, "NOON_PREVIOUS_STATUS="+tt.previous)
+				previous = tt.previous
+			}
+			summary, err := json.Marshal(map[string]any{
+				"schema_version": 1, "previous_status": previous, "project": map[string]string{"path": project},
+				"run": run(42, tt.status), "sentinel": "PRIVATE SUMMARY MUST NOT BE SENT",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			command.Stdin = bytes.NewReader(summary)
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("hook must remain best effort: %v %s", err, output)
+			}
+			body, err := os.ReadFile(filepath.Join(root, "capture.body"))
+			if !tt.send {
+				if !os.IsNotExist(err) {
+					t.Fatalf("unexpected delivery: %q, %v", body, err)
+				}
+				return
+			}
+			want := fmt.Sprintf("Job: %s\nStatus: %s\nRun: 42\nProject: %s\nLogs: run noon logs 42 from the project directory.", job, tt.status, project)
+			if err != nil || string(body) != want {
+				t.Fatalf("message: %q, %v; want %q", body, err, want)
+			}
+			kind := "failure"
+			if tt.status == "succeeded" {
+				kind = "success"
+			}
+			for suffix, want := range map[string]string{
+				"destination": "fixture-inbox\n",
+				"metadata":    project + "\n" + kind + "\n",
+				"attempts":    "attempt\n",
+			} {
+				got, err := os.ReadFile(filepath.Join(root, "capture."+suffix))
+				if err != nil || string(got) != want {
+					t.Fatalf("%s: %q, %v; want %q", suffix, got, err, want)
+				}
+			}
+		})
 	}
 }
