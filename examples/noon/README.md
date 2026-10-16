@@ -1,145 +1,166 @@
 # Noon → repo hook → Tell
 
-Copy [notify.sh](notify.sh) to your repo's `scripts/noon-notify.sh` and merge the
-job-level hooks from [noon.yaml](noon.yaml). Replace the absolute script paths
-and job command. The hook needs only POSIX `/bin/sh` and Tell. Review/approve
-the resulting Noon job before scheduling it.
+Two patterns: notify a person when a job breaks or recovers, and send an agent
+a scheduled instruction.
 
-Requires Noon with NOON-31 (`2d3d376` or later), which supplies
-`NOON_PREVIOUS_STATUS`: the last retained succeeded/failed/timed_out result for
-the same project/job, snapshotted before this run finishes. Update older Noon
-installations first; without this variable the hook stays quiet. The hook reads
-Noon's environment, not its JSON stdin, and does not query history itself.
-Only success → failure (including timeout) and failure → recovery notify.
-Repeated failures, a change from failed to timed_out, and repeated successes
-do not. With no predecessor (first run or pruned history), it sends nothing:
-establish a baseline first. Cancelled/skipped/interrupted runs are not health
-transitions. This unknown-history policy deliberately differs from Noon's
-example wrappers, which treat unknown history as healthy.
+## Failure and recovery notifications
 
-Use serial jobs (`overlap: skip`) and avoid concurrent manual runs of the same
-job if you need one ordered health sequence. Hooks execute outside scheduler
-concurrency limits. This is best-effort transition reporting, not a durable
-alert queue or exactly-once delivery. Missing current context skips with a
-generic diagnostic; no local state file is created.
+1. Copy [notify.sh](notify.sh) to your repo as `scripts/noon-notify.sh`.
+2. Merge the hooks from [noon.yaml](noon.yaml) and replace the absolute paths
+   and job command.
+3. Review and approve the Noon job.
 
-Messages include job, status, run ID, project, and a `noon logs RUN` pointer.
-They never open the log file or copy excerpts, which could leak credentials to
-Apprise's third-party destinations. Tell's redaction is extra protection, not a
-reason to forward logs. The JSON hook summary is never the message.
+```yaml
+jobs:
+  checks:
+    run: [task, test]
+    schedule: every 1h
+    overlap: skip
+    on_success: [/bin/sh, /absolute/path/to/repo/scripts/noon-notify.sh]
+    on_failure: [/bin/sh, /absolute/path/to/repo/scripts/noon-notify.sh]
+```
+
+The hook needs only POSIX `/bin/sh` and Tell. It compares Noon's
+`NOON_PREVIOUS_STATUS` with `NOON_STATUS` and notifies only on a transition:
+
+| Previous → current | Notifies |
+| --- | --- |
+| succeeded → failed / timed_out | failure |
+| failed / timed_out → succeeded | success |
+| failed → failed, failed → timed_out, succeeded → succeeded | no |
+| none (first run or pruned history) | no; establish a baseline first |
+| cancelled, skipped, interrupted | no |
+
+This deliberately treats unknown history as unknown, unlike Noon's example
+wrappers, which treat it as healthy. It requires Noon with NOON-31 (`2d3d376`
+or later); older Noon lacks `NOON_PREVIOUS_STATUS`, so the hook stays quiet.
+
+The message is a pointer, never log content:
+
+```text
+Job: checks
+Status: failed
+Run: 42
+Project: /Users/me/dev/app
+Logs: run noon logs 42 from the project directory.
+```
+
+The hook reads Noon's environment, never its JSON stdin or log file, so neither
+can leak to Apprise's third-party destinations. Tell's redaction is a backstop,
+not a reason to forward logs. Missing context skips with a generic diagnostic.
+No state file is created.
+
+Use serial jobs (`overlap: skip`) and avoid concurrent manual runs if you want
+one ordered sequence; hooks run outside Noon's concurrency limits. This is
+best-effort reporting, not a durable alert queue.
+
+### Budgets and failures
+
+Noon gives a hook 30 seconds, then TERM to its process group, 5 seconds of
+grace, then KILL. The hook passes `--timeout 10s`, leaving room for startup
+and cleanup. Do not raise it past Noon's budget.
+
+```sh
+tell -C "$NOON_PROJECT" --timeout 10s notify \
+    --title 'Noon job transition' --type "$kind" -- "$message" </dev/null || true
+```
+
+`|| true` makes the hook succeed even if delivery fails. Hook failures never
+change the job's recorded status or exit code. Tell exit codes 1–3 mean fix
+setup; 4–5 mean check before resending (see [outcomes](../../docs/design.md#outcomes)).
+Nothing retries. **Never rerun a business job because its notification failed.**
 
 ## Service setup
 
-Services do not inherit your interactive shell setup. In the **Noon service's**
-environment, explicitly configure:
+Services do not inherit your shell. Give the Noon service:
 
-- `PATH` containing the installed `noon`, `tell`, job tools, and provider
-  executable (`apprise`, `herdr`, or `notify-send`), plus system directories.
-  Use stable installation paths, not an interactive shell alias or activation.
-- `HOME` for the service user and, if used, `XDG_CONFIG_HOME`. Tell reads
-  `$XDG_CONFIG_HOME/tell/config.yaml`, otherwise `$HOME/.config/tell/config.yaml`.
-- Personal routing and provider-owned credentials. For example:
+- `PATH` with `noon`, `tell`, job tools, and the provider (`apprise`, `herdr`,
+  or `notify-send`) at stable install paths, plus system directories.
+- `HOME` and, if used, `XDG_CONFIG_HOME`, so Tell finds the service user's
+  `tell/config.yaml`.
+- Personal routing, with credentials kept in the provider's own config:
 
-  ```yaml
-  # service user's ~/.config/tell/config.yaml
-  version: 1
-  notify:
-    via: desktop
-  ```
+```yaml
+# service user's ~/.config/tell/config.yaml
+version: 1
+notify:
+  via: desktop     # or apprise (+ apprise.config), or herdr (+ herdr.session)
+```
 
-For Apprise use `notify.via: apprise` and personal `apprise.config` pointing to
-Apprise's native config. Keep its tokens there, never in this hook or shared
-Tell config. For Herdr use `notify.via: herdr` and explicit
-`herdr.session: work` (or explicitly `default`). The session must already be
-running under the service user. Tell neither discovers nor starts sessions,
-and ignores inherited `HERDR_*` context. Do not infer agent identity from a
-service environment.
+| Route | Service also needs |
+| --- | --- |
+| desktop, Linux | `notify-send` and the user's session `DBUS_SESSION_BUS_ADDRESS` |
+| desktop, macOS | logged-in GUI session, `/usr/bin/osascript`, Script Editor notifications allowed |
+| apprise | `apprise.config` pointing at Apprise's native config, which holds the tokens |
+| herdr | an explicit `herdr.session` already running as the service user |
 
-On Linux, install `notify-send` and supply the actual user's desktop-session
-`DBUS_SESSION_BUS_ADDRESS` to the service. Tell does not discover D-Bus.
-On macOS, run in the logged-in user's GUI session, allow Script Editor
-notifications, and ensure `/usr/bin/osascript` is available. Focus / Do Not
-Disturb can hide accepted banners; system daemons are not desktop sessions.
+Tell ignores inherited `HERDR_*` context and never discovers D-Bus or sessions.
+System daemons are not desktop sessions, and Focus can hide accepted banners.
 
-Verify with the **same user, working directory, PATH, HOME/XDG and desktop
-environment as the service**, not just your interactive shell:
+Verify as the service would run, with the same user, directory, PATH, HOME/XDG,
+and desktop environment:
 
 ```sh
 tell -C /absolute/path/to/repo doctor
-tell -C /absolute/path/to/repo --json doctor
-```
-
-Doctor sends nothing. It checks executable/config readiness, not reachability,
-credentials, GUI permission, delivery, or human acknowledgment. Afterward,
-optionally send a clearly labeled test notification yourself. Bare `tell`
-only inspects settings. For a service with an explicit Herdr target:
-
-```sh
 tell -C /absolute/path/to/repo --via herdr --herdr-session work doctor
 ```
 
+Doctor sends nothing and checks setup, not credentials, reachability, or GUI
+permission. Send a clearly labeled test notification yourself if needed.
+
 Top-level Noon hook defaults belong only in user config or an explicit
-`--config` file, never shared/private project Noon files. Job-level hooks may
-live in `noon.yaml`, as this example does. Hook failures do not change the job's
-recorded status or foreground exit code.
-
-## Budgets and failures
-
-Noon allows 30 seconds for a hook, then TERM to its process group, five seconds
-of grace, then KILL. Tell's delivery budget is explicitly 10 seconds (also its
-default), leaving room for startup, preparation, and cleanup inside Noon's hook
-budget. No history subprocess is needed. Do not raise Tell's timeout past the
-outer budget. Nothing automatically retries.
-
-Tell exit codes are: **0** accepted (not acknowledgment), **1** input/config,
-**2** usage, **3** not sent, **4** provider failure (possibly partial), **5**
-uncertain after start. Fix setup for 1–3; inspect 4–5 before deciding whether
-resending is safe. The hook ignores delivery exit codes with
-`tell notify "context" || true`, returning success even if delivery fails. Noon can append diagnostics to its run log, but job outcome stays
-separate from notification outcome. **Never rerun a business job because its
-notification failed.** See [Tell outcomes](../../docs/design.md#outcomes).
+`--config` file, never project Noon files. Job-level hooks may live in
+`noon.yaml`, as here.
 
 ## Scheduled instructions
 
-Merge [scheduled-send.yaml](scheduled-send.yaml) into the repository's Noon
-config and review/approve the job. It sends an authored weekday PR-triage
-instruction, not job output. `missed: skip` prevents a missed instruction from
-being replayed late after sleep; `overlap: skip` avoids overlapping dispatches.
-Noon owns the schedule, missed runs, overlap, and history, not Tell.
+Merge [scheduled-send.yaml](scheduled-send.yaml) and approve the job. It sends
+a weekday PR-triage instruction:
 
-In the service user's personal Tell config, set:
+```yaml
+jobs:
+  triage:
+    schedule: weekdays at 9am
+    missed: skip       # don't replay a missed instruction after sleep
+    overlap: skip
+    timeout: 30s
+    run: >-
+      exec tell --timeout 10s send --intent request
+      "Triage new PRs and report blockers. Scheduled run ${NOON_RUN_ID:?}; see noon logs ${NOON_RUN_ID}."
+    on_failure: >-
+      tell --timeout 10s notify --type failure
+      "Agent dispatch failed for run ${NOON_RUN_ID:?}; inspect noon logs ${NOON_RUN_ID} before resending."
+```
+
+In the service user's Tell config:
 
 ```yaml
 send:
-  via: hcom
+  via: hcom          # or herdr, with send.to as name/pane ID and herdr.session: work
   to: reviewer
   from: nightly
+notify:
+  via: desktop       # for the on_failure notice to a person
 ```
 
-Ensure hcom is on the service PATH and reviewer participates in hcom. For Herdr,
-use `send.via: herdr`, an explicit name/pane ID in `send.to`, and
-`herdr.session: work`; the session and agent must already exist. Configure
-`notify.via` separately for a person (desktop, Apprise, etc.), then run
-`tell doctor` in the service environment before enabling the job.
+Put `hcom` on the service PATH and make sure `reviewer` participates in hcom.
+For Herdr, the session and agent must already exist. Run `tell doctor` in the
+service environment before enabling the job.
 
-The shell in the example expands `NOON_RUN_ID` into a quoted pointer. Tell
-itself never reads Noon environment or JSON. A nonzero send fails the Noon run;
-its job-level `on_failure` notifies a person, including on the first failure.
-It deliberately does not use the transition-only notify.sh wrapper above.
-A failed hook does not change the recorded job outcome. Inspect the receipt in
-`noon logs RUN` before retrying: timeout/cancellation may mean delivered.
+Noon's shell expands `NOON_RUN_ID`; Tell never reads Noon's environment. A
+failed send fails the run, and `on_failure` notifies a person on the first
+failure. It does not use the transition-only `notify.sh`. Check the receipt in
+`noon logs RUN` before retrying: timeout may mean delivered.
 
-hcom delivers a mailbox message on the recipient's next hook without steering
-its current turn. Herdr types a new user turn only after an idle/done check;
-that check can race with work starting, so use hcom when non-interruption is
-required. Busy/blocked agents are not prompted. A successful Noon run here means
-**dispatch**, not that the agent finished triage. Use a Noon `prompt`/`prompt_file`
-agent job instead when the work needs a fresh context or tracked completion.
-No reply waits, queues, retries, or completion tracking are added to Tell.
+A successful run means **dispatched**, not that triage finished. hcom delivers
+at the agent's next hook without interrupting. Herdr types a turn only after an
+idle check, which can race with new work; busy agents are not prompted. When the
+work needs a fresh context or tracked completion, use a Noon `prompt` or
+`prompt_file` agent job instead.
 
 ## Isolated verification
 
-`task smoke` builds Tell and runs the hook with a sanitized service-style
-environment, synthetic Noon previous-status context/JSON stdin, and a local
-capture provider. It exercises transitions, unknown history, literal context, and
-notification failure without contacting Noon services or real destinations.
+`task smoke` builds Tell and runs the hook in a sanitized service-like
+environment with synthetic Noon context and a local capture provider. It covers
+transitions, unknown history, literal context, and delivery failure without
+touching Noon or real destinations.

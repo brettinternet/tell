@@ -1,59 +1,64 @@
 # Development
 
-Tooling follows the sibling hum, bump (Noon), and project repositories, trimmed
-to a Go-only CLI. Go 1.27.2, urfave/cli v3, and strict YAML configuration match Noon.
+Go 1.27.2, urfave/cli v3, and strict YAML, matching Noon. Tooling follows the
+sibling hum, bump, and project repositories, trimmed to a Go-only CLI.
 
-## Setup and checks
+## Setup
 
-Run `mise trust && mise exec -- task init` to install pinned tools, Go modules,
-and Lefthook hooks. No service starts. The build uses Go; provider runtimes are
-optional external tools, not embedded dependencies. After configuring a delivery
-route, run `tell doctor` to check readiness without sending; see
-[route readiness](configuration.md#route-readiness) for its limits.
+```sh
+mise trust && mise exec -- task init   # pinned tools, Go modules, Lefthook hooks; starts nothing
+```
 
-- `task cli:build` builds bin/tell; `task cli:run -- --help` runs from source.
-- `task check` checks gofmt, vet, Staticcheck, and changelog generation.
-- `task test`, `task race`, and `task smoke` verify source and the built CLI.
-- `task security` scans Git history with Gitleaks and reachable Go vulnerabilities.
-- `task ci` runs the complete gate. CI runs on Linux and macOS.
-- `task check:staged` formats/re-stages Go and scans the staged snapshot.
-- `task changelog` generates CHANGELOG.md from Conventional Commits.
-- `task backlog` / `task backlog:next` list ready, unclaimed work.
+## Tasks
 
-Stage only intended files, run `task check:staged`, and commit with a Conventional
-Commit. Never push without instruction. Release publication is not wired up.
+| Task | Does |
+| --- | --- |
+| `task cli:build` | build `bin/tell` |
+| `task cli:run -- --help` | run from source |
+| `task check` | gofmt, vet, Staticcheck, changelog generation |
+| `task test` / `task race` | unit tests, with race detector |
+| `task smoke` | build, then test the binary in an isolated environment |
+| `task security` | Gitleaks over Git history, govulncheck |
+| `task ci` | all of the above; CI runs it on Linux and macOS |
+| `task check:staged` | format and re-stage Go, scan the staged snapshot |
+| `task changelog` | write CHANGELOG.md from Conventional Commits |
+| `task backlog` / `task backlog:next` | ready, unclaimed work |
 
-## Architecture
+Before committing: stage only intended files, run `task check:staged`, use a
+Conventional Commit. Never push without instruction. Releases are not wired up.
 
-- `cmd/tell`: process boundary, signals, linker-injected build metadata.
-- `internal/cli`: urfave commands, flag/env handling, human/JSON output.
-- `internal/config`: strict YAML, source selection, precedence, validation; no CLI-framework dependency.
-- `scripts/`: development checks; no runtime service.
-- `integration/`: built-binary smoke tests behind the `smoke` build tag.
-- `backlog/`: authoritative work queue managed through Backlog.md.
+## Layout
 
-Create packages only when functionality needs them. Do not copy Noon's scheduler,
-store, HTTP, or MCP layers. Provider integrations are subprocess adapters, not SDKs
-or a plugin framework.
+| Path | Owns |
+| --- | --- |
+| `cmd/tell` | process boundary, signals, linker-injected build metadata |
+| `internal/cli` | urfave commands, flags/env, human and JSON output |
+| `internal/config` | strict YAML, sources, precedence, validation; no CLI dependency |
+| `internal/delivery` | routes, message preparation, outcomes, subprocesses |
+| `integration/` | built-binary smoke tests (`smoke` build tag) |
+| `scripts/` | development checks |
+| `backlog/` | the work queue (Backlog.md) |
+
+Add packages only when needed. Do not copy Noon's scheduler, store, HTTP, or
+MCP layers. Providers are subprocess adapters, not SDKs or plugins.
 
 ## Testing
 
-Implement first. Name the real failure a new test prevents. Cover parsing,
-precedence, path/trust boundaries, no-overwrite writes, and subprocess delivery
-semantics when implemented. Prefer public-interface tests using real temporary
-files; do not test framework behavior or static configuration.
+Implement first, then test critical behavior: parsing, precedence, path and
+trust boundaries, no-overwrite writes, and subprocess outcomes. Name the real
+failure each new test prevents. Test through public interfaces with real temp
+files and local fixture executables, not network mocks.
 
-Never read real user settings or contact notification services in tests. Set
-HOME/XDG_CONFIG_HOME and pass explicit config inputs. There is no system config
-source. Provider tests should use local executables, not network mocks.
+Tests must never read real user settings or contact real services. Set HOME
+and XDG_CONFIG_HOME, and pass config explicitly.
 
-## Worktrees and backlog
+## Backlog and worktrees
 
-Work in the current checkout unless otherwise directed. Review .config/wt.toml
-before Worktrunk creation. Setup only installs tools/modules/hooks.
+Use the Backlog.md CLI in the primary checkout. Claim a task before starting
+and reread it after writes. A ready task states scope, non-goals, file
+boundaries, dependencies, and executable acceptance. Record command results in
+notes; check criteria only after they pass.
 
-Read and mutate tasks via Backlog.md CLI in the primary checkout. Claim before
-implementing; reread after writes. Each ready task describes scope, non-goals,
-modified-file boundaries, dependencies, and executable acceptance. Record command
-results in notes and check criteria only after they pass. Future acceptance
-commands are targets to implement, not claims of current behavior.
+Work in the current checkout unless told otherwise. Review `.config/wt.toml`
+before creating a Worktrunk worktree; its setup only installs tools, modules,
+and hooks.

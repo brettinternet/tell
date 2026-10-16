@@ -1,174 +1,196 @@
 # Tell
 
-**Small delivery plumbing for humans and agents.**
+Send one notification to a person, or one message to an agent, then exit.
 
-A Go CLI for consistent notification and message routing from terminals, scripts,
-and repo automation. Repo scripts own workflows; your scheduler (cron, launchd,
-CI, or Noon) owns schedules, queues, and run history. Tell executes one
-invocation and exits.
+```sh
+tell notify "Build finished"                         # person: stderr, desktop, Apprise, Herdr, or your command
+tell send --intent request "Triage PRs; report blockers"   # agent: hcom mailbox or idle Herdr pane
+```
 
-**Implemented:** strict layered configuration, source-aware inspection, JSON
-output, non-destructive project initialization, stderr/desktop/Apprise/Herdr/personal-command notifications,
-message normalization, embedded secret redaction, agent messaging through hcom/Herdr, and development tooling.
-Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
+Tell is a Go CLI for terminals, scripts, and scheduler hooks. Your scheduler
+(cron, launchd, CI, Noon) owns schedules, retries, and history. Your scripts
+decide what is worth saying. Tell routes one message and reports what happened.
+It has no daemon, queue, database, or retries.
 
-## Try it
+## Build
 
 ```sh
 mise trust
 mise exec -- task init
-mise exec -- task cli:build
-
-bin/tell                         # inspect settings; sends nothing
-bin/tell --help
-bin/tell --version
-bin/tell init                    # create tell.yaml; never overwrite
-bin/tell init --local            # create private .tell.yaml; ignore it in Git
-bin/tell init --user             # create personal user config (mode 0600)
-bin/tell notify "Build finished"  # default: stderr, stdout untouched
-printf 'Build finished' | bin/tell notify -  # explicitly read stdin
-bin/tell --json notify --type success "Build finished"
-bin/tell config                  # effective values, origins, loaded files
-bin/tell config check            # validate without invoking providers
-bin/tell --json config check
-bin/tell doctor                  # read-only route readiness; no messages sent
-TELL_TIMEOUT=5s bin/tell config
-bin/tell --timeout 8s config     # flags override environment
-bin/tell -C ../another-repo config
-bin/tell --config ./ci.yaml config check  # only this file, plus env/flags
+mise exec -- task cli:build   # → bin/tell
 ```
 
-Configuration precedence, lowest to highest:
+Apprise, Herdr, and hcom are optional external tools. None is needed to build
+or inspect configuration.
 
-```text
-defaults → user config → tell.yaml → .tell.yaml → TELL_* environment → CLI flags
+## Quick tour
+
+Bare `tell` only inspects. It never sends.
+
+```console
+$ tell
+Project: "/Users/me/dev/app"
+notify.via: "stderr" ("default")
+secrets.policy: "redact" ("default")
+timeout: "10s" ("default")
+...
+Inspection only; notify delivers via the selected route. Provider acceptance is not human acknowledgment.
 ```
 
-User config is `$XDG_CONFIG_HOME/tell/config.yaml`, or
-`~/.config/tell/config.yaml` when XDG is unset. Settings merge by field.
-Shared `tell.yaml` rejects personal routing (`notify.via`, `apprise.config`,
-`herdr.session`, `send.via`, `send.to`, `send.from`); put it in user config or private `.tell.yaml`.
-Explicit `--config`, environment, and flags also accept routing.
+The default route writes to stderr, leaving stdout for your script:
+
+```console
+$ tell notify "Build finished"
+Build finished
+
+$ tell --json notify --type success "Build finished"
+Build finished
+{"outcome":"accepted","redactions":0,"route":"stderr","schema_version":1}
+
+$ printf 'Build finished' | tell notify -     # stdin only when you pass -
+```
+
+Detected secrets are redacted before delivery:
+
+```console
+$ tell --json notify "key $AWS_ACCESS_KEY_ID done"
+key [REDACTED] done
+{"outcome":"accepted","redactions":1,"route":"stderr","schema_version":1}
+```
+
+Check routes without sending anything. Only the selected route decides the exit code:
+
+```console
+$ tell doctor
+desktop (selected): ready
+apprise: missing_executable
+```
+
+## Configure
+
+Create starter files. `init` never overwrites.
+
+```sh
+tell init           # tell.yaml: shared, committed
+tell init --local   # .tell.yaml: private (mode 0600); add it to .gitignore
+tell init --user    # ~/.config/tell/config.yaml: personal (mode 0600)
+```
+
+Shared `tell.yaml` holds shared settings only. Destinations are personal, so
+Tell rejects routing fields there:
 
 ```yaml
-# tell.yaml — safe to share; provider credentials live elsewhere
+# tell.yaml
 version: 1
-timeout: 10s
 apprise:
   tag: project-alerts
 ```
 
-Choose the route separately in user config:
-
 ```yaml
-# ~/.config/tell/config.yaml (or $XDG_CONFIG_HOME/tell/config.yaml)
+# ~/.config/tell/config.yaml
 version: 1
 notify:
-  via: apprise
-apprise:
-  config: ../apprise/apprise.yaml
+  via: desktop
 ```
 
-After configuring a route, run `tell doctor` (or `tell --json doctor`) to check
-readiness without sending. It checks the selected and all explicitly configured
-routes; only the selected route determines success. See [readiness](docs/configuration.md#route-readiness)
-for checks and limitations.
+```console
+$ tell config check   # with notify.via in tell.yaml
+tell: config /Users/me/dev/app/tell.yaml:3: notify.via is personal routing; set it in user config, .tell.yaml, --config, environment, or flags instead of shared tell.yaml
+```
 
-Run `tell notify "Build finished"` to deliver using the selected personal route.
-The default route is stderr. Apprise is an **optional external executable** on PATH;
-it owns native configuration, credentials, and provider integrations. Tell passes
-explicit options only and never opens the referenced Apprise file during inspection.
+Precedence, lowest to highest:
 
-Messages are one literal argument, or `-` to explicitly read stdin. Empty messages
-fail before delivery. Titles and bodies reject NUL, strip terminal sequences,
-controls (except newline/tab), and bidi overrides/isolates before delivery.
-Titles are capped at 256 bytes and bodies at 16 KiB, on UTF-8 boundaries,
-including a visible `[truncated]` marker. Before truncation, embedded Gitleaks rules
-replace detected secrets in titles and bodies with `[REDACTED]`; JSON reports
-`redactions`. Personal config can set `secrets.policy: reject` to refuse delivery
-instead. Detection is best-effort, not a guarantee that text contains no secrets. See [preparation](docs/design.md#message-preparation).
-`--title` defaults to the selected project directory name;
-`--type` accepts info (default), success, warning, or failure. Provider acceptance
-is **not human acknowledgment**. JSON results never contain message bodies;
-timeout/cancellation after provider start means delivery is uncertain. See the
-[outcome table](docs/design.md#outcomes) before deciding to resend.
+```text
+defaults → user config → tell.yaml → .tell.yaml → TELL_* env → flags
+```
 
-See [configuration](docs/configuration.md) for all keys, flags, paths, and error
-semantics; [design](docs/design.md) for the delivery boundary and planned adapters.
+```sh
+TELL_TIMEOUT=5s tell config       # environment
+tell --timeout 8s config          # flag beats environment
+tell -C ../other-repo config      # pick the project
+tell --config ./ci.yaml config    # use only this file (plus env and flags)
+```
 
-For a user-owned executable, set personal `notify.command: [/absolute/path/to/executable]`
-and use `tell notify --via command "Build finished"`. Tell passes the prepared body
-on stdin and metadata in environment variables, without shell interpolation.
-See the [command contract and example](docs/design.md#command-delivery).
+See [configuration](docs/configuration.md) for every key.
 
-## Herdr notifications
+## Notification routes
 
-`tell notify --via herdr --herdr-session work "Build finished"` posts to an
-existing local session. Set `notify.via: herdr` and `herdr.session: work` in
-personal config for repeat use. Tell never starts a session, guesses a target,
-or falls back to another route. Inherited `HERDR_*` context is excluded.
-Posted is not human acknowledgment. See [Herdr delivery](docs/design.md#herdr-delivery)
-for requirements and reserved-message limitations.
+| Route | Example | Needs |
+| --- | --- | --- |
+| stderr (default) | `tell notify "Done"` | nothing |
+| desktop | `tell notify --via desktop "Done"` | `osascript` (macOS) or `notify-send` (Linux) |
+| apprise | `tell notify --via apprise "Done"` | `apprise` on PATH and its own config |
+| herdr | `tell notify --via herdr --herdr-session work "Done"` | a running Herdr session |
+| command | `tell notify --via command "Done"` | personal `notify.command` |
 
-## Native desktop notifications
+`--title` defaults to the project directory name. `--type` is `info` (default),
+`success`, `warning`, or `failure`.
 
-`tell notify --via desktop "Build finished"` uses macOS `osascript` or Linux
-`notify-send`, without Apprise or terminal-notifier. Set `notify.via: desktop`
-in personal config to make it your default; bare `tell` still only inspects.
+The command route runs your executable with the body on stdin:
 
-On macOS, banners are attributed to **Script Editor**; allow its notifications
-in System Settings when prompted. On Linux, install `notify-send` (libnotify)
-and run within a desktop session. Scheduled services need the user's session
-D-Bus, usually via `DBUS_SESSION_BUS_ADDRESS`; Tell inherits it, not discovers it.
-Focus / Do Not Disturb can hide banners. Posted means accepted, not seen or
-acknowledged. See [desktop behavior](docs/design.md#desktop-delivery).
+```yaml
+# ~/.config/tell/config.yaml
+notify:
+  via: command
+  command: [/Users/me/.local/bin/tell-speak]
+```
+
+```sh
+#!/bin/sh
+# /Users/me/.local/bin/tell-speak; also gets TELL_TITLE, TELL_TYPE, TELL_PROJECT
+exec /usr/bin/say -f -
+```
+
+Route details: [desktop](docs/design.md#desktop-delivery),
+[Herdr](docs/design.md#herdr-delivery), [command](docs/design.md#command-delivery).
 
 ## Agent messages
 
-Configure one recipient in personal config (never shared `tell.yaml`):
+Pick one recipient in personal config:
 
 ```yaml
 send:
-  via: hcom
+  via: hcom        # or herdr (also needs herdr.session)
   to: reviewer
   from: tell-automation
 ```
 
-`tell send "Tests failed; see noon logs 42"` sends information;
-`tell send --intent request "Triage PRs; report blockers"` requests action.
-Use `tell send -` only to explicitly read stdin. Each invocation prints one
-body-free receipt on stderr; `--json` also emits a structured result on stdout.
-Use `--send-via` to override the transport (`--via` still selects notifications).
+```console
+$ tell send "Tests failed; see noon logs 42"
+tell send: route="hcom" recipient="reviewer" intent="inform" outcome=accepted
 
-hcom queues a mailbox message for a participating agent's next hook. Herdr
-types a user turn only after checking idle/done; configure `send.via: herdr`,
-`send.to` as an agent name or pane ID, and an explicit `herdr.session`.
-There is a check-to-prompt race: use hcom when non-interruption is essential.
-Dispatch is not completion. See [agent delivery](docs/design.md#agent-delivery)
-and the [scheduled instruction example](examples/noon/README.md#scheduled-instructions).
+$ tell send --intent request "Triage new PRs and report blockers"
+```
+
+hcom queues the message for the agent's next hook without interrupting it.
+Herdr types a new turn only when the agent is idle, but the agent can start
+working between the check and the prompt. Use hcom when interruption matters.
+Accepted means dispatched, not done. See [agent delivery](docs/design.md#agent-delivery).
+
+## Outcomes
+
+Each `notify` or `send` exits with one outcome. It tells you whether resending is safe.
+
+| Exit | Outcome | Resend? |
+| --- | --- | --- |
+| 0 | accepted | No. Accepted is not read or acknowledged. |
+| 1 | config | After fixing. Nothing was sent. |
+| 2 | usage | After fixing. Nothing was sent. |
+| 3 | not_sent | Yes, or use another route. |
+| 4 | failed | Not blindly. Some destinations may have it. |
+| 5 | uncertain | Not without checking. It may have arrived. |
+
+See [outcomes](docs/design.md#outcomes) and [message preparation](docs/design.md#message-preparation).
 
 ## Scheduler hooks
 
-Use the [Noon hook example](examples/noon/README.md) to report failure/recovery
-transitions from repo automation. The caller owns history and notification
-policy; Tell sends one message and exits. The example includes service setup,
-readiness checks, and isolated integration verification.
+[examples/noon](examples/noon/README.md) has a Noon hook that notifies only on
+failure and recovery, plus a [scheduled agent instruction](examples/noon/README.md#scheduled-instructions).
 
-## Development
+## Docs
 
-```sh
-task test
-task ci
-task backlog
-task backlog:next
-```
-
-Tooling follows the sibling hum, bump (Noon), and project repositories: mise,
-Task, Lefthook, Staticcheck, Gitleaks, govulncheck, git-cliff, Worktrunk, and
-Backlog.md. See [development](docs/development.md).
-
-No daemon, database, web UI, provider SDK, or scheduler is embedded.
-Apprise, Herdr, and hcom are optional and external. None is
-required for building or inspecting configuration.
+- [Configuration](docs/configuration.md): files, keys, readiness, init
+- [Design](docs/design.md): boundaries, outcomes, each route's exact behavior
+- [Development](docs/development.md): tasks, layout, testing
 
 MIT licensed.
