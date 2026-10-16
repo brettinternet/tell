@@ -4,8 +4,9 @@ title: 'Bootstrap Go CLI, layered configuration, and development tooling'
 status: Done
 assignee: []
 created_date: '2026-10-16 20:19'
-updated_date: '2026-10-16 20:30'
-labels: []
+updated_date: '2026-10-16 23:52'
+labels:
+  - reviewed
 dependencies: []
 ordinal: 1000
 ---
@@ -46,6 +47,8 @@ AC#2: mise exec -- task test passed public-interface regression tests for all co
 AC#3: mise exec -- task smoke passed built-binary help/version, no-argument JSON inspection, config check, shared/private init, invalid-config exits, and unsupported delivery-command rejection with sanitized HOME/config/environment.
 AC#4: README/docs/examples clearly distinguish implemented config from future adapters; Backlog CLI created TELL-2 through TELL-6 with dependencies and acceptance. Commits d726d5d (tooling) and ea23bb4 (configuration CLI/docs/tests) contain the implementation; the final backlog-state commit records this completion. No push or PR was performed.
 Independent verifier e250b7e2 reran tests, full CI, and smoke and found no implementation defect; its only outstanding criterion was the then-uncommitted implementation, resolved by ea23bb4. Its observed backlog changes were this parent sessions authorized task creation/updates. LSP diagnostics were clean. No worktrees or services were created.
+
+Review: one defect fixed in 78a3c65. Ambient environment blocked init: any exported TELL_* setting (e.g. TELL_HERDR_SESSION) or TELL_CONFIG made tell init/--local/--user exit 2 with 'init does not apply config or setting overrides', and TELL_PROJECT made init --user claim --project was passed. TELL_PROJECT/TELL_CONFIG are now resolved in input() like the setting env vars, so init rejects only typed flags; regression added to TestCLIUserInit (fails before the fix). Otherwise traced Load precedence (user < tell.yaml < .tell.yaml < env < flag, --config replacing files only), shared-file personal-key rejection, strict YAML (aliases, merge keys, dotted/duplicate keys, multi-doc, 1 MiB cap, dangling symlinks), Git-boundary discovery, source-relative apprise.config, and O_EXCL no-overwrite init refusing symlinks. Stale template/next-step wording is already TELL-23; committed .tell.yaml routing is TELL-15. task ci passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
