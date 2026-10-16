@@ -62,6 +62,27 @@ herdr.session, send.via, send.to, send.from) now come only from user config, pri
 semantics such as the Apprise tag and format. Repository scripts decide what
 happened; personal configuration decides where it goes.
 
+## Compatibility
+
+The first published stable release establishes the compatibility contract.
+Within config `version: 1`, existing valid keys retain their meaning and
+precedence/trust boundaries; incompatible configuration changes require a new
+config version and migration guidance. Unknown keys remain errors.
+
+JSON `schema_version: 1` preserves existing field types and meanings.
+Additive fields may appear; consumers should ignore unknown fields and handle
+unknown reason/route values conservatively. Removing or changing an existing
+field incompatibly requires a new schema version.
+
+The numeric exit codes and delivery guarantees in [Outcomes](#outcomes) are
+stable: notably, 0 never means human acknowledgment and 5 never means safe
+to resend. Incompatible CLI/exit behavior requires a new major release and
+migration notes. Human-readable prose and diagnostic wording are not an API.
+Security fixes may tighten validation or redaction without preserving unsafe
+behavior. External provider behavior and availability remain outside Tell's
+compatibility guarantee; Tell never turns an uncertain provider outcome into
+success.
+
 ## Message preparation
 
 Every notification route receives the same prepared title and body, whether from

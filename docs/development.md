@@ -21,7 +21,46 @@ route, run `tell doctor` to check readiness without sending; see
 - `task backlog` / `task backlog:next` list ready, unclaimed work.
 
 Stage only intended files, run `task check:staged`, and commit with a Conventional
-Commit. Never push without instruction. Release publication is not wired up.
+Commit. Never push without instruction. Release publication is wired to stable
+version-tag pushes; creating or pushing a tag requires explicit authorization.
+
+## Release packaging
+
+```sh
+VERSION=v1.0.0 task cli:package
+# Optional reproducible binary metadata overrides:
+VERSION=v1.0.0 BUILD_COMMIT="$(git rev-parse HEAD)" \
+  BUILD_TIME=2026-10-16T00:00:00Z task cli:package
+```
+
+Run from the repository root with a clean source checkout for release builds.
+VERSION must be a stable `vX.Y.Z` tag; prereleases are not published by this
+workflow. BUILD_COMMIT defaults to HEAD and BUILD_TIME to that commit's timestamp.
+The task cross-compiles with CGO disabled and trimpath, injects all three linker
+fields, and writes four archives plus `checksums.txt` to `dist/release/vX.Y.Z/`.
+Names are `tell-vX.Y.Z-{linux,macos}-{x64,arm64}.tar.gz`; each contains only
+`bin/tell`. The task verifies every checksum and archive layout, then extracts
+and runs the host binary to compare all version metadata. Run it on Linux or
+macOS, x64 or arm64. Generated files remain under ignored `dist/`.
+
+Before authorizing a release, run `task ci`, the packaging task, and
+`actionlint .github/workflows/release.yaml`. None publishes anything.
+Local checks verify cross-compiled archive layout and host execution, not
+execution on all four architectures or live mise asset discovery.
+
+The release workflow adapts hum's exact-commit main-push CI gate and worklease's
+archive naming. On a version-tag push it waits for that commit's `ci.yaml`
+run to succeed, builds/checks archives, then creates a GitHub Release with
+generated notes, all four archives and checksums. Actions are SHA-pinned;
+only the publishing job has contents write permission. Existing releases
+are never overwritten. There are no tap updates, changelog commits, or pushes.
+
+After publication, a four-runner matrix installs latest using the plain mise
+GitHub backend in fresh cache/config/data/state directories and checks the
+expected version. This live check necessarily follows publication and cannot
+roll it back. Until a release is authorized and published, record live mise
+installation as **pending**, not passed. First-release publication is not
+part of local implementation verification.
 
 ## Architecture
 

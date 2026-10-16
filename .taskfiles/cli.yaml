@@ -8,6 +8,9 @@ tasks:
     cmds:
       - mkdir -p bin
       - mise exec go -- go build -o bin/tell ./cmd/tell
+  package:
+    desc: Build and verify four release archives (VERSION=vX.Y.Z)
+    cmd: mise exec go -- sh scripts/package.sh
   run:
     desc: Run tell from source
     cmd: mise exec go -- go run ./cmd/tell {{.CLI_ARGS}}

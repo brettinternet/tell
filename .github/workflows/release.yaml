@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+# Serialize publication and latest-version smoke checks across tags.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'brettinternet/tell'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact tag commit passed main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          commit="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          test "$commit" = "$(git rev-parse HEAD)"
+          run_id="$(gh run list --workflow ci.yaml --commit "$commit" --branch main --event push --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [ -z "$run_id" ]; then
+            echo "No main-branch push CI run found for tag commit $commit" >&2
+            exit 1
+          fi
+          gh run watch "$run_id" --exit-status
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        with:
+          cache: false
+      - name: Build and verify release archives
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: task cli:package
+      - name: Publish GitHub release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          # Refuse replacement: a rerun must not silently mutate released bytes.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to overwrite it" >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME"             dist/release/"$GITHUB_REF_NAME"/*.tar.gz             dist/release/"$GITHUB_REF_NAME"/checksums.txt             --verify-tag --generate-notes --title "$GITHUB_REF_NAME" --latest
+
+  mise-install:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        with:
+          install: false
+          cache: false
+      - name: Install expected latest release with default asset selection
+        env:
+          MISE_CACHE_DIR: ${{ runner.temp }}/mise-cache
+          MISE_CONFIG_DIR: ${{ runner.temp }}/mise-config
+          MISE_DATA_DIR: ${{ runner.temp }}/mise-data
+          MISE_STATE_DIR: ${{ runner.temp }}/mise-state
+          MISE_GITHUB_TOKEN: ${{ github.token }}
+          MISE_MINIMUM_RELEASE_AGE: "0"
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          # No checkout, tool cache, asset overrides, or custom plugin.
+          cd "$RUNNER_TEMP"
+          actual="$(mise exec github:brettinternet/tell@latest -- tell --version)"
+          printf '%s\n' "$actual"
+          case "$actual" in
+            "tell version ${RELEASE_TAG#v} (commit "*) ;;
+            *) echo "mise did not install the expected release" >&2; exit 1 ;;
+          esac

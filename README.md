@@ -12,6 +12,46 @@ output, non-destructive project initialization, stderr/desktop/Apprise/Herdr/per
 message normalization, embedded secret redaction, agent messaging through hcom/Herdr, and development tooling.
 Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
 
+## Installation
+
+Release packaging is implemented; the first published release and live mise
+installation checks are pending. Once a stable release is published:
+
+```sh
+mise exec github:brettinternet/tell@latest -- tell --version
+# Or install persistently:
+mise use -g github:brettinternet/tell@latest
+```
+
+No asset selection override or custom plugin is needed. To install manually,
+download `tell-vX.Y.Z-OS-ARCH.tar.gz` and `checksums.txt` from
+[GitHub Releases](https://github.com/brettinternet/tell/releases).
+OS is `macos` or `linux`; ARCH is `arm64` or `x64`. For example,
+after downloading the macOS Apple Silicon archive (replace the version):
+
+```sh
+grep '  tell-vX.Y.Z-macos-arm64.tar.gz$' checksums.txt | shasum -a 256 -c -
+tar -xzf tell-vX.Y.Z-macos-arm64.tar.gz
+install -m 755 bin/tell ~/.local/bin/tell  # create ~/.local/bin first; keep it on PATH
+tell --version
+```
+
+Archives contain `bin/tell`. Checksums detect corruption, not publisher identity.
+The brettinternet Homebrew tap formula is **pending** (TELL-13); no working
+`brew install` command is promised yet. Windows is not supported.
+
+Tell itself needs no provider runtime for inspection or stderr delivery.
+Optional routes require their external executable on PATH: Apprise with its
+own provider configuration; Herdr with an existing explicit session; hcom with
+a participating recipient; desktop uses macOS osascript or Linux notify-send
+and a desktop D-Bus session. The command route requires your own executable.
+Credentials remain with each provider. Run `tell doctor` before delivery.
+
+`tell --version` reports the version (without the tag's `v`), source commit,
+and build timestamp. Source-only `task cli:build` remains `dev`; versioned
+archives use [the packaging task](docs/development.md#release-packaging).
+See the [compatibility promise](docs/design.md#compatibility).
+
 ## Try it
 
 ```sh
