@@ -6,7 +6,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/spf13/viper v1.19.0
-	github.com/urfave/cli/v3 v3.13.0
+	github.com/urfave/cli/v3 v3.14.0
 	github.com/zricethezav/gitleaks/v8 v8.30.1
 	go.yaml.in/yaml/v3 v3.0.5
 )
