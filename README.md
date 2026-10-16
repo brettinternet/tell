@@ -3,8 +3,9 @@
 **Small delivery plumbing for humans and agents.**
 
 A Go CLI for consistent notification and message routing from terminals, scripts,
-and repo automation. Repo scripts own workflows; Noon owns schedules, queues, and
-run history. Tell executes one invocation and exits.
+and repo automation. Repo scripts own workflows; your scheduler (cron, launchd,
+CI, or Noon) owns schedules, queues, and run history. Tell executes one
+invocation and exits.
 
 **Implemented:** strict layered configuration, source-aware inspection, JSON
 output, non-destructive project initialization, stderr/Apprise notifications, and development tooling.

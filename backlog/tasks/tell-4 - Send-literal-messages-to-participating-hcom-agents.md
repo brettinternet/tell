@@ -4,7 +4,7 @@ title: Send messages to an existing agent through hcom or Herdr
 status: To Do
 assignee: []
 created_date: '2026-10-16 20:29'
-updated_date: '2026-10-16 21:57'
+updated_date: '2026-10-16 22:06'
 labels: []
 dependencies:
   - TELL-2
@@ -25,11 +25,11 @@ ordinal: 5500
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Why: people, scripts, and Noon jobs need to hand information or instructions to an agent that already has context, for example "nightly tests failed, run 42; see noon logs 42" or, on a weekday schedule, "triage new PRs and report blockers". Scripts should not know which transport reaches that agent, and automation needs safe defaults that raw transport CLIs do not provide. Messaging an agent is a different intent from notifying a person, so it is a separate send command with its own routes, mirroring notify. See the send paragraph in docs/design.md.
+Why: people, scripts, and scheduled jobs need to hand information or instructions to an agent that already has context, for example "nightly tests failed, run 42; see noon logs 42" or, on a weekday schedule, "triage new PRs and report blockers". Scripts should not know which transport reaches that agent, and automation needs safe defaults that raw transport CLIs do not provide. Messaging an agent is a different intent from notifying a person, so it is a separate send command with its own routes, mirroring notify. See the send paragraph in docs/design.md.
 
 Instructions versus data: the body is the sender's own text (information by default, an instruction when the caller asks for a request). Instructions are legitimate when a person or their scheduled job authors them. Untrusted material (job output, logs, PR text) is never embedded; messages carry pointers such as run IDs, paths, and URLs, and the agent reads the data with its own tools.
 
-Scheduled instructions: Noon decides when. A Noon job whose command is tell send delivers at the scheduled time; Noon owns missed runs, overlap, and history. A non-zero send fails that run, so the user's on_failure hook can notify a person (for example, the agent was not running). When completion must be tracked or the work needs a fresh context, use a Noon agent job instead of send.
+Scheduled instructions: the caller's scheduler decides when and owns missed runs, overlap, and history; Tell reads no scheduler-specific environment. In the Noon example, a job whose command is tell send delivers at the scheduled time, and a non-zero send fails that run so the user's on_failure hook can notify a person (for example, the agent was not running). When completion must be tracked or the work needs a fresh context, use the scheduler's agent jobs (such as Noon's) instead of send.
 
 Transports (verify against installed versions):
 - hcom (src/commands/send.rs) is a mailbox delivered on the agent's next hook, so it never interrupts a turn; the agent must participate in hcom. Syntax: hcom send @NAME -- MESSAGE. No @target broadcasts to everyone; @tag- and several @targets fan out. Without --, --stdin, --file, or --base64 it reads stdin whenever stdin is not a terminal. --from NAME (or -b) sets an external sender. --intent request|inform|ack; request creates reply obligations. --json returns a receipt. Exit 1 on errors, including no matching active participant.

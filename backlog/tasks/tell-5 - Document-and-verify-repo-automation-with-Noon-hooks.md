@@ -4,7 +4,7 @@ title: Document and verify repo automation with Noon hooks
 status: To Do
 assignee: []
 created_date: '2026-10-16 20:29'
-updated_date: '2026-10-16 21:43'
+updated_date: '2026-10-16 22:07'
 labels: []
 dependencies:
   - TELL-2
@@ -21,14 +21,14 @@ ordinal: 5000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Why: the primary use of Tell is reporting recurring repo work supervised by Noon. Users need a small repo-owned hook script and example configuration, not a Noon-specific protocol inside Tell.
+Why: a common use of Tell is reporting recurring repo work from a scheduler. Noon is the worked example because it is the scheduler in use; Tell itself stays scheduler-neutral (docs/design.md, Scheduler hooks). Users need a small repo-owned hook script and example configuration, not a scheduler-specific protocol inside Tell.
 
 Context (Noon lifecycle hooks, ../bump/docs/hooks.md):
 - on_failure runs after failed or timed_out runs; on_success after succeeded. Hook failures never change job status.
 - Hooks get the job environment (including NOON_PROJECT, NOON_JOB, NOON_RUN_ID) plus NOON_STATUS, NOON_EXIT_CODE, and NOON_LOG_FILE when a log exists. Stdin is a versioned JSON run summary.
 - A hook gets 30 seconds, then TERM to its process group, 5 seconds, then KILL. The first 64 KiB of hook stdout/stderr is appended to the run log.
 - Top-level hook defaults come only from user config or --config, never project noon.yaml; job-level hooks may live in noon.yaml.
-- noon history NAME --limit N --json returns recent runs, so a hook can compare with the previous run without Tell keeping state.
+- noon history NAME --limit N --json returns recent runs, so a hook can compare with the previous run without Tell keeping state. If Noon has shipped NOON-31 (NOON_PREVIOUS_STATUS in hook environments; ../bump/backlog), use that instead of querying history.
 - A job failing every few minutes would otherwise notify every few minutes.
 - Apprise can forward to third-party services and phones; job logs can contain secrets.
 - Scheduled services do not inherit an interactive PATH, desktop session (D-Bus on Linux), Herdr session, or agent identity.
@@ -41,7 +41,7 @@ Non-goals: a Noon integration package, changes to the sibling Noon checkout, par
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 An isolated integration fixture runs the example hook with a sanitized service-style environment and a Noon-shaped JSON summary on stdin; a local fixture provider receives the expected destination and job, status, run, and project context, and the JSON summary is not consumed as the message.
-- [ ] #2 The example notifies only on status transitions (first failure after success, then recovery) using Noon run history rather than Tell state, keeps hook outcome separate from job outcome, and documents the 30-second hook budget against Tell's timeout.
+- [ ] #2 The example notifies only on status transitions (first failure after success, then recovery) using Noon's hook context or run history rather than Tell state, keeps hook outcome separate from job outcome, and documents the 30-second hook budget against Tell's timeout.
 - [ ] #3 Example messages carry job, status, run ID, and project, and point to noon logs; they never include log excerpts.
 - [ ] #4 Docs cover PATH, user config, and desktop session setup for services, verifying setup with tell doctor, explicit Herdr target selection, and how callers handle Tell's exit codes (best effort with || true; never rerun a job because a notification failed); task ci passes.
 <!-- AC:END -->

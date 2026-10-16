@@ -5,7 +5,7 @@
 Tell is a short-lived CLI between repo automation and delivery tools:
 
 ```text
-human / script / Noon job
+human / script / scheduler hook
           │
          tell
           ├── notify: stderr / desktop / Herdr / Apprise (external services)
@@ -16,10 +16,18 @@ Configuration, inspection, and notify via stderr and Apprise are implemented.
 Desktop, Herdr, user-owned commands, send, and message preparation remain planned.
 Backlog.md is the work queue; this document records boundaries, not a second task list.
 
-Noon owns schedules, queued runs, concurrency, cancellation, and run history.
-Repo scripts decide what events deserve notification and what agent work means.
-Tell owns routing for one invocation, safe argv, bounded subprocess execution,
-and honest dispatch results. It owns no message database or background worker.
+The caller's scheduler (cron, launchd, CI, or Noon) owns schedules, queued runs,
+concurrency, cancellation, and run history. Repo scripts decide what events
+deserve notification and what agent work means. Tell owns routing for one
+invocation, safe argv, bounded subprocess execution, and honest dispatch
+results. It owns no message database or background worker, and it never reads
+scheduler-specific environment or payloads: callers pass arguments or explicit
+stdin.
+
+Tell does not throttle, deduplicate, or rate-limit. That needs state shared
+across invocations, only the caller knows whether a message repeats, and a
+dropped alert costs more than a duplicate. Callers own it, for example a
+scheduler hook that notifies only when a job's status changes.
 
 ## Commands and semantics
 
@@ -29,11 +37,12 @@ Commands retain the conversation's separation (send remains planned):
 - send delivers a message to an existing agent through hcom or Herdr.
 
 Send carries the sender's own information or instructions. Instructions are
-legitimate when a person or their scheduled job authors them; Noon owns when
-they run, missed runs, and overlap. Messages carry pointers (run IDs, paths,
-URLs) rather than raw job output, so agents read untrusted data through their
-own tools. Tell never waits for a reply or for work to finish: tracked agent
-work belongs to Noon agent jobs, and ask-and-wait flows belong to Unharness.
+legitimate when a person or their scheduled job authors them; the scheduler
+owns when they run, missed runs, and overlap. Messages carry pointers (run IDs,
+paths, URLs) rather than raw job output, so agents read untrusted data through
+their own tools. Tell never waits for a reply or for work to finish: tracked
+agent work belongs to a scheduler's agent jobs (such as Noon's), and
+ask-and-wait flows belong to Unharness.
 
 Notify routes are thin built-ins plus one advanced provider. Built-ins cover the
 common personal cases with no extra runtime: stderr; desktop through osascript
@@ -112,24 +121,24 @@ executable overrides, plugin-loading paths, command templates, or raw shell
 strings. Provider subprocesses receive argv, never interpolated shell code.
 Logs and errors must not echo credentials or raw message contents.
 
-## Noon integration
+## Scheduler hooks
 
-Noon's current lifecycle hooks receive environment values such as NOON_JOB,
-NOON_STATUS, NOON_RUN_ID, NOON_PROJECT and NOON_LOG_FILE, plus a JSON run summary
-on stdin. A small repo-owned script can translate those into Tell arguments;
-no Noon-specific protocol is needed in Tell. Literal notify arguments do not
-consume that stdin. Explicitly choose `-` only when its contents are the message.
+Schedulers call Tell like any script. A small hook script translates the
+scheduler's context (job, status, run ID) into Tell arguments; Tell has no
+scheduler-specific protocol. Literal notify arguments do not consume a hook's
+stdin, so payloads such as Noon's JSON run summary stay with the hook.
+Explicitly choose `-` only when its contents are the message.
 
-Noon's hooks have a 30-second budget and separate hook status from job status.
-Tell's default 10-second delivery timeout leaves room for hook supervision.
+Keep delivery inside the hook's budget: Noon allows 30 seconds, and Tell's
+default 10-second delivery timeout leaves room for hook supervision.
 A failed hook is not a durable notification-redelivery mechanism; do not rerun a
 successful business job to resend an alert.
 
 Scheduled services do not inherit an interactive Herdr session or agent identity.
 Resolve executable paths/configuration from explicit per-user setup and pass
-session/recipient targets deliberately. For actual scheduled agent work with
-completion tracking, use Noon's agent execution, not successful hcom dispatch
-as a proxy for completion.
+session/recipient targets deliberately. For scheduled agent work with
+completion tracking, use the scheduler's agent execution (such as Noon agent
+jobs), not successful hcom dispatch as a proxy for completion.
 
 ## Implementation shape
 

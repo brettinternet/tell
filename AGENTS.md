@@ -11,7 +11,7 @@ Read README.md and docs/development.md before changing Tell. Read AGENTS.local.m
 - Use Conventional Commits. Never push or open a PR without instruction.
 - Keep no-argument commands safe: inspect only; never send messages or start services.
 - Distinguish implemented features from planned features. No successful stub commands.
-- Tell delivers one invocation and exits. Scheduling, queues, and durable job state belong to Noon.
+- Tell delivers one invocation and exits. Scheduling, queues, durable state, throttling, and deduplication belong to callers such as Noon. Never read scheduler-specific environment or payloads.
 - Keep provider credentials/configuration with the provider. Never print message bodies, tokens, or raw provider configuration in diagnostics.
 
 ## Backlog
