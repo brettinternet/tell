@@ -21,13 +21,16 @@ for target in linux/amd64/linux/x64 linux/arm64/linux/arm64 darwin/amd64/macos/x
   platform=${rest%%/*}; arch=${rest#*/}
   stage="dist/stage/$goos-$goarch"
   mkdir -p "$stage/bin"
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath     -ldflags "-s -w -X main.buildVersion=${VERSION#v} -X main.buildCommit=$BUILD_COMMIT -X main.buildTime=$BUILD_TIME"     -o "$stage/bin/tell" ./cmd/tell
+  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath \
+    -ldflags "-s -w -X main.buildVersion=${VERSION#v} -X main.buildCommit=$BUILD_COMMIT -X main.buildTime=$BUILD_TIME" \
+    -o "$stage/bin/tell" ./cmd/tell
   # List the binary explicitly: no stale staging files enter the archive.
   tar -C "$stage" -czf "$release_dir/tell-$VERSION-$platform-$arch.tar.gz" bin/tell
 done
 
 (
   cd "$release_dir"
-  shasum -a 256 "tell-$VERSION-linux-x64.tar.gz" "tell-$VERSION-linux-arm64.tar.gz"     "tell-$VERSION-macos-x64.tar.gz" "tell-$VERSION-macos-arm64.tar.gz" > checksums.txt
+  shasum -a 256 "tell-$VERSION-linux-x64.tar.gz" "tell-$VERSION-linux-arm64.tar.gz" \
+    "tell-$VERSION-macos-x64.tar.gz" "tell-$VERSION-macos-arm64.tar.gz" > checksums.txt
 )
 sh scripts/check-package.sh

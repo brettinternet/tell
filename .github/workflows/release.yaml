@@ -54,7 +54,10 @@ jobs:
             echo "Release already exists; refusing to overwrite it" >&2
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME"             dist/release/"$GITHUB_REF_NAME"/*.tar.gz             dist/release/"$GITHUB_REF_NAME"/checksums.txt             --verify-tag --generate-notes --title "$GITHUB_REF_NAME" --latest
+          gh release create "$GITHUB_REF_NAME" \
+            dist/release/"$GITHUB_REF_NAME"/*.tar.gz \
+            dist/release/"$GITHUB_REF_NAME"/checksums.txt \
+            --verify-tag --generate-notes --title "$GITHUB_REF_NAME" --latest
 
   mise-install:
     needs: release
