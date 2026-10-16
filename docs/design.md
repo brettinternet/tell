@@ -28,6 +28,13 @@ Planned commands retain the conversation's separation:
   keeps a calling script's stdout data and --json output intact.
 - send delivers a message to an existing agent through hcom or Herdr.
 
+Send carries the sender's own information or instructions. Instructions are
+legitimate when a person or their scheduled job authors them; Noon owns when
+they run, missed runs, and overlap. Messages carry pointers (run IDs, paths,
+URLs) rather than raw job output, so agents read untrusted data through their
+own tools. Tell never waits for a reply or for work to finish: tracked agent
+work belongs to Noon agent jobs, and ask-and-wait flows belong to Unharness.
+
 Notify routes are thin built-ins plus one advanced provider. Built-ins cover the
 common personal cases with no extra runtime: stderr; desktop through osascript
 on macOS or notify-send on Linux; and an explicit Herdr session. Apprise handles
