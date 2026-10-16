@@ -24,6 +24,7 @@ their values. No settings directory is created by inspection.
 `--config FILE` / `TELL_CONFIG` replaces **all automatic file sources**,
 including system config. The explicit file must exist. Defaults and setting
 env/flags still apply; use a controlled environment for reproducible CI.
+HOME and XDG_CONFIG_HOME are not consulted, so services without HOME can use it.
 
 `--system-config FILE` / `TELL_SYSTEM_CONFIG` substitutes an explicit, required
 system-defaults file for the optional /etc path. It has no effect when --config

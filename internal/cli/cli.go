@@ -104,18 +104,7 @@ func input(cmd *urfave.Command) (config.Input, error) {
 	if err != nil {
 		return config.Input{}, err
 	}
-	userDir := os.Getenv("XDG_CONFIG_HOME")
-	if userDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return config.Input{}, err
-		}
-		userDir = filepath.Join(home, ".config")
-	}
-	if !filepath.IsAbs(userDir) {
-		return config.Input{}, errors.New("XDG_CONFIG_HOME must be absolute")
-	}
-	values := config.Input{CWD: cwd, UserConfigDir: userDir, Project: selector(cmd, "project"), File: selector(cmd, "config"), SystemFile: selector(cmd, "system-config"), Overrides: map[string]config.Value{}}
+	values := config.Input{CWD: cwd, Project: selector(cmd, "project"), File: selector(cmd, "config"), SystemFile: selector(cmd, "system-config"), Overrides: map[string]config.Value{}}
 	for _, spec := range settings {
 		if cmd.IsSet(spec.flag) {
 			values.Overrides[spec.key] = config.Value{Text: cmd.String(spec.flag), Source: "flag:--" + spec.flag}
@@ -124,6 +113,23 @@ func input(cmd *urfave.Command) (config.Input, error) {
 		}
 	}
 	return values, nil
+}
+
+// userConfigDir is needed only for automatic file sources, so an explicit
+// --config works in service environments without HOME.
+func userConfigDir() (string, error) {
+	dir := os.Getenv("XDG_CONFIG_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, ".config")
+	}
+	if !filepath.IsAbs(dir) {
+		return "", errors.New("XDG_CONFIG_HOME must be absolute")
+	}
+	return dir, nil
 }
 
 func selector(cmd *urfave.Command, name string) *string {
@@ -146,6 +152,9 @@ func load(cmd *urfave.Command) (config.Config, error) {
 		return config.Config{}, err
 	}
 	values, err := input(cmd)
+	if err == nil && values.File == nil {
+		values.UserConfigDir, err = userConfigDir()
+	}
 	if err == nil {
 		var cfg config.Config
 		cfg, err = config.Load(values)

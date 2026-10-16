@@ -23,11 +23,11 @@ func TestBinary(t *testing.T) {
 	if err := os.WriteFile(system, []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	invoke := func(args ...string) (string, int) {
+	run := func(env []string, args ...string) (string, int) {
 		t.Helper()
 		command := exec.Command(binary, args...)
 		command.Dir = home
-		command.Env = []string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "XDG_CONFIG_HOME=" + filepath.Join(home, "config"), "TELL_SYSTEM_CONFIG=" + system}
+		command.Env = env
 		output, err := command.CombinedOutput()
 		if err == nil {
 			return string(output), 0
@@ -37,6 +37,10 @@ func TestBinary(t *testing.T) {
 		}
 		t.Fatal(err)
 		return "", -1
+	}
+	invoke := func(args ...string) (string, int) {
+		t.Helper()
+		return run([]string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "XDG_CONFIG_HOME=" + filepath.Join(home, "config"), "TELL_SYSTEM_CONFIG=" + system}, args...)
 	}
 	for _, args := range [][]string{{"--help"}, {"--version"}, {"--json"}, {"--json", "config", "check"}} {
 		output, code := invoke(args...)
@@ -63,5 +67,10 @@ func TestBinary(t *testing.T) {
 	output, code = invoke("--json", "--timeout", "0s", "config", "check")
 	if code != 1 || !json.Valid([]byte(output)) || !strings.Contains(output, "positive") {
 		t.Fatalf("invalid config: %d %s", code, output)
+	}
+	// Service environments may lack HOME; an explicit file needs no user config.
+	output, code = run([]string{}, "--config", system, "config", "check")
+	if code != 0 {
+		t.Fatalf("explicit config without HOME: %d %s", code, output)
 	}
 }
