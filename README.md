@@ -16,7 +16,7 @@ or retries. These are tracked in Backlog.md; there are no successful stub comman
 ```sh
 mise trust
 mise exec -- task init
-task cli:build
+mise exec -- task cli:build
 
 bin/tell                         # inspect settings; sends nothing
 bin/tell --help
