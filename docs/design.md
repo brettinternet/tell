@@ -76,7 +76,7 @@ Every route gets the same prepared title and body, in this order:
 4. **Strip bidi controls** U+202A–U+202E and U+2066–U+2069. Invalid UTF-8
    becomes U+FFFD. Other text is untouched; no Markdown/HTML sanitizing.
 5. **Scan for secrets** with the embedded Gitleaks v8 default rules, offline.
-   Matches become `[REDACTED]`. With personal `secrets.policy: reject`, exit 1
+   Matches become `[REDACTED]` wherever the value appears in the title or body. With personal `secrets.policy: reject`, exit 1
    `config/secret_detected` instead. A scanner error fails closed
    (`config/secret_scan_failed`). `gitleaks:allow` does not bypass it. No local
    rules, ignore files, or network checks.

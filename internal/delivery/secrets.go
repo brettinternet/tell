@@ -33,29 +33,39 @@ func scanSecrets(message Message, policy string) (Message, int, string) {
 	detector := detect.NewDetector(cfg)
 	// Message authors cannot opt out of scanning with an inline comment.
 	detector.IgnoreGitleaksAllow = true
-	count := 0
-	for _, field := range []*string{&message.Title, &message.Body} {
-		findings := detector.DetectString(*field)
-		if len(findings) > 0 && policy == "reject" {
-			return Message{}, 0, "secret_detected"
-		}
-		// Locate every occurrence and merge overlapping ranges before replacing.
-		// This avoids partial redaction when different rules overlap or repeat.
-		type span struct{ start, end int }
-		var spans []span
-		seen := make(map[string]bool)
-		for _, finding := range findings {
+	fields := []*string{&message.Title, &message.Body}
+	// Collect secrets from both fields before redacting either: a context rule
+	// (such as api_key=...) may match in one field while the bare value repeats
+	// in the other.
+	var secrets []string
+	seen := make(map[string]bool)
+	for _, field := range fields {
+		for _, finding := range detector.DetectString(*field) {
+			if policy == "reject" {
+				return Message{}, 0, "secret_detected"
+			}
 			secret := finding.Secret
 			if secret == "" {
 				secret = finding.Match
 			}
-			if secret == "" {
-				return Message{}, 0, "secret_scan_failed"
-			}
 			if seen[secret] {
 				continue
 			}
+			// A finding that cannot be located cannot be redacted.
+			if secret == "" || !strings.Contains(*field, secret) {
+				return Message{}, 0, "secret_scan_failed"
+			}
 			seen[secret] = true
+			secrets = append(secrets, secret)
+		}
+	}
+	count := 0
+	for _, field := range fields {
+		// Locate every occurrence and merge overlapping ranges before replacing.
+		// This avoids partial redaction when different rules overlap or repeat.
+		type span struct{ start, end int }
+		var spans []span
+		for _, secret := range secrets {
 			for offset := 0; offset < len(*field); {
 				index := strings.Index((*field)[offset:], secret)
 				if index < 0 {

@@ -376,6 +376,18 @@ func TestNotifySecrets(t *testing.T) {
 			})
 		}
 	}
+	// A context rule matching in one field must redact the bare value in the other.
+	t.Run("cross-field", func(t *testing.T) {
+		environment(t)
+		record := provider(t)
+		value := "aZ3kP9qW7xL2mN8vB4tR6yH1"
+		code, out, errOut := run("--json", "--via", "apprise", "notify", "--title", "api_key="+value, "value "+value)
+		assertResult(t, code, out, errOut, "apprise", "accepted", "")
+		data, err := os.ReadFile(record)
+		if err != nil || strings.Contains(string(data), value) {
+			t.Fatal("secret detected in title leaked through body")
+		}
+	})
 }
 
 func TestNotifyInterruption(t *testing.T) {
