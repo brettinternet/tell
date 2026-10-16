@@ -86,6 +86,17 @@ func TestExplicitConfigIsolatesAutomaticFiles(t *testing.T) {
 	}
 }
 
+// Commenting out every setting leaves an empty layer rather than breaking delivery.
+func TestCommentOnlyFileIsEmptyLayer(t *testing.T) {
+	input := fixture(t)
+	shared := filepath.Join(input.CWD, "tell.yaml")
+	writeFile(t, shared, "# version: 1\n# notify: {via: apprise}\n\n")
+	cfg, err := config.Load(input)
+	if err != nil || cfg.Notify.Via != "stdout" || cfg.Sources[len(cfg.Sources)-1] != shared {
+		t.Fatalf("comment-only layer: %+v %v", cfg, err)
+	}
+}
+
 // Typos, duplicate fields and YAML indirection can silently redirect messages.
 // Validate each source even if a later layer supplies a valid replacement.
 func TestRejectAmbiguousOrInvalidConfiguration(t *testing.T) {

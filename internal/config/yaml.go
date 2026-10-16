@@ -18,12 +18,12 @@ type fileValue struct {
 // parse validates the entire layer before applying it, even when higher layers
 // override it. As in Noon, decoder errors never echo raw configuration values.
 func parse(data []byte) ([]fileValue, error) {
-	if len(data) == 0 {
-		return nil, nil
-	}
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	var document yaml.Node
-	if err := decoder.Decode(&document); err != nil {
+	if err := decoder.Decode(&document); errors.Is(err, io.EOF) {
+		// Empty, whitespace-only, and comment-only files are empty layers.
+		return nil, nil
+	} else if err != nil {
 		return nil, errors.New("invalid YAML: expected one mapping; check syntax")
 	}
 	if len(document.Content) != 1 {

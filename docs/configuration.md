@@ -95,7 +95,8 @@ Tell does not interpret or display those variables.
 
 Only one mapping/document is accepted. Reject unknown/duplicate keys, aliases,
 anchors, merge keys, nulls, wrong types, unsupported versions, and files larger
-than 1 MiB. A zero-byte file or empty mapping is accepted as an empty layer.
+than 1 MiB. An empty, whitespace-only, or comment-only file or an empty mapping
+is accepted as an empty layer.
 Version is optional and defaults to 1. Errors name the source; semantic errors
 also name the field/line. Parser diagnostics never echo raw setting values.
 
