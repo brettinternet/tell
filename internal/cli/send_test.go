@@ -22,6 +22,7 @@ func sendProvider(t *testing.T) string {
 	record := provider(t, "hcom", "herdr")
 	script := `#!/bin/sh
 if read -r input; then exit 92; fi
+if [ "$FIXTURE_PROBE_WAIT" = yes ]; then exec /bin/sleep 30; fi
 if [ "$*" = "session list --json" ]; then
  printf '{"sessions":[{"name":"work","running":true}]}'
  exit 0
@@ -181,7 +182,7 @@ func TestSendRefusesUnsafeTargets(t *testing.T) {
 // Preserve dispatch uncertainty, body-free receipts, and exactly-once attempts.
 func TestSendOutcomes(t *testing.T) {
 	for _, route := range []string{"hcom", "herdr"} {
-		for _, mode := range []string{"missing-executable", "missing-target", "provider-failure", "timeout", "cancelled", "blocked-race"} {
+		for _, mode := range []string{"missing-executable", "missing-target", "provider-failure", "timeout", "cancelled", "probe-timeout", "blocked-race"} {
 			if mode == "blocked-race" && route != "herdr" {
 				continue
 			}
@@ -205,6 +206,11 @@ func TestSendOutcomes(t *testing.T) {
 					t.Setenv("FIXTURE_RESPONSE", `{"error":{"code":"agent_blocked"}}`)
 					t.Setenv("FIXTURE_EXIT", "1")
 					reason = "blocked"
+				case "probe-timeout":
+					// A stalled read-only check sent nothing; uncertain would forbid a safe resend.
+					t.Setenv("FIXTURE_PROBE_WAIT", "yes")
+					args = append([]string{"--timeout", "150ms"}, args...)
+					reason = "timeout"
 				case "timeout", "cancelled":
 					t.Setenv("FIXTURE_WAIT", "yes")
 					outcome, reason = "uncertain", mode

@@ -337,8 +337,8 @@ selectors, and remote addresses are refused. hcom delivers at the recipient's
 next hook without steering its current turn.
 
 hcom exit 1 covers both provider errors and a participant that vanished. A
-target missing at probe time is `not_sent`; exit 1 at send time is
-conservatively `failed`. Verified against hcom
+target missing at probe time is `not_sent`, as is a probe timeout
+(`not_sent/timeout`); exit 1 at send time is conservatively `failed`. Verified against hcom
 `669a06703aad3b503d6eac0ce9fd744bf3f7c771` (`send.rs`, `list.rs`); hcom was not
 installed during development.
 
@@ -358,7 +358,8 @@ herdr --session SESSION agent prompt PANE_ID MESSAGE
 | agent or executable missing | not_sent |
 | no `herdr.session` | not_sent/missing_session |
 | provider error | failed |
-| timeout after start, malformed prompt receipt | uncertain |
+| `agent get` timed out | not_sent/timeout |
+| prompt timed out, malformed prompt receipt | uncertain |
 
 **The check and the prompt are not atomic.** The agent can start working in
 between, and the typed turn may steer it. Use hcom when interruption matters.

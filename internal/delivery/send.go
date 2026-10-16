@@ -91,9 +91,22 @@ func Send(ctx context.Context, cfg config.Config, body, intent string) (result *
 	return NewResult(route, "accepted", "", "")
 }
 
-// probeSend is read-only. hcom requires an exact listed active name; Herdr
-// requires idle/done and returns the resolved pane ID to pin the prompt target.
+// probeSend is read-only, so an interrupted probe means nothing was sent:
+// report it as such rather than as uncertain delivery.
 func probeSend(ctx context.Context, cfg config.Config) (string, *Result) {
+	target, failure := probeTarget(ctx, cfg)
+	if failure == nil || failure.Outcome != "uncertain" {
+		return target, failure
+	}
+	if failure.Failure.Reason == "cancelled" {
+		return "", NewResult(failure.Route, "config", "cancelled", "send cancelled before delivery")
+	}
+	return "", NewResult(failure.Route, "not_sent", failure.Failure.Reason, "recipient check did not complete; nothing was sent")
+}
+
+// probeTarget: hcom requires an exact listed active name; Herdr requires
+// idle/done and returns the resolved pane ID to pin the prompt target.
+func probeTarget(ctx context.Context, cfg config.Config) (string, *Result) {
 	if failure := sendTarget(cfg); failure != nil {
 		return "", failure
 	}
