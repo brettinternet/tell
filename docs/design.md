@@ -24,13 +24,21 @@ and honest dispatch results. It owns no message database or background worker.
 ## Commands and semantics
 
 Planned commands retain the conversation's separation:
-- notify requests human attention. stdout is the safe built-in default.
-- send delivers a message to a participating hcom agent.
+- notify requests human attention. stderr is the safe built-in default; it
+  keeps a calling script's stdout data and --json output intact.
+- send delivers a message to an existing agent through hcom or Herdr.
 
 Notify routes are thin built-ins plus one advanced provider. Built-ins cover the
-common personal cases with no extra runtime: stdout; desktop through osascript
+common personal cases with no extra runtime: stderr; desktop through osascript
 on macOS or notify-send on Linux; and an explicit Herdr session. Apprise handles
-fan-out to external services and owns their destinations and credentials.
+fan-out to external services and owns their destinations and credentials. A
+user-owned command route runs a personal executable with a fixed contract,
+without shell strings or a plugin registry.
+
+Before any route runs, titles and bodies pass one preparation step: control
+characters removed, lengths capped with a visible marker, and secrets redacted
+with an embedded scanner ruleset. Tell is the last point before third-party
+services and agent transcripts persist a message.
 
 Delivery destinations are personal. Routing fields (notify.via, apprise.config,
 herdr.session, hcom.to) are planned to come only from user config, private
@@ -54,8 +62,8 @@ whether to resend; the outcome says whether that is safe.
 
 With --json, stdout receives one object with schema_version, outcome, and route;
 failures add error.code (the outcome), error.message, and a reason such as
-missing_executable, unsupported_platform, no_match, partial, timeout, or
-cancelled. Results never include the message body or raw provider output.
+missing_executable, unsupported_platform, no_match, partial, timeout,
+cancelled, or secret_detected. Results never include the message body or raw provider output.
 Unknown provider exit codes map to failed, never accepted.
 
 An accepted provider invocation does not prove a human read the notification,

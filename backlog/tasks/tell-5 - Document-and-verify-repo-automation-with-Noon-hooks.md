@@ -4,12 +4,13 @@ title: Document and verify repo automation with Noon hooks
 status: To Do
 assignee: []
 created_date: '2026-10-16 20:29'
-updated_date: '2026-10-16 21:30'
+updated_date: '2026-10-16 21:43'
 labels: []
 dependencies:
   - TELL-2
   - TELL-3
   - TELL-8
+  - TELL-12
 documentation:
   - ../bump/docs/hooks.md
   - docs/design.md
@@ -42,7 +43,7 @@ Non-goals: a Noon integration package, changes to the sibling Noon checkout, par
 - [ ] #1 An isolated integration fixture runs the example hook with a sanitized service-style environment and a Noon-shaped JSON summary on stdin; a local fixture provider receives the expected destination and job, status, run, and project context, and the JSON summary is not consumed as the message.
 - [ ] #2 The example notifies only on status transitions (first failure after success, then recovery) using Noon run history rather than Tell state, keeps hook outcome separate from job outcome, and documents the 30-second hook budget against Tell's timeout.
 - [ ] #3 Example messages carry job, status, run ID, and project, and point to noon logs; they never include log excerpts.
-- [ ] #4 Docs cover PATH, user config, and desktop session setup for services; explicit Herdr target selection; how callers handle Tell's exit codes (best effort with || true; never rerun a job because a notification failed); task ci passes.
+- [ ] #4 Docs cover PATH, user config, and desktop session setup for services, verifying setup with tell doctor, explicit Herdr target selection, and how callers handle Tell's exit codes (best effort with || true; never rerun a job because a notification failed); task ci passes.
 <!-- AC:END -->
 
 ## Definition of Done

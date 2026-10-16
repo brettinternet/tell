@@ -4,6 +4,7 @@ title: Keep delivery routing in personal configuration
 status: To Do
 assignee: []
 created_date: '2026-10-16 21:29'
+updated_date: '2026-10-16 21:43'
 labels: []
 dependencies:
   - TELL-1
@@ -32,6 +33,7 @@ Non-goals: new settings or commands; changing env/flag precedence; changing othe
 - [ ] #1 Shared tell.yaml rejects notify.via, apprise.config, herdr.session, and hcom.to with a source/line diagnostic that says where to set them; user config, .tell.yaml, --config, TELL_* variables, and flags still accept them. Tests cover rejection and an allowed layer.
 - [ ] #2 /etc/tell/config.yaml, --system-config, and TELL_SYSTEM_CONFIG are removed; tests and smoke stay isolated from real user settings through HOME and XDG_CONFIG_HOME.
 - [ ] #3 README, docs/configuration.md, docs/design.md, examples, and the init template show routing in user or private config and shared config limited to shared fields; task ci passes.
+- [ ] #4 tell init --user creates the user config (honoring XDG_CONFIG_HOME, creating the tell directory as needed) with mode 0600 and commented personal routing examples; it never overwrites an existing file and refuses symlinks, matching project init.
 <!-- AC:END -->
 
 ## Definition of Done
