@@ -61,6 +61,11 @@ type Message struct{ Title, Body, Type string }
 
 func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.Writer) *Result {
 	route := cfg.Notify.Via
+	var reason string
+	message, reason = prepare(message)
+	if reason != "" {
+		return NewResult(route, "config", reason, "notification contains NUL or is empty after preparation")
+	}
 	if ctx.Err() != nil {
 		return NewResult(route, "config", "cancelled", "notification cancelled before delivery")
 	}
