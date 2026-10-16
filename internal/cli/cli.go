@@ -41,8 +41,8 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		Writer:      out, ErrWriter: errOut, EnableShellCompletion: true,
 		ExitErrHandler: func(context.Context, *urfave.Command, error) {},
 		Flags: []urfave.Flag{
-			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Select exactly this project directory", Sources: urfave.EnvVars("TELL_PROJECT")},
-			&urfave.StringFlag{Name: "config", Usage: "Replace all automatic config files with FILE", Sources: urfave.EnvVars("TELL_CONFIG")},
+			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Select exactly this project directory [$TELL_PROJECT]"},
+			&urfave.StringFlag{Name: "config", Usage: "Replace all automatic config files with FILE [$TELL_CONFIG]"},
 			&urfave.BoolFlag{Name: "json", Usage: "Print one structured JSON result"},
 			&urfave.BoolFlag{Name: "mcp-agent-targets", Usage: "Allow MCP agents to override route and recipient selectors [$TELL_MCP_AGENT_TARGETS]"},
 		},
@@ -147,7 +147,7 @@ func input(cmd *urfave.Command) (config.Input, error) {
 	if err != nil {
 		return config.Input{}, err
 	}
-	values := config.Input{CWD: cwd, Project: selector(cmd, "project"), File: selector(cmd, "config"), Overrides: map[string]config.Value{}}
+	values := config.Input{CWD: cwd, Project: selector(cmd, "project", "TELL_PROJECT"), File: selector(cmd, "config", "TELL_CONFIG"), Overrides: map[string]config.Value{}}
 	for _, spec := range settings {
 		if cmd.IsSet(spec.flag) {
 			values.Overrides[spec.key] = config.Value{Text: cmd.String(spec.flag), Source: "flag:--" + spec.flag}
@@ -180,12 +180,16 @@ func userConfigDir() (string, error) {
 	return dir, nil
 }
 
-func selector(cmd *urfave.Command, name string) *string {
-	if !cmd.IsSet(name) {
-		return nil
+// selector resolves env here, like settings, so IsSet reports only flags.
+func selector(cmd *urfave.Command, name, env string) *string {
+	if cmd.IsSet(name) {
+		value := cmd.String(name)
+		return &value
 	}
-	value := cmd.String(name)
-	return &value
+	if value, exists := os.LookupEnv(env); exists {
+		return &value
+	}
+	return nil
 }
 
 func noArgs(cmd *urfave.Command) error {
@@ -266,10 +270,16 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	if err != nil {
 		return err
 	}
-	if values.File != nil || len(values.Overrides) != 0 {
+	// Ambient TELL_* environment is routine in shells and services; only typed
+	// flags suggest the user expects init to write those values.
+	overrides := []string{"config", "mcp-agent-targets"}
+	for _, spec := range settings {
+		overrides = append(overrides, spec.flag)
+	}
+	if slices.ContainsFunc(overrides, cmd.IsSet) {
 		return &failure{Code: "usage", Message: "init does not apply config or setting overrides; edit the generated file instead", usage: true}
 	}
-	if cmd.Bool("user") && (cmd.Bool("local") || values.Project != nil) {
+	if cmd.Bool("user") && (cmd.Bool("local") || cmd.IsSet("project")) {
 		return &failure{Code: "usage", Message: "--user cannot be combined with --local or --project", usage: true}
 	}
 	var path string

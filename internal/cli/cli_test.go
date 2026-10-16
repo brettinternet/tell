@@ -184,10 +184,20 @@ func TestCLIUserInit(t *testing.T) {
 			if code, _, _ := run("init", "--user"); code != 1 {
 				t.Fatalf("accepted symlink: %d", code)
 			}
-			for _, args := range [][]string{{"init", "--user", "--local"}, {"-C", base, "init", "--user"}} {
+			for _, args := range [][]string{{"init", "--user", "--local"}, {"-C", base, "init", "--user"}, {"init", "--user", "--via", "stderr"}} {
 				if code, _, _ := run(args...); code != 2 {
 					t.Fatalf("accepted conflicting target: %v", args)
 				}
+			}
+			// Ambient shell/service environment must not block init.
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("TELL_HERDR_SESSION", "main")
+			t.Setenv("TELL_CONFIG", filepath.Join(base, "absent.yaml"))
+			t.Setenv("TELL_PROJECT", base)
+			if code, out, errOut := run("init", "--user", "--json"); code != 0 || !strings.Contains(out, `"created":true`) {
+				t.Fatalf("ambient env blocked init: %d %s %s", code, out, errOut)
 			}
 		})
 	}
