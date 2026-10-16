@@ -8,9 +8,9 @@ CI, or Noon) owns schedules, queues, and run history. Tell executes one
 invocation and exits.
 
 **Implemented:** strict layered configuration, source-aware inspection, JSON
-output, non-destructive project initialization, stderr/desktop/Apprise/personal-command notifications,
+output, non-destructive project initialization, stderr/desktop/Apprise/Herdr/personal-command notifications,
 message normalization, embedded secret redaction, and development tooling.
-**Not implemented:** Herdr routes or agent messaging. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
+**Not implemented:** agent messaging. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
 
 ## Try it
 
@@ -95,6 +95,15 @@ and use `tell notify --via command "Build finished"`. Tell passes the prepared b
 on stdin and metadata in environment variables, without shell interpolation.
 See the [command contract and example](docs/design.md#command-delivery).
 
+## Herdr notifications
+
+`tell notify --via herdr --herdr-session work "Build finished"` posts to an
+existing local session. Set `notify.via: herdr` and `herdr.session: work` in
+personal config for repeat use. Tell never starts a session, guesses a target,
+or falls back to another route. Inherited `HERDR_*` context is excluded.
+Posted is not human acknowledgment. See [Herdr delivery](docs/design.md#herdr-delivery)
+for requirements and reserved-message limitations.
+
 ## Native desktop notifications
 
 `tell notify --via desktop "Build finished"` uses macOS `osascript` or Linux
@@ -122,7 +131,7 @@ Task, Lefthook, Staticcheck, Gitleaks, govulncheck, git-cliff, Worktrunk, and
 Backlog.md. See [development](docs/development.md).
 
 No daemon, database, web UI, provider SDK, or scheduler is embedded.
-Apprise is optional and external; Herdr/hcom adapters remain planned. None is
+Apprise and Herdr are optional and external; hcom remains planned. None is
 required for building or inspecting configuration.
 
 MIT licensed.

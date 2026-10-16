@@ -22,7 +22,7 @@ type settingSpec struct{ key, flag, env, usage string }
 
 var settings = []settingSpec{
 	{"timeout", "timeout", "TELL_TIMEOUT", "Provider execution timeout (positive duration)"},
-	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification destination: stderr, desktop, apprise, command (herdr is planned)"},
+	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification destination: stderr, desktop, apprise, command, herdr"},
 	{"apprise.config", "apprise-config", "TELL_APPRISE_CONFIG", "Local Apprise config path; Tell does not read its contents"},
 	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag expression"},
 	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body format: text, markdown, html"},
@@ -34,7 +34,7 @@ var settings = []settingSpec{
 func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Command {
 	root := &urfave.Command{
 		Name: "tell", Usage: "Delivery plumbing for humans and agents",
-		Description: "Inspect settings safely, or notify via stderr, desktop, Apprise, or a personal command. Provider acceptance is not human acknowledgment. With no command, inspect only.",
+		Description: "Inspect settings safely, or notify via stderr, desktop, Apprise, Herdr, or a personal command. Provider acceptance is not human acknowledgment. With no command, inspect only.",
 		Version:     fmt.Sprintf("%s (commit %s, built %s)", build.Version, build.Commit, build.BuildTime),
 		Writer:      out, ErrWriter: errOut, EnableShellCompletion: true,
 		ExitErrHandler: func(context.Context, *urfave.Command, error) {},

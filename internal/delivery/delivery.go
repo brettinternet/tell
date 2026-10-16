@@ -99,6 +99,9 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 		default:
 			return NewResult(route, "failed", "provider_failure", "command reported failure")
 		}
+	case "herdr":
+		timeout, _ := time.ParseDuration(cfg.Timeout)
+		return notifyHerdr(ctx, timeout, cfg.Herdr.Session, message)
 	case "desktop":
 		timeout, _ := time.ParseDuration(cfg.Timeout)
 		return notifyDesktop(ctx, timeout, message, runtime.GOOS)

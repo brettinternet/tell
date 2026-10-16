@@ -179,10 +179,8 @@ func TestNotifyOutcomes(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	code, out, errOut := run("--json", "--via", "apprise", "notify", "body-sentinel")
 	assertResult(t, code, out, errOut, "apprise", "not_sent", "missing_executable")
-	for _, route := range []string{"herdr"} {
-		code, out, errOut = run("--json", "--via", route, "notify", "body-sentinel")
-		assertResult(t, code, out, errOut, route, "not_sent", "unsupported_route")
-	}
+	code, out, errOut = run("--json", "--via", "herdr", "notify", "body-sentinel")
+	assertResult(t, code, out, errOut, "herdr", "not_sent", "missing_target")
 	for _, args := range [][]string{
 		{"--json", "notify"}, {"--json", "notify", "body-sentinel", "extra"},
 		{"--json", "notify", "--type", "body-sentinel", "body-sentinel"},
@@ -381,11 +379,12 @@ func TestNotifySecrets(t *testing.T) {
 }
 
 func TestNotifyInterruption(t *testing.T) {
-	for _, route := range []string{"apprise", "desktop", "command"} {
+	for _, route := range []string{"apprise", "desktop", "command", "herdr"} {
 		for _, cancelAfterStart := range []bool{false, true} {
 			t.Run(map[bool]string{false: "timeout", true: "cancellation"}[cancelAfterStart], func(t *testing.T) {
 				base := environment(t)
-				record := provider(t, "osascript", "notify-send")
+				record := provider(t, "osascript", "notify-send", "herdr")
+				t.Setenv("TELL_HERDR_SESSION", "selected")
 				if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte("notify: {command: [apprise]}\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}

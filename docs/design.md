@@ -12,9 +12,9 @@ human / script / scheduler hook
           └── send: hcom participant
 ```
 
-Configuration, inspection, and notify via stderr, desktop, Apprise, and personal commands are implemented.
+Configuration, inspection, and notify via stderr, desktop, Apprise, Herdr, and personal commands are implemented.
 Message normalization and embedded secret redaction are implemented.
-Herdr and send remain planned.
+Agent send remains planned.
 Backlog.md is the work queue; this document records boundaries, not a second task list.
 
 The caller's scheduler (cron, launchd, CI, or Noon) owns schedules, queued runs,
@@ -161,6 +161,39 @@ Provider output is discarded, stdin is closed, and there are no retries or
 fallbacks. Focus / Do Not Disturb or desktop policy can suppress a banner:
 accepted is posting acceptance, never acknowledgment.
 
+## Herdr delivery
+
+Requires the external `herdr` executable on PATH and an explicit local
+`herdr.session` in personal configuration, environment, or `--herdr-session`.
+Use `default` to explicitly select the default session. The session must already
+be running; Tell never launches, attaches, creates, discovers, or switches sessions.
+
+Tell runs `herdr --session SESSION notification show TITLE --body BODY --sound none`
+with separate literal argv and closed stdin. Type does not change sound or
+severity. All inherited `HERDR_*` variables are removed from the child environment,
+including socket, session, pane, remote context, and config-path overrides.
+HOME/XDG_CONFIG_HOME still locate the user's normal Herdr configuration.
+No shell interpolation occurs.
+
+Verified against Herdr 0.9.5's `src/main.rs`, `src/session.rs`, and
+`src/cli/notification.rs`: explicit --session takes precedence over the socket
+environment, and notification dispatch connects to the existing API without
+entering the launch path. Herdr's global parser also scans message argv.
+Because it has no notification positional escape, Tell refuses a whole title
+or body equal to --session, --remote, --remote-keybindings, or --handoff, or
+starting with one of those names followed by "=". Titles equal to help, --help,
+or -h are also refused. This is `not_sent/unsupported_message`, before execution,
+rather than risking a changed target or treating help output as acceptance.
+These strings embedded within longer prose are unaffected.
+
+A missing session is `not_sent/missing_target`; a missing executable is
+`not_sent/missing_executable`. An unreachable session or any other nonzero
+Herdr exit is `failed/provider_failure` (exit 4); Tell does not infer delivery
+from provider diagnostics. Timeout/cancellation after start is uncertain,
+before start is config. Child output is discarded, and JSON never contains
+message text or raw provider output. There are no retries or fallback routes.
+A posted notification is not human acknowledgment.
+
 ## Command delivery
 
 Set an argv list in personal config; Tell never splits a shell string, expands
@@ -249,7 +282,7 @@ jobs), not successful hcom dispatch as a proxy for completion.
 
 cmd/tell remains the process boundary. internal/cli handles arguments and
 rendering; internal/config owns strict file resolution. internal/delivery owns
-stderr, desktop, Apprise, personal commands, dispatch outcomes, and bounded
+stderr, desktop, Apprise, Herdr, personal commands, dispatch outcomes, and bounded
 subprocess execution. No interface registry for known tools.
 
 Verification should use real temporary files and local fixture executables.
