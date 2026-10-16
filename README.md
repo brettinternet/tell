@@ -7,9 +7,9 @@ and repo automation. Repo scripts own workflows; Noon owns schedules, queues, an
 run history. Tell executes one invocation and exits.
 
 **Implemented:** strict layered configuration, source-aware inspection, JSON
-output, non-destructive project initialization, stderr/Apprise notifications, and development tooling.
-**Not implemented:** desktop/Herdr/command routes, agent messaging, message
-normalization or secret redaction. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
+output, non-destructive project initialization, stderr/Apprise notifications,
+message normalization, and development tooling.
+**Not implemented:** desktop/Herdr/command routes, agent messaging, or secret redaction. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
 
 ## Try it
 
@@ -73,7 +73,11 @@ it owns native configuration, credentials, and provider integrations. Tell passe
 explicit options only and never opens the referenced Apprise file during inspection.
 
 Messages are one literal argument, or `-` to explicitly read stdin. Empty messages
-fail before delivery. `--title` defaults to the selected project directory name;
+fail before delivery. Titles and bodies reject NUL, strip terminal sequences,
+controls (except newline/tab), and bidi overrides/isolates before delivery.
+Titles are capped at 256 bytes and bodies at 16 KiB, on UTF-8 boundaries,
+including a visible `[truncated]` marker. See [preparation](docs/design.md#message-preparation).
+`--title` defaults to the selected project directory name;
 `--type` accepts info (default), success, warning, or failure. Provider acceptance
 is **not human acknowledgment**. JSON results never contain message bodies;
 timeout/cancellation after provider start means delivery is uncertain. See the

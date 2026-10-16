@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/brettinternet/tell/internal/cli"
 	"github.com/brettinternet/tell/internal/config"
@@ -239,6 +240,80 @@ func TestNotifyResultWriteFailure(t *testing.T) {
 	code := cli.Run(context.Background(), []string{"tell", "--json", "notify", "literal"}, config.BuildOpts{}, output, &errOut)
 	if code != 0 || !strings.HasPrefix(errOut.String(), "literal\n") || !strings.Contains(errOut.String(), "notification accepted but result output failed") {
 		t.Fatalf("post-delivery result: %d %q", code, errOut.String())
+	}
+}
+
+func TestNotifyPreparation(t *testing.T) {
+	environment(t)
+	record := provider(t)
+	for _, tc := range []struct{ input, want string }{
+		{"a\x1b[31mred\x1b[0m\u202eb\u202c\u2066c\u2069\n\tend\r\b\x7f\u0085", "aredbc\n\tend"},
+		{"a\x1b]0;hidden\aB\u009dhidden\u009cC\x1bPprivate\x1b\\D\x1b(B\u009b2JE", "aBCDE"},
+		{"safe\x1b]unterminated", "safe"},
+		{"safe\x1b\x7f]0;hidden\atail", "safetail"},
+		{"safe\x1b\x7f[31mred\x1b[0m", "safered"},
+		{"safe\x1b\b]0;hidden\atail", "safetail"},
+		{"bad\xffutf8", "bad\ufffdutf8"},
+	} {
+		code, out, errOut := run("notify", tc.input)
+		if code != 0 || out != "" || errOut != tc.want+"\n" {
+			t.Fatalf("stderr normalization: %d %q %q", code, out, errOut)
+		}
+		code, out, errOut = run("--json", "--via", "apprise", "notify", "--title", tc.input, tc.input)
+		assertResult(t, code, out, errOut, "apprise", "accepted", "")
+		data, err := os.ReadFile(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args := strings.Split(string(data), "\x00")
+		if args[1] != tc.want || args[3] != tc.want {
+			t.Fatalf("provider received unprepared input: %q", args)
+		}
+	}
+	for _, count := range []int{1, 10000} {
+		input := strings.Repeat("界", count)
+		code, out, errOut := run("--json", "--via", "apprise", "notify", "--title", input, input)
+		assertResult(t, code, out, errOut, "apprise", "accepted", "")
+		data, err := os.ReadFile(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args := strings.Split(string(data), "\x00")
+		for _, field := range []struct {
+			text  string
+			limit int
+		}{{args[1], 256}, {args[3], 16384}} {
+			want := input
+			if len(want) > field.limit {
+				want = strings.Repeat("界", (field.limit-len("[truncated]"))/3) + "[truncated]"
+			}
+			if field.text != want || !utf8.ValidString(field.text) || len(field.text) > field.limit {
+				t.Fatalf("incorrect truncation at limit %d: %d bytes", field.limit, len(field.text))
+			}
+		}
+	}
+}
+
+func TestNotifyPreparationRejectsBeforeDispatch(t *testing.T) {
+	environment(t)
+	record := provider(t)
+	for _, route := range []string{"stderr", "apprise"} {
+		for _, tc := range []struct{ title, body, reason string }{
+			{"title\x00", "body-sentinel", "invalid_message"},
+			{"title", "body-sentinel\x00", "invalid_message"},
+			{"title", strings.Repeat("x", 17000) + "\x00", "invalid_message"},
+			{"title", "\x1b[31m\u202e", "empty_message"},
+		} {
+			stdin(t, tc.body)
+			code, out, errOut := run("--json", "--via", route, "notify", "--title", tc.title, "-")
+			assertResult(t, code, out, errOut, route, "config", tc.reason)
+			if code != 1 || errOut != "" {
+				t.Fatalf("invalid input dispatched: %d %q", code, errOut)
+			}
+		}
+	}
+	if _, err := os.Stat(record); !os.IsNotExist(err) {
+		t.Fatal("invalid input launched provider")
 	}
 }
 

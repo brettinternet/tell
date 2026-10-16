@@ -13,7 +13,8 @@ human / script / Noon job
 ```
 
 Configuration, inspection, and notify via stderr and Apprise are implemented.
-Desktop, Herdr, user-owned commands, send, and message preparation remain planned.
+Message normalization is implemented. Desktop, Herdr, user-owned commands,
+send, and secret redaction remain planned.
 Backlog.md is the work queue; this document records boundaries, not a second task list.
 
 Noon owns schedules, queued runs, concurrency, cancellation, and run history.
@@ -42,16 +43,38 @@ fan-out to external services and owns their destinations and credentials. A
 user-owned command route runs a personal executable with a fixed contract,
 without shell strings or a plugin registry.
 
-Planned message preparation will process titles and bodies before any route runs: control
-characters removed, lengths capped with a visible marker, and secrets redacted
-with an embedded scanner ruleset. Tell is the last point before third-party
-services and agent transcripts persist a message.
+Message preparation processes titles and bodies before any route runs (see below).
+Secret redaction with an embedded scanner ruleset remains planned. Tell is the
+last point before third-party services and agent transcripts persist a message.
 
 Delivery destinations are personal. Routing fields (notify.via, apprise.config,
 herdr.session, hcom.to) now come only from user config, private
 .tell.yaml, --config, environment, or flags. Shared tell.yaml keeps shared
 semantics such as the Apprise tag and format. Repository scripts decide what
 happened; personal configuration decides where it goes.
+
+## Message preparation
+
+Every notification route receives the same prepared title and body, whether from
+literal arguments, explicit stdin, or the default project-directory title:
+
+- NUL anywhere in either original field rejects the invocation with exit 1
+  (`config/invalid_message`), even beyond the truncation limit. Nothing is sent.
+- C0 controls (U+0001–U+001F), DEL, and C1 controls (U+0080–U+009F) are removed,
+  except newline (LF) and tab. CR is removed, so CRLF becomes LF.
+- Terminal escape sequences are removed in full: CSI, OSC, DCS, SOS, PM, APC,
+  and ordinary ESC sequences, including their C1 forms. Control strings end at
+  BEL or ST; incomplete sequences are discarded through end of input.
+- Unicode bidi embedding/override controls U+202A–U+202E and isolate controls
+  U+2066–U+2069 are removed. Other Unicode text is preserved; malformed UTF-8
+  is replaced with U+FFFD.
+- After filtering, titles are capped at **256 bytes**, bodies at **16,384 bytes**.
+  Truncation keeps a UTF-8 boundary and appends **`[truncated]`** within that limit.
+  These are output limits, not limits on bytes read from stdin.
+- A body empty or whitespace-only after preparation fails with exit 1
+  (`config/empty_message`) before dispatch.
+
+No Markdown/HTML sanitization, secret scanning, or other reformatting occurs.
 
 ## Outcomes
 
