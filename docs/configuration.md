@@ -1,7 +1,7 @@
 # Configuration
 
 Everything on this page is implemented configuration behavior. `notify` delivers
-via stderr, native desktop, or optional external Apprise. Inspection never executes a provider.
+via stderr, native desktop, optional external Apprise, or a personal command. Inspection never executes a provider.
 Provider acceptance is not human acknowledgment.
 
 ## Sources
@@ -16,7 +16,8 @@ Lowest to highest priority:
 6. Explicit CLI flags.
 
 Mappings merge by field. Each field records its winning origin: default, absolute
-file path, environment name, or flag name. There are no list-valued settings yet.
+file path, environment name, or flag name. The notify.command argv list is replaced
+as a whole by a higher layer, never appended or merged by index.
 Missing optional files are fine; unreadable files, directories, dangling symlinks,
 and malformed lower-priority files are errors even if a later layer overrides
 their values. No settings directory is created by inspection.
@@ -26,7 +27,7 @@ The explicit file must exist. Defaults and setting
 env/flags still apply; use a controlled environment for reproducible CI.
 HOME and XDG_CONFIG_HOME are not consulted, so services without HOME can use it.
 
-Shared `tell.yaml` rejects `notify.via`, `apprise.config`, `herdr.session`, and
+Shared `tell.yaml` rejects `notify.command`, `notify.via`, `apprise.config`, `herdr.session`, and
 `hcom.to`, with a source/line diagnostic directing you to a personal source.
 Set routing in user config, private `.tell.yaml`, an explicit `--config` file,
 environment, or flags. Even a higher-priority override cannot make routing in
@@ -34,7 +35,8 @@ automatically loaded shared config valid. Explicitly selecting `tell.yaml` with
 `--config` trusts that file as a personal source. There is no system config layer.
 
 `XDG_CONFIG_HOME` must be absolute when nonempty. Paths in YAML are relative to
-the file that declared them, resolved **before merging**. Paths from flags/env
+the file that declared them, resolved **before merging** (except command argv,
+which is passed literally; see the command contract below). Paths from flags/env
 are relative to the invocation directory. No tilde, shell, or variable expansion
 occurs in YAML. For example, user-config `apprise.config: ../apprise/apprise.yaml`
 resolves under the user config directory, not the current repository.
@@ -57,6 +59,7 @@ destinations; private configuration and explicit invocation inputs are trusted.
 | --- | --- | --- | --- |
 | timeout | 10s | TELL_TIMEOUT | --timeout |
 | notify.via | stderr | TELL_NOTIFY_VIA | --via |
+| notify.command | unset | — | — |
 | secrets.policy | redact | — | — |
 | apprise.config | unset | TELL_APPRISE_CONFIG | --apprise-config |
 | apprise.tag | unset | TELL_APPRISE_TAG | --apprise-tag |
@@ -88,7 +91,7 @@ hcom:
   shared `tell.yaml` rejects it, even when another layer overrides it. No
   environment or flag override, disable switch, or custom rules are supported.
 - timeout is a positive Go duration; zero and indefinite waits are refused.
-- notify.via is stderr, desktop, or apprise. herdr is accepted configuration
+- notify.via is stderr, desktop, apprise, or command. herdr is accepted configuration
   for a planned route; invoking it returns not_sent, never success.
   The former bootstrap value stdout is no longer accepted.
 - apprise.config is a local file path, never a credential-bearing URL. Tell
@@ -98,13 +101,18 @@ hcom:
 - herdr.session and hcom.to are explicit identifiers, not executable commands.
 - Optional settings are unset until supplied. An explicitly empty value is an
   error; omit it instead. A flag replaces an env value before validation.
-- No arbitrary argv, provider URLs, plugin paths, or credential fields are accepted.
+- notify.command is a non-empty argv list of strings, with a non-blank executable
+  and no NUL bytes. Empty arguments after the executable are allowed. Only user
+  config, private .tell.yaml, and --config accept it; no env/flag argv form exists.
+  Selecting command without this setting fails before dispatch.
+- No provider URL, plugin path, or credential fields are accepted. Keep credentials
+  with your provider or executable, not in command arguments.
 
 Apprise inherits native APPRISE_* environment variables; Tell does not interpret
 or display them. Tell always supplies --body, --title, and --notification-type.
 Unset config, tag, and format options are omitted so Apprise's native behavior
 applies (without --tag, only untagged services are notified). No URL arguments
-are accepted. Provider stdin is closed; stdout/stderr are discarded.
+are accepted. Apprise stdin is closed; stdout/stderr are discarded.
 
 `tell notify MESSAGE` never reads stdin; `tell notify -` explicitly reads it.
 `--title` defaults to the selected project directory name. `--type` is info
@@ -116,6 +124,8 @@ normalized, scanned with embedded Gitleaks default rules, then truncated; see
 is offline and best-effort; undetected secrets can still be delivered.
 Desktop providers and Apprise receive the body via argv, so local process inspection may reveal it.
 Do not include secrets in notifications.
+
+For the personal command route, see the [exact contract and worked example](design.md#command-delivery).
 
 ## Strict YAML and output
 
@@ -129,7 +139,9 @@ also name the field/line. Parser diagnostics never echo raw setting values.
 `tell`, `tell config`, and `tell config show` inspect effective settings and
 origins; `tell config check` validates the same snapshot. Neither executes
 providers or reads provider credentials. Human settings are quoted to keep
-terminal control sequences from being interpreted.
+terminal control sequences from being interpreted. Raw notify.command argv is
+never displayed: human inspection shows only `[configured]` (or empty if unset),
+JSON omits the command value, and origins still reports its winning source.
 
 --json produces one stdout object with schema_version: 1. Successful inspection
 includes config; check also includes valid: true. Failures include an error with

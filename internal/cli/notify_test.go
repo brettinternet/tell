@@ -381,11 +381,14 @@ func TestNotifySecrets(t *testing.T) {
 }
 
 func TestNotifyInterruption(t *testing.T) {
-	for _, route := range []string{"apprise", "desktop"} {
+	for _, route := range []string{"apprise", "desktop", "command"} {
 		for _, cancelAfterStart := range []bool{false, true} {
 			t.Run(map[bool]string{false: "timeout", true: "cancellation"}[cancelAfterStart], func(t *testing.T) {
-				environment(t)
+				base := environment(t)
 				record := provider(t, "osascript", "notify-send")
+				if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte("notify: {command: [apprise]}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
 				t.Setenv("FIXTURE_WAIT", "yes")
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()

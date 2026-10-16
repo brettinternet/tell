@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/brettinternet/tell/internal/config"
@@ -79,6 +81,24 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 			return NewResult(route, "failed", "io", "could not write notification to stderr")
 		}
 		return NewResult(route, "accepted", "", "")
+	case "command":
+		if len(cfg.Notify.Command) == 0 {
+			return NewResult(route, "config", "invalid_config", "command route requires notify.command in personal config")
+		}
+		timeout, _ := time.ParseDuration(cfg.Timeout)
+		env := append(os.Environ(), "TELL_TITLE="+message.Title, "TELL_TYPE="+message.Type, "TELL_PROJECT="+cfg.Project)
+		code, failure := runProcess(ctx, timeout, route, cfg.Notify.Command[0], cfg.Notify.Command[1:], strings.NewReader(message.Body), env)
+		if failure != nil {
+			return failure
+		}
+		switch code {
+		case 0:
+			return NewResult(route, "accepted", "", "")
+		case 3:
+			return NewResult(route, "not_sent", "no_match", "command reported no delivery")
+		default:
+			return NewResult(route, "failed", "provider_failure", "command reported failure")
+		}
 	case "desktop":
 		timeout, _ := time.ParseDuration(cfg.Timeout)
 		return notifyDesktop(ctx, timeout, message, runtime.GOOS)
@@ -118,15 +138,22 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 // RunProcess bounds provider execution, supplies EOF on stdin, and discards both
 // output streams. It returns provider exits separately from lifecycle failures.
 func RunProcess(ctx context.Context, timeout time.Duration, route, name string, args []string) (int, *Result) {
+	return runProcess(ctx, timeout, route, name, args, nil, nil)
+}
+
+func runProcess(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string) (int, *Result) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
-	// Nil streams use the null device, avoiding output capture and inherited stdin.
+	cmd.Stdin, cmd.Env = stdin, env
+	// Bound stdin copying even if a descendant retains the pipe after exit.
+	cmd.WaitDelay = 100 * time.Millisecond
+	// Nil output streams use the null device; provider text is never captured.
 	if err := cmd.Start(); err != nil {
 		if ctx.Err() != nil {
 			return 0, NewResult(route, "config", "cancelled", "notification cancelled before provider start")
 		}
-		if errors.Is(err, exec.ErrNotFound) {
+		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
 			return 0, NewResult(route, "not_sent", "missing_executable", "provider executable was not found")
 		}
 		return 0, NewResult(route, "not_sent", "start_failed", "provider executable could not start")
@@ -139,7 +166,9 @@ func RunProcess(ctx context.Context, timeout time.Duration, route, name string, 
 		}
 		return 0, NewResult(route, "uncertain", reason, "provider interrupted after start; delivery may have occurred")
 	}
-	if err == nil {
+	// ErrWaitDelay means the child exited successfully but a descendant held
+	// the stdin pipe open. Pipe cleanup must not change its accepted exit.
+	if err == nil || errors.Is(err, exec.ErrWaitDelay) {
 		return 0, nil
 	}
 	var exit *exec.ExitError

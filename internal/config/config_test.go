@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -156,6 +157,34 @@ func TestSecretPolicySources(t *testing.T) {
 	}
 }
 
+// Shared config cannot introduce executable policy; higher layers replace argv.
+func TestCommandConfig(t *testing.T) {
+	input := fixture(t)
+	user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
+	shared := filepath.Join(input.CWD, "tell.yaml")
+	private := filepath.Join(input.CWD, ".tell.yaml")
+	writeFile(t, user, "notify: {command: [first, inherited]}\n")
+	writeFile(t, private, "notify: {via: command, command: [second, '', 'two words']}\n")
+	cfg, err := config.Load(input)
+	want := []string{"second", "", "two words"}
+	if err != nil || !reflect.DeepEqual(cfg.Notify.Command, want) || cfg.Origins["notify.command"] != private {
+		t.Fatalf("argv replacement: %+v %v", cfg, err)
+	}
+	writeFile(t, shared, "notify: {command: [untrusted]}\n")
+	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal policy") {
+		t.Fatalf("accepted shared executable policy: %v", err)
+	}
+	input.File = &shared
+	cfg, err = config.Load(input)
+	if err != nil || !reflect.DeepEqual(cfg.Notify.Command, []string{"untrusted"}) {
+		t.Fatalf("explicit config: %+v %v", cfg, err)
+	}
+	input.Overrides = map[string]config.Value{"notify.command": {Text: "override", Source: "flag"}}
+	if _, err := config.Load(input); err == nil {
+		t.Fatal("accepted string argv override")
+	}
+}
+
 // --config must not load broken automatic sources or accidentally inherit a
 // personal destination in CI. Overrides still apply to the selected file.
 func TestExplicitConfigIsolatesAutomaticFiles(t *testing.T) {
@@ -190,6 +219,13 @@ func TestCommentOnlyFileIsEmptyLayer(t *testing.T) {
 // Validate each source even if a later layer supplies a valid replacement.
 func TestRejectAmbiguousOrInvalidConfiguration(t *testing.T) {
 	cases := []struct{ name, data string }{
+		{"command string", "notify: {command: secret-sentinel}\n"},
+		{"command empty", "notify: {command: []}\n"},
+		{"command empty executable", "notify: {command: [' ', arg]}\n"},
+		{"command non-string", "notify: {command: [exe, 3]}\n"},
+		{"command nested", "notify: {command: [exe, [arg]]}\n"},
+		{"command anchor", "notify: {command: [exe, &a secret-sentinel]}\n"},
+		{"command NUL", "notify: {command: [exe, \"secret-sentinel\\0\"]}\n"},
 		{"unknown nested key", "apprise: {tags: ops}\n"},
 		{"duplicate nested key", "apprise: {tag: first, tag: second}\n"},
 		{"dotted alias for nested key", "notify.via: apprise\nnotify: {via: herdr}\n"},

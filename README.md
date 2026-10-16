@@ -8,9 +8,9 @@ CI, or Noon) owns schedules, queues, and run history. Tell executes one
 invocation and exits.
 
 **Implemented:** strict layered configuration, source-aware inspection, JSON
-output, non-destructive project initialization, stderr/desktop/Apprise notifications,
+output, non-destructive project initialization, stderr/desktop/Apprise/personal-command notifications,
 message normalization, embedded secret redaction, and development tooling.
-**Not implemented:** Herdr/command routes or agent messaging. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
+**Not implemented:** Herdr routes or agent messaging. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
 
 ## Try it
 
@@ -89,6 +89,11 @@ timeout/cancellation after provider start means delivery is uncertain. See the
 
 See [configuration](docs/configuration.md) for all keys, flags, paths, and error
 semantics; [design](docs/design.md) for the delivery boundary and planned adapters.
+
+For a user-owned executable, set personal `notify.command: [/absolute/path/to/executable]`
+and use `tell notify --via command "Build finished"`. Tell passes the prepared body
+on stdin and metadata in environment variables, without shell interpolation.
+See the [command contract and example](docs/design.md#command-delivery).
 
 ## Native desktop notifications
 

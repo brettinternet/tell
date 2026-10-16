@@ -22,7 +22,7 @@ type settingSpec struct{ key, flag, env, usage string }
 
 var settings = []settingSpec{
 	{"timeout", "timeout", "TELL_TIMEOUT", "Provider execution timeout (positive duration)"},
-	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification destination: stderr, desktop, apprise (herdr is planned)"},
+	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification destination: stderr, desktop, apprise, command (herdr is planned)"},
 	{"apprise.config", "apprise-config", "TELL_APPRISE_CONFIG", "Local Apprise config path; Tell does not read its contents"},
 	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag expression"},
 	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body format: text, markdown, html"},
@@ -34,7 +34,7 @@ var settings = []settingSpec{
 func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Command {
 	root := &urfave.Command{
 		Name: "tell", Usage: "Delivery plumbing for humans and agents",
-		Description: "Inspect settings safely, or notify via stderr or optional external Apprise. Provider acceptance is not human acknowledgment. With no command, inspect only.",
+		Description: "Inspect settings safely, or notify via stderr, desktop, Apprise, or a personal command. Provider acceptance is not human acknowledgment. With no command, inspect only.",
 		Version:     fmt.Sprintf("%s (commit %s, built %s)", build.Version, build.Commit, build.BuildTime),
 		Writer:      out, ErrWriter: errOut, EnableShellCompletion: true,
 		ExitErrHandler: func(context.Context, *urfave.Command, error) {},
@@ -45,7 +45,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
-			{Name: "notify", Usage: "Notify via stderr or Apprise; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
+			{Name: "notify", Usage: "Notify via the selected route; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
 				&urfave.StringFlag{Name: "title", Usage: "Notification title (default: project directory name)"},
 				&urfave.StringFlag{Name: "type", Value: "info", Usage: "Notification type: info, success, warning, failure"},
 			}, Action: notify},
@@ -218,7 +218,7 @@ func showConfig(_ context.Context, cmd *urfave.Command) error {
 	for _, source := range cfg.Sources {
 		fmt.Fprintf(cmd.Writer, "  %q\n", source)
 	}
-	fmt.Fprintln(cmd.Writer, "Inspection only; notify delivers via stderr or optional external Apprise. Provider acceptance is not human acknowledgment.")
+	fmt.Fprintln(cmd.Writer, "Inspection only; notify delivers via the selected route. Provider acceptance is not human acknowledgment.")
 	return nil
 }
 

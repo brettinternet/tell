@@ -12,9 +12,9 @@ human / script / scheduler hook
           └── send: hcom participant
 ```
 
-Configuration, inspection, and notify via stderr, desktop, and Apprise are implemented.
+Configuration, inspection, and notify via stderr, desktop, Apprise, and personal commands are implemented.
 Message normalization and embedded secret redaction are implemented.
-Herdr, user-owned commands, and send remain planned.
+Herdr and send remain planned.
 Backlog.md is the work queue; this document records boundaries, not a second task list.
 
 The caller's scheduler (cron, launchd, CI, or Noon) owns schedules, queued runs,
@@ -161,6 +161,56 @@ Provider output is discarded, stdin is closed, and there are no retries or
 fallbacks. Focus / Do Not Disturb or desktop policy can suppress a banner:
 accepted is posting acceptance, never acknowledgment.
 
+## Command delivery
+
+Set an argv list in personal config; Tell never splits a shell string, expands
+variables, interpolates templates, or adds message arguments:
+
+```yaml
+# ~/.config/tell/config.yaml (or private .tell.yaml)
+notify:
+  via: command
+  command: [/Users/me/.local/bin/tell-speak]
+```
+
+For example, save this executable wrapper at that absolute path on macOS
+(`chmod +x /Users/me/.local/bin/tell-speak`):
+
+```sh
+#!/bin/sh
+exec /usr/bin/say -f -
+```
+
+Run `tell notify "Build finished"` to speak the prepared body from stdin.
+The wrapper owns provider-specific behavior; Tell does not generate shell code.
+
+Exact contract:
+
+- argv is passed unchanged. Bare executable names resolve through PATH; relative
+  executable paths and arguments use the invocation working directory, not the
+  config directory or selected project. Prefer an absolute executable path.
+- Stdin is the prepared UTF-8 body, with no added newline, then EOF. The child
+  never inherits Tell's stdin, including when Tell consumes explicit `notify -`.
+- The inherited environment is supplemented (overriding same-named values) with
+  `TELL_TITLE` (prepared title), `TELL_TYPE` (info/success/warning/failure), and
+  `TELL_PROJECT` (canonical absolute selected project directory).
+- Child stdout/stderr are discarded. Tell never logs argv or provider output.
+  Credentials stay in provider-owned files or its environment.
+- Exit 0 means accepted; exit 3 promises nothing sent (`not_sent/no_match`);
+  every other nonzero exit is `failed/provider_failure`, including exit 5.
+  A missing executable is `not_sent/missing_executable`; other start failures
+  are `not_sent/start_failed`.
+- Missing notify.command is `config/invalid_config`. Cancellation before start
+  is config; timeout or cancellation after start is uncertain. The configured
+  timeout bounds execution and pipe cleanup has a short bounded grace period.
+  Tell kills the direct child, not a process tree: wrappers should `exec` their
+  provider and must not detach background deliveries.
+- There are no retries. Accepted is not human acknowledgment. Only `notify`
+  executes the command; bare Tell and config inspection never do.
+
+Shared tell.yaml rejects notify.command even when a personal layer overrides it.
+This is trusted personal execution policy, not a sandbox.
+
 ## Configuration ownership
 
 Use the implemented [configuration contract](configuration.md). Keep native
@@ -199,8 +249,8 @@ jobs), not successful hcom dispatch as a proxy for completion.
 
 cmd/tell remains the process boundary. internal/cli handles arguments and
 rendering; internal/config owns strict file resolution. internal/delivery owns
-stderr, desktop, Apprise, dispatch outcomes, and bounded subprocess execution. No interface registry for three
-known tools.
+stderr, desktop, Apprise, personal commands, dispatch outcomes, and bounded
+subprocess execution. No interface registry for known tools.
 
 Verification should use real temporary files and local fixture executables.
 Critical tests cover argument preservation, config provenance, process timeout/

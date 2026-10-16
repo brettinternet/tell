@@ -12,6 +12,7 @@ import (
 
 type fileValue struct {
 	key, text string
+	argv      []string
 	line      int
 }
 
@@ -70,6 +71,21 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
 			}
+		case "notify.command":
+			if value.Kind != yaml.SequenceNode || value.Tag != "!!seq" || len(value.Content) == 0 {
+				return fmt.Errorf("line %d: notify.command must be a non-empty argv list", value.Line)
+			}
+			argv := make([]string, len(value.Content))
+			for i, arg := range value.Content {
+				if arg.Kind != yaml.ScalarNode || arg.Tag != "!!str" || arg.Anchor != "" || strings.ContainsRune(arg.Value, 0) {
+					return fmt.Errorf("line %d: notify.command arguments must be strings without NUL, anchors, or aliases", arg.Line)
+				}
+				argv[i] = arg.Value
+			}
+			if strings.TrimSpace(argv[0]) == "" {
+				return fmt.Errorf("line %d: notify.command executable must not be empty", value.Line)
+			}
+			*values = append(*values, fileValue{key: name, argv: argv, line: value.Line})
 		case "secrets.policy", "timeout", "notify.via", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "hcom.to":
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 				return fmt.Errorf("line %d: %s must be a string", value.Line, name)

@@ -31,6 +31,8 @@ type Input struct {
 
 type Notify struct {
 	Via string `json:"via"`
+	// Command is trusted personal argv, never exposed in inspection output.
+	Command []string `json:"-"`
 }
 
 type Secrets struct {
@@ -102,8 +104,8 @@ func Load(input Input) (Config, error) {
 		}
 	}
 	for key, value := range input.Overrides {
-		if key == "secrets.policy" {
-			return Config{}, errors.New("secrets.policy is settable only in personal config files")
+		if key == "secrets.policy" || key == "notify.command" {
+			return Config{}, fmt.Errorf("%s is settable only in personal config files", key)
 		}
 		if err := cfg.apply(key, value.Text, input.CWD, value.Source); err != nil {
 			return Config{}, fmt.Errorf("%s: %w", value.Source, err)
@@ -112,11 +114,14 @@ func Load(input Input) (Config, error) {
 	return cfg, nil
 }
 
-// Values returns non-secret settings for config inspection. Tell has no fields
-// for provider credentials, raw URLs, environment maps, or arbitrary commands.
+// Values returns non-secret settings for config inspection, never raw command argv.
 func (cfg Config) Values() map[string]string {
+	command := ""
+	if len(cfg.Notify.Command) > 0 {
+		command = "[configured]"
+	}
 	return map[string]string{
-		"timeout": cfg.Timeout, "notify.via": cfg.Notify.Via,
+		"timeout": cfg.Timeout, "notify.via": cfg.Notify.Via, "notify.command": command,
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
 		"hcom.to": cfg.Hcom.To, "secrets.policy": cfg.Secrets.Policy,
@@ -145,10 +150,10 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		cfg.Timeout = value
 	case "notify.via":
 		switch value {
-		case "stderr", "desktop", "apprise", "herdr":
+		case "stderr", "desktop", "apprise", "herdr", "command":
 			cfg.Notify.Via = value
 		default:
-			return errors.New("notify.via must be stderr, desktop, apprise, or herdr")
+			return errors.New("notify.via must be stderr, desktop, apprise, herdr, or command")
 		}
 	case "apprise.config":
 		if strings.Contains(value, "://") {
@@ -213,11 +218,16 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 	for _, value := range values {
 		if shared {
 			switch value.key {
-			case "secrets.policy":
-				return fmt.Errorf("config %s:%d: secrets.policy is personal policy; set it in user config, .tell.yaml, or --config instead of shared tell.yaml", path, value.line)
+			case "secrets.policy", "notify.command":
+				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
 			case "notify.via", "apprise.config", "herdr.session", "hcom.to":
 				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
 			}
+		}
+		if value.key == "notify.command" {
+			cfg.Notify.Command = value.argv
+			cfg.Origins[value.key] = path
+			continue
 		}
 		if err := cfg.apply(value.key, value.text, filepath.Dir(path), path); err != nil {
 			return fmt.Errorf("config %s:%d: %w", path, value.line, err)
