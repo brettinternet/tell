@@ -15,6 +15,7 @@ import (
 // Result describes dispatch, not human acknowledgment. It never contains input text.
 type Result struct {
 	SchemaVersion int      `json:"schema_version"`
+	Redactions    int      `json:"redactions"`
 	Outcome       string   `json:"outcome"`
 	Route         string   `json:"route"`
 	Failure       *Failure `json:"error,omitempty"`
@@ -59,12 +60,14 @@ func (r *Result) ExitCode() int {
 
 type Message struct{ Title, Body, Type string }
 
-func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.Writer) *Result {
+func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.Writer) (result *Result) {
 	route := cfg.Notify.Via
 	var reason string
-	message, reason = prepare(message)
+	var redactions int
+	defer func() { result.Redactions = redactions }()
+	message, redactions, reason = prepare(message, cfg.Secrets.Policy)
 	if reason != "" {
-		return NewResult(route, "config", reason, "notification contains NUL or is empty after preparation")
+		return NewResult(route, "config", reason, "notification rejected during message preparation")
 	}
 	if ctx.Err() != nil {
 		return NewResult(route, "config", "cancelled", "notification cancelled before delivery")

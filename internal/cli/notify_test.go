@@ -317,6 +317,65 @@ func TestNotifyPreparationRejectsBeforeDispatch(t *testing.T) {
 	}
 }
 
+// Prevent secrets reaching argv/stderr, bypass via inline allow comments, and
+// partial tokens escaping when truncation would otherwise hide their suffix.
+func TestNotifySecrets(t *testing.T) {
+	for _, policy := range []string{"redact", "reject"} {
+		for _, field := range []string{"title", "body"} {
+			t.Run(policy+"/"+field, func(t *testing.T) {
+				base := environment(t)
+				record := provider(t)
+				if policy == "reject" {
+					if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte("secrets: {policy: reject}\n"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				// Construct a synthetic GitHub token, not a usable credential.
+				token := "ghp_" + "aB3dE6fG9hJ2kL5mN8pQ1rS4tU7vW0xY3zA6"
+				title, body := "title", "message"
+				if field == "title" {
+					title = token
+				} else {
+					body = token
+				}
+				code, out, errOut := run("--json", "--via", "apprise", "notify", "--title", title, body)
+				if strings.Contains(out+errOut, token) {
+					t.Fatal("secret leaked in result")
+				}
+				if policy == "reject" {
+					assertResult(t, code, out, errOut, "apprise", "config", "secret_detected")
+					if code != 1 {
+						t.Fatal("reject did not exit 1")
+					}
+					if _, err := os.Stat(record); !os.IsNotExist(err) {
+						t.Fatal("reject launched provider")
+					}
+					return
+				}
+				assertResult(t, code, out, errOut, "apprise", "accepted", "")
+				var result delivery.Result
+				if err := json.Unmarshal([]byte(out), &result); err != nil || result.Redactions != 1 {
+					t.Fatalf("redaction count: %s", out)
+				}
+				data, err := os.ReadFile(record)
+				if err != nil || strings.Contains(string(data), token) || !strings.Contains(string(data), "[REDACTED]") {
+					t.Fatal("provider did not receive redacted text")
+				}
+				for _, input := range []string{
+					token + " " + token + " # gitleaks:allow",
+					"ghp_\x1b[31m" + strings.TrimPrefix(token, "ghp_"),
+					strings.Repeat("x", 16370) + " " + token,
+				} {
+					code, _, errOut = run("--json", "notify", input)
+					if code != 0 || strings.Contains(errOut, "ghp_") || !strings.Contains(errOut, "[REDACTED]") {
+						t.Fatalf("unsafe stderr preparation: exit %d", code)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestNotifyInterruption(t *testing.T) {
 	for _, cancelAfterStart := range []bool{false, true} {
 		t.Run(map[bool]string{false: "timeout", true: "cancellation"}[cancelAfterStart], func(t *testing.T) {

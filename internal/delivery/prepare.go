@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"math"
 	"strings"
 	"unicode/utf8"
 )
@@ -13,16 +14,23 @@ const (
 
 // prepare runs before dispatch. Validate the entire input before truncating so
 // even a NUL beyond the output limit prevents delivery.
-func prepare(message Message) (Message, string) {
+func prepare(message Message, policy string) (Message, int, string) {
 	if strings.ContainsRune(message.Title, 0) || strings.ContainsRune(message.Body, 0) {
-		return Message{}, "invalid_message"
+		return Message{}, 0, "invalid_message"
+	}
+	// Scan before truncation so a token crossing the output limit cannot leak.
+	message.Title = normalize(message.Title, math.MaxInt)
+	message.Body = normalize(message.Body, math.MaxInt)
+	if strings.TrimSpace(message.Body) == "" {
+		return Message{}, 0, "empty_message"
+	}
+	message, count, reason := scanSecrets(message, policy)
+	if reason != "" {
+		return Message{}, 0, reason
 	}
 	message.Title = normalize(message.Title, titleLimit)
 	message.Body = normalize(message.Body, bodyLimit)
-	if strings.TrimSpace(message.Body) == "" {
-		return Message{}, "empty_message"
-	}
-	return message, ""
+	return message, count, ""
 }
 
 // normalize removes ECMA-48 escape/control sequences as well as standalone

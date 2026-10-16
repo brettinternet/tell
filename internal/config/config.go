@@ -33,6 +33,10 @@ type Notify struct {
 	Via string `json:"via"`
 }
 
+type Secrets struct {
+	Policy string `json:"policy"`
+}
+
 type Apprise struct {
 	Config string `json:"config,omitempty"`
 	Tag    string `json:"tag,omitempty"`
@@ -53,6 +57,7 @@ type Config struct {
 	Project string            `json:"project"`
 	Timeout string            `json:"timeout"`
 	Notify  Notify            `json:"notify"`
+	Secrets Secrets           `json:"secrets"`
 	Apprise Apprise           `json:"apprise"`
 	Herdr   Herdr             `json:"herdr"`
 	Hcom    Hcom              `json:"hcom"`
@@ -68,7 +73,7 @@ func Load(input Input) (Config, error) {
 		return Config{}, err
 	}
 	cfg := Config{
-		Project: project, Timeout: "10s", Notify: Notify{Via: "stderr"},
+		Project: project, Timeout: "10s", Notify: Notify{Via: "stderr"}, Secrets: Secrets{Policy: "redact"},
 		Sources: []string{}, Origins: map[string]string{},
 	}
 	for key := range cfg.Values() {
@@ -97,6 +102,9 @@ func Load(input Input) (Config, error) {
 		}
 	}
 	for key, value := range input.Overrides {
+		if key == "secrets.policy" {
+			return Config{}, errors.New("secrets.policy is settable only in personal config files")
+		}
 		if err := cfg.apply(key, value.Text, input.CWD, value.Source); err != nil {
 			return Config{}, fmt.Errorf("%s: %w", value.Source, err)
 		}
@@ -111,7 +119,7 @@ func (cfg Config) Values() map[string]string {
 		"timeout": cfg.Timeout, "notify.via": cfg.Notify.Via,
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
-		"hcom.to": cfg.Hcom.To,
+		"hcom.to": cfg.Hcom.To, "secrets.policy": cfg.Secrets.Policy,
 	}
 }
 
@@ -124,6 +132,11 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		return fmt.Errorf("%s contains control characters", key)
 	}
 	switch key {
+	case "secrets.policy":
+		if value != "redact" && value != "reject" {
+			return errors.New("secrets.policy must be redact or reject")
+		}
+		cfg.Secrets.Policy = value
 	case "timeout":
 		duration, err := time.ParseDuration(value)
 		if err != nil || duration <= 0 {
@@ -200,6 +213,8 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 	for _, value := range values {
 		if shared {
 			switch value.key {
+			case "secrets.policy":
+				return fmt.Errorf("config %s:%d: secrets.policy is personal policy; set it in user config, .tell.yaml, or --config instead of shared tell.yaml", path, value.line)
 			case "notify.via", "apprise.config", "herdr.session", "hcom.to":
 				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
 			}

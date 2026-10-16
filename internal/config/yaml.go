@@ -66,11 +66,11 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!int" || value.Value != "1" {
 				return fmt.Errorf("line %d: version must be 1", value.Line)
 			}
-		case "notify", "apprise", "herdr", "hcom":
+		case "notify", "apprise", "herdr", "hcom", "secrets":
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
 			}
-		case "timeout", "notify.via", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "hcom.to":
+		case "secrets.policy", "timeout", "notify.via", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "hcom.to":
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 				return fmt.Errorf("line %d: %s must be a string", value.Line, name)
 			}

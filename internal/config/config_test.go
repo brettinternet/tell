@@ -119,6 +119,43 @@ func TestPersonalRoutingSources(t *testing.T) {
 	}
 }
 
+// Shared repositories and invocation overrides cannot weaken personal policy.
+func TestSecretPolicySources(t *testing.T) {
+	input := fixture(t)
+	user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
+	writeFile(t, user, "secrets: {policy: reject}\n")
+	shared := filepath.Join(input.CWD, "tell.yaml")
+	writeFile(t, shared, "secrets: {policy: redact}\n")
+	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal policy") {
+		t.Fatalf("accepted shared secret policy: %v", err)
+	}
+	writeFile(t, shared, "version: 1\n")
+	for _, layer := range []string{"user", "private", "explicit"} {
+		personal := input
+		path := user
+		if layer == "private" {
+			path = filepath.Join(input.CWD, ".tell.yaml")
+		} else if layer == "explicit" {
+			path = shared
+			personal.File = &path
+		}
+		writeFile(t, path, "secrets: {policy: reject}\n")
+		cfg, err := config.Load(personal)
+		if err != nil || cfg.Secrets.Policy != "reject" || cfg.Origins["secrets.policy"] != path {
+			t.Fatalf("personal policy %s: %+v %v", layer, cfg, err)
+		}
+		writeFile(t, path, "secrets: {policy: disabled}\n")
+		if _, err := config.Load(personal); err == nil {
+			t.Fatal("accepted disabled scanning")
+		}
+		writeFile(t, path, "version: 1\n")
+	}
+	input.Overrides = map[string]config.Value{"secrets.policy": {Text: "redact", Source: "flag"}}
+	if _, err := config.Load(input); err == nil {
+		t.Fatal("accepted non-file policy override")
+	}
+}
+
 // --config must not load broken automatic sources or accidentally inherit a
 // personal destination in CI. Overrides still apply to the selected file.
 func TestExplicitConfigIsolatesAutomaticFiles(t *testing.T) {

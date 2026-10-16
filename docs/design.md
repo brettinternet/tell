@@ -13,8 +13,8 @@ human / script / scheduler hook
 ```
 
 Configuration, inspection, and notify via stderr and Apprise are implemented.
-Message normalization is implemented. Desktop, Herdr, user-owned commands,
-send, and secret redaction remain planned.
+Message normalization and embedded secret redaction are implemented. Desktop,
+Herdr, user-owned commands, and send remain planned.
 Backlog.md is the work queue; this document records boundaries, not a second task list.
 
 The caller's scheduler (cron, launchd, CI, or Noon) owns schedules, queued runs,
@@ -53,7 +53,7 @@ user-owned command route runs a personal executable with a fixed contract,
 without shell strings or a plugin registry.
 
 Message preparation processes titles and bodies before any route runs (see below).
-Secret redaction with an embedded scanner ruleset remains planned. Tell is the
+Secret redaction uses the embedded Gitleaks v8 default ruleset. Tell is the
 last point before third-party services and agent transcripts persist a message.
 
 Delivery destinations are personal. Routing fields (notify.via, apprise.config,
@@ -77,13 +77,25 @@ literal arguments, explicit stdin, or the default project-directory title:
 - Unicode bidi embedding/override controls U+202A–U+202E and isolate controls
   U+2066–U+2069 are removed. Other Unicode text is preserved; malformed UTF-8
   is replaced with U+FFFD.
-- After filtering, titles are capped at **256 bytes**, bodies at **16,384 bytes**.
+- After filtering, both fields are scanned offline using embedded Gitleaks rules.
+  Detected secret occurrences are replaced with **`[REDACTED]`** by default.
+  Personal-only `secrets.policy: reject` instead fails before dispatch with exit 1
+  (`config/secret_detected`). Scanner initialization errors fail closed with
+  `config/secret_scan_failed`. Inline `gitleaks:allow` comments cannot bypass scanning.
+  No local scanner config, ignore files, custom rules, or network validation is used.
+- After scanning and redaction, titles are capped at **256 bytes**, bodies at **16,384 bytes**.
   Truncation keeps a UTF-8 boundary and appends **`[truncated]`** within that limit.
   These are output limits, not limits on bytes read from stdin.
 - A body empty or whitespace-only after preparation fails with exit 1
   (`config/empty_message`) before dispatch.
 
-No Markdown/HTML sanitization, secret scanning, or other reformatting occurs.
+Scanning precedes truncation so a secret crossing the output limit is not exposed
+as a partial token. JSON `redactions` counts merged replaced occurrences across
+both fields, including replacements subsequently truncated. Reject reports zero
+redactions because nothing is replaced or delivered. Default rules use patterns,
+entropy, and built-in allowlists; false positives and missed secrets are possible.
+Do not treat detection as proof that a message is safe to publish.
+No Markdown/HTML sanitization or other reformatting occurs.
 
 ## Outcomes
 
@@ -102,7 +114,7 @@ whether to resend; the outcome says whether that is safe.
 With --json, stdout receives one object with schema_version, outcome, and route;
 failures add error.code (the outcome), error.message, and a reason such as
 missing_executable, unsupported_route, no_match, partial, timeout,
-or cancelled. Planned routes may add unsupported_platform or secret_detected. Results never include the message body or raw provider output.
+cancelled, secret_detected, or secret_scan_failed. Planned routes may add unsupported_platform. Results never include the message body or raw provider output.
 Unknown provider exit codes map to failed, never accepted. The route is empty
 when invocation parsing or configuration fails before route resolution.
 The built-in stderr route writes the message there even in JSON mode; stdout

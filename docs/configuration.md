@@ -57,6 +57,7 @@ destinations; private configuration and explicit invocation inputs are trusted.
 | --- | --- | --- | --- |
 | timeout | 10s | TELL_TIMEOUT | --timeout |
 | notify.via | stderr | TELL_NOTIFY_VIA | --via |
+| secrets.policy | redact | — | — |
 | apprise.config | unset | TELL_APPRISE_CONFIG | --apprise-config |
 | apprise.tag | unset | TELL_APPRISE_TAG | --apprise-tag |
 | apprise.format | unset | TELL_APPRISE_FORMAT | --apprise-format |
@@ -81,6 +82,11 @@ hcom:
   to: reviewer
 ```
 
+- secrets.policy is `redact` (replace detected secrets with `[REDACTED]`) or
+  `reject` (exit 1, reason `secret_detected`, before dispatch). It is accepted
+  only in user config, private `.tell.yaml`, or an explicit `--config` file;
+  shared `tell.yaml` rejects it, even when another layer overrides it. No
+  environment or flag override, disable switch, or custom rules are supported.
 - timeout is a positive Go duration; zero and indefinite waits are refused.
 - notify.via is stderr or apprise. desktop and herdr are accepted configuration
   values for planned routes; invoking them returns not_sent, never success.
@@ -103,8 +109,11 @@ are accepted. Provider stdin is closed; stdout/stderr are discarded.
 `tell notify MESSAGE` never reads stdin; `tell notify -` explicitly reads it.
 `--title` defaults to the selected project directory name. `--type` is info
 (default), success, warning, or failure. These are invocation flags, not YAML
-settings. Empty or whitespace-only messages are refused. Text is otherwise
-forwarded unchanged: normalization and secret redaction remain planned.
+settings. Empty or whitespace-only messages are refused. Titles and bodies are
+normalized, scanned with embedded Gitleaks default rules, then truncated; see
+[message preparation](design.md#message-preparation). JSON results include a
+`redactions` count (merged replaced occurrences across both fields). Scanning
+is offline and best-effort; undetected secrets can still be delivered.
 Apprise receives the body via argv, so local process inspection may reveal it.
 Do not include secrets in notifications.
 

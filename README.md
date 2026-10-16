@@ -9,8 +9,8 @@ invocation and exits.
 
 **Implemented:** strict layered configuration, source-aware inspection, JSON
 output, non-destructive project initialization, stderr/Apprise notifications,
-message normalization, and development tooling.
-**Not implemented:** desktop/Herdr/command routes, agent messaging, or secret redaction. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
+message normalization, embedded secret redaction, and development tooling.
+**Not implemented:** desktop/Herdr/command routes or agent messaging. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
 
 ## Try it
 
@@ -77,7 +77,10 @@ Messages are one literal argument, or `-` to explicitly read stdin. Empty messag
 fail before delivery. Titles and bodies reject NUL, strip terminal sequences,
 controls (except newline/tab), and bidi overrides/isolates before delivery.
 Titles are capped at 256 bytes and bodies at 16 KiB, on UTF-8 boundaries,
-including a visible `[truncated]` marker. See [preparation](docs/design.md#message-preparation).
+including a visible `[truncated]` marker. Before truncation, embedded Gitleaks rules
+replace detected secrets in titles and bodies with `[REDACTED]`; JSON reports
+`redactions`. Personal config can set `secrets.policy: reject` to refuse delivery
+instead. Detection is best-effort, not a guarantee that text contains no secrets. See [preparation](docs/design.md#message-preparation).
 `--title` defaults to the selected project directory name;
 `--type` accepts info (default), success, warning, or failure. Provider acceptance
 is **not human acknowledgment**. JSON results never contain message bodies;
