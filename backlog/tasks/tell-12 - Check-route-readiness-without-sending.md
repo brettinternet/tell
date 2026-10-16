@@ -1,9 +1,11 @@
 ---
 id: TELL-12
 title: Check route readiness without sending
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@pi'
 created_date: '2026-10-16 21:41'
+updated_date: '2026-10-16 22:37'
 labels: []
 dependencies:
   - TELL-2
@@ -30,12 +32,32 @@ Non-goals: sending test notifications, installing or starting providers, repairi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 tell doctor reports, for the selected route and every configured route, whether it is ready and why not (missing executable, unsupported platform, Herdr session not running, Apprise matching zero services, command not executable), and exits 0 only when the selected route is ready.
-- [ ] #2 Fixture-based tests prove doctor never sends, never prints Apprise URLs or other provider configuration, and emits one schema_version 1 object with --json.
-- [ ] #3 README and setup docs recommend tell doctor after configuration; task ci passes.
+- [x] #1 tell doctor reports, for the selected route and every configured route, whether it is ready and why not (missing executable, unsupported platform, Herdr session not running, Apprise matching zero services, command not executable), and exits 0 only when the selected route is ready.
+- [x] #2 Fixture-based tests prove doctor never sends, never prints Apprise URLs or other provider configuration, and emits one schema_version 1 object with --json.
+- [x] #3 README and setup docs recommend tell doctor after configuration; task ci passes.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Acceptance evidence is recorded in notes, relevant checks pass, and intended changes are committed without an unauthorized push.
+- [x] #1 Acceptance evidence is recorded in notes, relevant checks pass, and intended changes are committed without an unauthorized push.
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add bounded read-only readiness checks for selected and explicitly configured routes, using Apprise --dry-run and Herdr session list --json; never expose provider output or execute personal commands. 2. Add doctor human/JSON output with selected-route exit status and document setup semantics. 3. Exercise fixture-based safety, parsing, and failure regressions; run task ci and one independent review. 4. Commit implementation, merge main, record acceptance evidence, and clean up owned worktree.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented doctor in tell-12-doctor worktree. Verification: go test ./internal/cli ./internal/delivery and task ci pass (format, vet, Staticcheck, Gitleaks, govulncheck, unit, race, build, smoke). Fixture tests cover selected-vs-configured status, exact dry-run/list argv, EOF stdin, sanitized output, single schema_version 1 JSON object, missing/non-executable commands, zero services, stopped/missing sessions, malformed/oversized output, timeouts, unsupported desktop platforms, and no personal/desktop execution. Oversize regression caught and fixed bytes.Buffer ReadFrom bypass of the capture limit. Clean LSP diagnostics. Built CLI in empty environment with explicit empty config reports stderr ready in human and JSON modes. README/configuration/development setup docs recommend doctor and explain its limits. Independent safety review pending; next: resolve concrete findings, commit, fast-forward main, finalize task and clean owned worktree.
+
+Independent reviewer completed the single safety review with no validated remaining findings; confirmed named-buffer fix. Implementation committed as 4c1300e (feat: check route readiness without sending) after task check:staged and fast-forward merged into main. No push. Owned worktree/branch tell-12-doctor removed through Worktrunk; exact Herdr workspace wE3 verified absent afterward. No retained checkout or workspace, remaining blocker, or resumable implementation step.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added read-only tell doctor with sanitized human/JSON route readiness, selected-route exit status, bounded Apprise dry-run and Herdr session checks, executable-only command/desktop checks, and setup documentation. Verified fixture regressions, direct built CLI, clean diagnostics, task ci, and independent safety review. Committed 4c1300e and merged main; worktree/workspace cleaned.
+<!-- SECTION:FINAL_SUMMARY:END -->
