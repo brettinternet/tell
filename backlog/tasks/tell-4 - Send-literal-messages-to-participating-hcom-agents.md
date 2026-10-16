@@ -4,7 +4,7 @@ title: Send messages to an existing agent through hcom or Herdr
 status: To Do
 assignee: []
 created_date: '2026-10-16 20:29'
-updated_date: '2026-10-16 21:55'
+updated_date: '2026-10-16 21:57'
 labels: []
 dependencies:
   - TELL-2
@@ -17,6 +17,7 @@ documentation:
   - docs/design.md
   - ../unharness/docs/architecture.md
   - ../bump/docs/hooks.md
+  - ../bump/docs/agents.md
 type: feature
 ordinal: 5500
 ---
@@ -49,7 +50,7 @@ Non-goals: scheduling in Tell; spawning or resuming agents; broadcast or fan-out
 - [ ] #3 The Herdr route types nothing into an agent that is working or blocked and returns not_sent with reason busy or blocked; missing, empty, multi-target, and fan-out recipients and absent executables are also not_sent; provider failure is failed; timeout and cancellation are uncertain; nothing is retried, and providers never inherit Tell's stdin.
 - [ ] #4 Each send writes one receipt line to stderr with route, recipient, intent, and outcome but never the body; --json carries the same fields.
 - [ ] #5 Recipient and route settings are personal-only, hcom.to is replaced, and tell doctor reports readiness for both routes without sending.
-- [ ] #6 An example Noon job sends a scheduled instruction and docs explain Noon's ownership of timing, how a failed send reaches a person through on_failure, mailbox versus typed-turn semantics, that dispatch is not completion, and when to use a Noon agent job instead; task ci passes.
+- [ ] #6 An example Noon job sends a scheduled instruction with missed: skip, so an instruction is never delivered late after sleep, and cites NOON_RUN_ID as its pointer; docs explain Noon's ownership of timing, how a failed send reaches a person through on_failure, mailbox versus typed-turn semantics, that dispatch is not completion, and when to use a Noon agent job instead; task ci passes.
 <!-- AC:END -->
 
 ## Definition of Done
