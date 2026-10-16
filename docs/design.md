@@ -3,18 +3,19 @@
 ## Boundary
 
 ```text
-person / script / scheduler hook
+person / script / scheduler hook / MCP client
           │
-         tell  (one invocation, then exit)
+         tell  (CLI one-shot; MCP client-owned session)
           ├── notify → stderr | desktop | Herdr | Apprise → services | your command
-          └── send   → hcom mailbox | idle Herdr agent pane
+          ├── send   → hcom mailbox | idle Herdr agent pane
+          └── mcp    → client-owned stdio process: notify | send | doctor
 ```
 
 | Owner | Owns |
 | --- | --- |
 | Scheduler (cron, launchd, CI, Noon) | schedules, queues, concurrency, cancellation, run history |
 | Repo scripts | which events matter, what agent work means |
-| Tell | routing, safe argv, bounded subprocesses, honest results |
+| Tell | routing, safe argv, bounded subprocesses, honest results; MCP stdio adapter |
 | Provider | destinations, credentials, native config |
 
 Tell keeps no state. It never reads scheduler-specific environment or payloads;
@@ -25,9 +26,11 @@ invocations, only the caller knows whether a message repeats, and a dropped
 alert costs more than a duplicate. A hook that notifies only on status change
 is the caller's job (see [examples/noon](../examples/noon/README.md)).
 
-There are no retries, fallback routes, fan-out, agent spawning, plugin
-registry, or ACP/MCP server. Backlog.md tracks planned work; this document
-describes what exists.
+There are no retries, fallback routes, fan-out, agent spawning, or plugin
+registry. `tell mcp` is a client-owned stdio process, not a daemon; each tool call
+uses the same one-shot delivery and readiness operations as the CLI. It exposes
+only `notify`, `send`, and read-only `doctor`, with no resources, prompts, HTTP,
+or MCP-specific retry behavior.
 
 ## Commands
 
@@ -42,6 +45,31 @@ their scheduled job wrote them. Send pointers (run IDs, paths, URLs), not raw
 job output, so agents read untrusted data through their own tools. Tell never
 waits for a reply or for the work to finish. Tracked agent work belongs to the
 scheduler's agent jobs (such as Noon's); ask-and-wait belongs to Unharness.
+
+## MCP
+
+The stdio MCP server is an adapter around the existing config and delivery
+packages, not another routing or provider implementation. It loads layered
+configuration for every tool call, including `tell mcp` project/config
+selection, setting flags, and environment overrides. It returns structured,
+body-free CLI-equivalent notify/send receipts; provider output never enters tool
+results. `doctor` is read-only. The stderr notify route writes only to process
+stderr, leaving stdout exclusively for MCP protocol messages.
+
+`mcp.agent_targets` is personal-only and defaults to `false`. By default the
+notify/send schemas omit route and recipient fields, and the server rejects
+such arguments even if a client sends them directly. A user may enable it to
+allow agents to choose only configured route and target selectors: notification
+route, Herdr session, Apprise tag, send route, and one exact send recipient.
+Agents cannot supply a command executable, Apprise config path, sender identity,
+timeout, or secrets policy. The setting cannot be enabled in shared
+`tell.yaml`; CLI flags and environment are still explicit user-controlled
+sources. Use `tell mcp --mcp-agent-targets=false` to turn it off for one client.
+
+Each notify/send call dispatches at most one delivery. A timeout or cancellation
+after provider start returns `uncertain`; MCP does not retry or wait for an
+agent reply. See [configuration](configuration.md#mcp-agent-target-overrides)
+for the opt-in and [the README](../README.md#mcp-server) for client setup.
 
 ## Compatibility
 

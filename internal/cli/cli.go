@@ -44,6 +44,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Select exactly this project directory", Sources: urfave.EnvVars("TELL_PROJECT")},
 			&urfave.StringFlag{Name: "config", Usage: "Replace all automatic config files with FILE", Sources: urfave.EnvVars("TELL_CONFIG")},
 			&urfave.BoolFlag{Name: "json", Usage: "Print one structured JSON result"},
+			&urfave.BoolFlag{Name: "mcp-agent-targets", Usage: "Allow MCP agents to override route and recipient selectors [$TELL_MCP_AGENT_TARGETS]"},
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
@@ -51,6 +52,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 				&urfave.StringFlag{Name: "intent", Value: "inform", Usage: "Message intent: inform or request"},
 			}, Action: send},
 			{Name: "doctor", Usage: "Check configured routes without sending or starting services", Action: doctor},
+			{Name: "mcp", Usage: "Serve notify, send, and doctor as MCP tools over stdio", Action: mcpCommand(build.Version)},
 			{Name: "notify", Usage: "Notify via the selected route; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
 				&urfave.StringFlag{Name: "title", Usage: "Notification title (default: project directory name)"},
 				&urfave.StringFlag{Name: "type", Value: "info", Usage: "Notification type: info, success, warning, failure"},
@@ -152,6 +154,11 @@ func input(cmd *urfave.Command) (config.Input, error) {
 		} else if value, exists := os.LookupEnv(spec.env); exists {
 			values.Overrides[spec.key] = config.Value{Text: value, Source: "env:" + spec.env}
 		}
+	}
+	if cmd.IsSet("mcp-agent-targets") {
+		values.Overrides["mcp.agent_targets"] = config.Value{Text: strconv.FormatBool(cmd.Bool("mcp-agent-targets")), Source: "flag:--mcp-agent-targets"}
+	} else if value, exists := os.LookupEnv("TELL_MCP_AGENT_TARGETS"); exists {
+		values.Overrides["mcp.agent_targets"] = config.Value{Text: value, Source: "env:TELL_MCP_AGENT_TARGETS"}
 	}
 	return values, nil
 }

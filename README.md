@@ -207,6 +207,37 @@ Herdr types a new turn only when the agent is idle, but the agent can start
 working between the check and the prompt. Use hcom when interruption matters.
 Accepted means dispatched, not done. See [agent delivery](docs/design.md#agent-delivery).
 
+## MCP server
+
+`tell mcp` serves three tools—`notify`, `send`, and read-only `doctor`—over
+stdio for a client-owned process. Add it to Claude Code or Codex:
+
+```sh
+claude mcp add tell -- tell mcp
+codex mcp add tell -- tell mcp
+```
+
+For another client, configure the command and arguments as `tell` and `mcp`.
+Protocol messages use stdout; the stderr notification route remains on stderr.
+A tool call performs at most one delivery and returns a body-free result.
+
+MCP agents cannot select routes or recipients by default. To let agents select
+among your already configured routes and one exact recipient, enable the
+personal-only setting `mcp.agent_targets: true` in user config or `.tell.yaml`.
+This delegates destination choice, not executable paths, provider config,
+sender identity, timeouts, or secret policy. Do not enable it in shared
+`tell.yaml`.
+
+```yaml
+# ~/.config/tell/config.yaml
+mcp:
+  agent_targets: true
+```
+
+Use `tell mcp --mcp-agent-targets=false` to disable overrides for one client
+invocation. See [MCP trust and result behavior](docs/design.md#mcp) and the
+[setting reference](docs/configuration.md#mcp-agent-target-overrides).
+
 ## Outcomes
 
 Each `notify` or `send` exits with one outcome. It tells you whether resending is safe.

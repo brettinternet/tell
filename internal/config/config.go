@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -55,6 +56,10 @@ type Send struct {
 	From string `json:"from"`
 }
 
+type MCP struct {
+	AgentTargets bool `json:"agent_targets"`
+}
+
 // Config is the effective snapshot. Provider files are referenced, never parsed.
 // Origins tracks the winning source of each setting, including built-in defaults.
 type Config struct {
@@ -65,6 +70,7 @@ type Config struct {
 	Apprise Apprise           `json:"apprise"`
 	Herdr   Herdr             `json:"herdr"`
 	Send    Send              `json:"send"`
+	MCP     MCP               `json:"mcp"`
 	Sources []string          `json:"sources"`
 	Origins map[string]string `json:"origins"`
 }
@@ -127,6 +133,7 @@ func (cfg Config) Values() map[string]string {
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
 		"send.via": cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
+		"mcp.agent_targets": fmt.Sprint(cfg.MCP.AgentTargets),
 	}
 }
 
@@ -185,6 +192,12 @@ func (cfg *Config) apply(key, value, base, source string) error {
 			return errors.New("send.from must be a simple identifier (letters, digits, underscores, hyphens; at most 64 bytes)")
 		}
 		cfg.Send.From = value
+	case "mcp.agent_targets":
+		targets, err := strconv.ParseBool(value)
+		if err != nil {
+			return errors.New("mcp.agent_targets must be true or false")
+		}
+		cfg.MCP.AgentTargets = targets
 	default:
 		return fmt.Errorf("unknown setting %q", key)
 	}
@@ -232,7 +245,7 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 			switch value.key {
 			case "secrets.policy", "notify.command":
 				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
-			case "notify.via", "apprise.config", "herdr.session", "send.via", "send.to", "send.from":
+			case "notify.via", "apprise.config", "herdr.session", "send.via", "send.to", "send.from", "mcp.agent_targets":
 				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
 			}
 		}

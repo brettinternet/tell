@@ -48,6 +48,9 @@ func TestLoadLayersAndPaths(t *testing.T) {
 	if cfg.Timeout != "3s" || cfg.Notify.Via != "apprise" || cfg.Apprise.Tag != "local" || cfg.Apprise.Format != "markdown" {
 		t.Fatalf("incorrect precedence: %+v", cfg)
 	}
+	if cfg.MCP.AgentTargets || cfg.Values()["mcp.agent_targets"] != "false" || cfg.Origins["mcp.agent_targets"] != "default" {
+		t.Fatalf("MCP target override is not default-deny: %+v", cfg)
+	}
 	wantPath := filepath.Join(input.UserConfigDir, "apprise", "notifications.yaml")
 	if cfg.Apprise.Config != wantPath || cfg.Origins["apprise.config"] != user || cfg.Origins["apprise.tag"] != private {
 		t.Fatalf("lost path provenance: %+v", cfg)
@@ -75,6 +78,7 @@ func TestPersonalRoutingSources(t *testing.T) {
 		{"send.to", "send:\n  to: reviewer\n", "reviewer"},
 		{"send.via", "send:\n  via: hcom\n", "hcom"},
 		{"send.from", "send:\n  from: nightly\n", "nightly"},
+		{"mcp.agent_targets", "mcp:\n  agent_targets: true\n", "true"},
 	} {
 		t.Run(tc.key, func(t *testing.T) {
 			input := fixture(t)
@@ -235,6 +239,7 @@ func TestRejectAmbiguousOrInvalidConfiguration(t *testing.T) {
 		{"merge", "notify: {<<: {via: herdr}}\n"},
 		{"null", "apprise: {tag: null}\n"},
 		{"wrong type", "apprise: {tag: [ops]}\n"},
+		{"MCP setting is not a YAML boolean", "mcp: {agent_targets: 'true'}\n"},
 		{"multiple documents", "timeout: 1s\n---\ntimeout: 2s\n"},
 		{"unsupported version", "version: 2\n"},
 		{"unbounded timeout", "timeout: 0s\n"},

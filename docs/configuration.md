@@ -44,7 +44,20 @@ HOME and XDG_CONFIG_HOME are not read, so it works for services without HOME.
 
 These fields choose where messages go, so shared `tell.yaml` rejects them:
 `notify.via`, `notify.command`, `apprise.config`, `herdr.session`, `send.via`,
-`send.to`, `send.from`, `secrets.policy`.
+`send.to`, `send.from`, `secrets.policy`, and `mcp.agent_targets`.
+
+#### MCP agent target overrides
+
+MCP agents cannot choose routes or recipients by default. The personal-only
+`mcp.agent_targets` setting defaults to `false`; set it to `true` in user
+config, private `.tell.yaml`, or explicit `--config` to permit overrides for
+the notify route, Herdr session, Apprise tag, send route, and one exact
+recipient. This does not let agents choose `notify.command`, `apprise.config`,
+`send.from`, `timeout`, or `secrets.policy`. Shared `tell.yaml` cannot grant
+this authority.
+The setting also accepts `TELL_MCP_AGENT_TARGETS` and
+`--mcp-agent-targets`; `tell config` shows its value and winning origin. Use
+`tell mcp --mcp-agent-targets=false` to revoke the opt-in for one server process.
 
 ```console
 $ tell config check
@@ -94,6 +107,7 @@ repository code runs during discovery.
 | `send.via` | — | `TELL_SEND_VIA` | `--send-via` |
 | `send.to` | — | `TELL_SEND_TO` | `--to` |
 | `send.from` | `tell-automation` | `TELL_SEND_FROM` | `--from` |
+| `mcp.agent_targets` | `false` | `TELL_MCP_AGENT_TARGETS` | `--mcp-agent-targets` |
 
 A full personal config (user config or `.tell.yaml`, never `tell.yaml`):
 
@@ -129,6 +143,7 @@ Values:
 | `send.via` | `hcom` or `herdr`. No default. |
 | `send.to` | One exact hcom full name (no `@`) or Herdr agent name/pane ID. |
 | `send.from` | ≤64 ASCII letters, digits, `_`, `-`; not starting with `-`. |
+| `mcp.agent_targets` | `true` or `false`; personal-only; defaults to `false` |
 
 `send.to` refuses whitespace, lists, wildcards, tag selectors ending in `-`,
 remote hcom targets, and `self`. A missing or invalid recipient is `not_sent`;

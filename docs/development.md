@@ -74,12 +74,18 @@ part of local implementation verification.
 | `internal/cli` | urfave commands, flags/env, human and JSON output |
 | `internal/config` | strict YAML, sources, precedence, validation; no CLI dependency |
 | `internal/delivery` | routes, message preparation, outcomes, subprocesses |
+| `internal/mcp` | MCP stdio tools over the shared config and delivery operations |
 | `integration/` | built-binary smoke tests (`smoke` build tag) |
 | `scripts/` | development checks |
 | `backlog/` | the work queue (Backlog.md) |
 
-Add packages only when needed. Do not copy Noon's scheduler, store, HTTP, or
-MCP layers. Providers are subprocess adapters, not SDKs or plugins.
+Tell's MCP adapter uses `github.com/modelcontextprotocol/go-sdk` v1.8.0 for
+stdio only. It must call the existing config and delivery operations; do not
+copy Noon's scheduler, store, or HTTP layers. The MCP process is owned by its
+client and exposes only notify, send, and read-only doctor. Route and recipient
+overrides remain default-deny through personal `mcp.agent_targets` configuration.
+Providers are subprocess adapters, not SDKs or plugins. See the [README client
+setup](../README.md#mcp-server) and [MCP trust boundary](design.md#mcp).
 
 ## Testing
 
@@ -89,7 +95,9 @@ failure each new test prevents. Test through public interfaces with real temp
 files and local fixture executables, not network mocks.
 
 Tests must never read real user settings or contact real services. Set HOME
-and XDG_CONFIG_HOME, and pass config explicitly.
+and XDG_CONFIG_HOME, and pass config explicitly. Exercise MCP over the public
+protocol with local fixture providers; verify default-deny/opt-in routing,
+body-free structured results, and stderr/stdout isolation.
 
 ## Backlog and worktrees
 

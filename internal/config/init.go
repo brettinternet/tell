@@ -86,4 +86,7 @@ version: 1
 #   via: hcom
 #   to: reviewer
 #   from: tell-automation
+# MCP route/recipient overrides are disabled for agents by default.
+# mcp:
+#   agent_targets: false
 `

@@ -74,6 +74,39 @@ func TestCLIFlagEnvironmentPrecedence(t *testing.T) {
 
 // Destination environment/flag overrides must remain usable after shared-file
 // restrictions, without changing flag-over-environment precedence.
+func TestMCPAgentTargetsOverrideSources(t *testing.T) {
+	environment(t)
+	t.Setenv("TELL_MCP_AGENT_TARGETS", "true")
+	code, out, errOut := run("config", "--json")
+	var result struct {
+		Config config.Config `json:"config"`
+	}
+	if code != 0 || errOut != "" || json.Unmarshal([]byte(out), &result) != nil {
+		t.Fatalf("environment override: %d %s %s", code, out, errOut)
+	}
+	if !result.Config.MCP.AgentTargets || result.Config.Origins["mcp.agent_targets"] != "env:TELL_MCP_AGENT_TARGETS" {
+		t.Fatalf("environment setting or origin missing: %s", out)
+	}
+	userConfig := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tell", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(userConfig), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(userConfig, []byte("mcp: {agent_targets: true}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut = run("--mcp-agent-targets=false", "config", "--json")
+	if code != 0 || errOut != "" || json.Unmarshal([]byte(out), &result) != nil {
+		t.Fatalf("flag override: %d %s %s", code, out, errOut)
+	}
+	if result.Config.MCP.AgentTargets || result.Config.Origins["mcp.agent_targets"] != "flag:--mcp-agent-targets" {
+		t.Fatalf("flag did not override enabled user config: %s", out)
+	}
+	code, out, errOut = run("mcp", "--mcp-agent-targets=false", "--json")
+	if code != 2 || !strings.Contains(out+errOut, "mcp does not support --json") {
+		t.Fatalf("MCP flags after command: %d %s %s", code, out, errOut)
+	}
+}
+
 func TestPersonalRoutingOverrides(t *testing.T) {
 	for _, tc := range []struct{ key, env, flag, value string }{
 		{"notify.via", "TELL_NOTIFY_VIA", "--via", "apprise"},

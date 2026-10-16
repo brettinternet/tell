@@ -67,7 +67,7 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!int" || value.Value != "1" {
 				return fmt.Errorf("line %d: version must be 1", value.Line)
 			}
-		case "notify", "apprise", "herdr", "send", "secrets":
+		case "notify", "apprise", "herdr", "send", "secrets", "mcp":
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
 			}
@@ -89,6 +89,11 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 		case "secrets.policy", "timeout", "notify.via", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "send.via", "send.to", "send.from":
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 				return fmt.Errorf("line %d: %s must be a string", value.Line, name)
+			}
+			*values = append(*values, fileValue{key: name, text: value.Value, line: value.Line})
+		case "mcp.agent_targets":
+			if value.Kind != yaml.ScalarNode || value.Tag != "!!bool" {
+				return fmt.Errorf("line %d: %s must be a boolean", value.Line, name)
 			}
 			*values = append(*values, fileValue{key: name, text: value.Value, line: value.Line})
 		default:
