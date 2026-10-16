@@ -4,10 +4,10 @@ title: Package versioned CLI artifacts and document installation
 status: To Do
 assignee: []
 created_date: '2026-10-16 20:29'
-updated_date: '2026-10-16 21:55'
+updated_date: '2026-10-16 22:20'
 labels: []
 dependencies:
-  - TELL-2
+  - TELL-4
 references:
   - ../hum/.github/workflows/release.yaml
   - ../homebrew-tap/Formula/worklease.rb
@@ -24,7 +24,7 @@ Context:
 - cmd/tell declares buildVersion, buildCommit, and buildTime for -X linker injection, but task cli:build injects nothing, so tell --version reports dev and unknown.
 - ../hum/.github/workflows/release.yaml is the reference: tag-triggered, verifies the tag commit's main-branch CI run, builds CGO_ENABLED=0 -trimpath archives for linux and darwin on amd64 and arm64, and publishes checksums.txt.
 - hum and worklease name archives NAME-vX.Y.Z-OS-ARCH.tar.gz with OS macos or linux and ARCH arm64 or x64. Their formulas live in ../homebrew-tap and are updated there after a release; mise's github backend can install the same archives.
-- Compatibility surfaces: config version 1, JSON schema_version 1, and the exit codes in docs/design.md.
+- Compatibility surfaces: config version 1, JSON schema_version 1, and the exit codes in docs/design.md. This task waits for TELL-4 because TELL-4 replaces the bootstrap hcom.to setting (TELL_HCOM_TO, --to); releasing first would break the config version 1 promise.
 - CI (.github/workflows/ci.yaml) runs task ci on Linux and macOS with SHA-pinned Actions.
 
 Scope: Taskfile/.taskfiles packaging tasks, a release workflow, checksums, installation, version, and compatibility docs.

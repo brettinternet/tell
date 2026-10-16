@@ -4,7 +4,7 @@ title: Send messages to an existing agent through hcom or Herdr
 status: To Do
 assignee: []
 created_date: '2026-10-16 20:29'
-updated_date: '2026-10-16 22:06'
+updated_date: '2026-10-16 22:13'
 labels: []
 dependencies:
   - TELL-2
@@ -33,12 +33,12 @@ Scheduled instructions: the caller's scheduler decides when and owns missed runs
 
 Transports (verify against installed versions):
 - hcom (src/commands/send.rs) is a mailbox delivered on the agent's next hook, so it never interrupts a turn; the agent must participate in hcom. Syntax: hcom send @NAME -- MESSAGE. No @target broadcasts to everyone; @tag- and several @targets fan out. Without --, --stdin, --file, or --base64 it reads stdin whenever stdin is not a terminal. --from NAME (or -b) sets an external sender. --intent request|inform|ack; request creates reply obligations. --json returns a receipt. Exit 1 on errors, including no matching active participant.
-- Herdr: herdr agent prompt NAME TEXT types a new user turn into any agent pane (pi, Claude, Codex). It rejects an agent blocked on an approval or question dialog with agent_blocked. Typing into a working agent would steer its current task, so Tell checks state first (herdr agent get) and delivers only to an idle or done agent. Herdr documents that a timeout does not prove the prompt was not delivered.
+- Herdr: herdr agent prompt NAME TEXT types a new user turn into any agent pane (pi, Claude, Codex). It rejects an agent blocked on an approval or question dialog with agent_blocked. Typing into a working agent would steer its current task, so Tell checks state first (herdr agent get) and delivers only to an idle or done agent. herdr agent prompt has no idle-only option, so an agent can start working between the check and the prompt; document that race and point to hcom for non-interrupting delivery. Herdr documents that a timeout does not prove the prompt was not delivered.
 - Unharness (uhh send) is a likely future transport; do not build it here.
 
 Safe defaults Tell owns: exactly one recipient from personal config per project; an explicit sender identity marking automation; inform intent unless the caller requests otherwise; a short provenance header naming the automated sender and route; outbound normalization and secret redaction; never reading stdin implicitly; a one-line receipt (no body) on stderr so Noon run logs record what automation told agents. Setting names (for example send.via and a recipient) are decided here; replace the bootstrap hcom.to setting rather than keeping both.
 
-Scope: send command, hcom and Herdr routes in internal/delivery reusing TELL-2's subprocess helper, personal-config settings, doctor readiness checks for both routes, local fixture executables, tests, docs, and a scheduled-instruction example.
+Scope: send command, docs/design.md boundary diagram and Outcomes extended to send (including reasons busy and blocked), hcom and Herdr routes in internal/delivery reusing TELL-2's subprocess helper, personal-config settings, doctor readiness checks for both routes, local fixture executables, tests, docs, and a scheduled-instruction example.
 
 Non-goals: scheduling in Tell; spawning or resuming agents; broadcast or fan-out; embedding job output; queues; waiting for replies or turns; completion tracking; automatic retries; Unharness.
 <!-- SECTION:DESCRIPTION:END -->
