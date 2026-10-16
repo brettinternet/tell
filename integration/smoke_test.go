@@ -19,8 +19,8 @@ func TestBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := t.TempDir()
-	system := filepath.Join(home, "system.yaml")
-	if err := os.WriteFile(system, []byte("version: 1\n"), 0o600); err != nil {
+	explicit := filepath.Join(home, "explicit.yaml")
+	if err := os.WriteFile(explicit, []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	run := func(env []string, args ...string) (string, int) {
@@ -40,7 +40,7 @@ func TestBinary(t *testing.T) {
 	}
 	invoke := func(args ...string) (string, int) {
 		t.Helper()
-		return run([]string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "XDG_CONFIG_HOME=" + filepath.Join(home, "config"), "TELL_SYSTEM_CONFIG=" + system}, args...)
+		return run([]string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "XDG_CONFIG_HOME=" + filepath.Join(home, "config")}, args...)
 	}
 	for _, args := range [][]string{{"--help"}, {"--version"}, {"--json"}, {"--json", "config", "check"}} {
 		output, code := invoke(args...)
@@ -54,7 +54,7 @@ func TestBinary(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, "tell.yaml")); !os.IsNotExist(err) {
 		t.Fatal("inspection wrote config")
 	}
-	for _, args := range [][]string{{"init", "--json"}, {"init", "--local", "--json"}, {"--json", "config", "check"}} {
+	for _, args := range [][]string{{"init", "--json"}, {"init", "--local", "--json"}, {"init", "--user", "--json"}, {"--json", "config", "check"}} {
 		output, code := invoke(args...)
 		if code != 0 || !json.Valid([]byte(output)) {
 			t.Fatalf("%v: %d %s", args, code, output)
@@ -69,7 +69,7 @@ func TestBinary(t *testing.T) {
 		t.Fatalf("invalid config: %d %s", code, output)
 	}
 	// Service environments may lack HOME; an explicit file needs no user config.
-	output, code = run([]string{}, "--config", system, "config", "check")
+	output, code = run([]string{}, "--config", explicit, "config", "check")
 	if code != 0 {
 		t.Fatalf("explicit config without HOME: %d %s", code, output)
 	}

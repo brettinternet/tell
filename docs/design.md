@@ -48,7 +48,7 @@ with an embedded scanner ruleset. Tell is the last point before third-party
 services and agent transcripts persist a message.
 
 Delivery destinations are personal. Routing fields (notify.via, apprise.config,
-herdr.session, hcom.to) are planned to come only from user config, private
+herdr.session, hcom.to) now come only from user config, private
 .tell.yaml, --config, environment, or flags. Shared tell.yaml keeps shared
 semantics such as the Apprise tag and format. Repository scripts decide what
 happened; personal configuration decides where it goes.
@@ -90,7 +90,9 @@ and tag expression semantics. Tell forwards explicitly selected common options;
 unset provider options defer to provider behavior. Native provider files are not
 parsed or merged by Tell.
 
-Per-repo routing is trusted policy, not a sandbox. Do not add shared-config
+Private routing and explicit invocation inputs are trusted policy, not a sandbox.
+Shared tell.yaml rejects personal routing; no system layer is loaded.
+Do not add shared-config
 executable overrides, plugin-loading paths, command templates, or raw shell
 strings. Provider subprocesses receive argv, never interpolated shell code.
 Logs and errors must not echo credentials or raw message contents.

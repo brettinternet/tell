@@ -27,22 +27,19 @@ func fixture(t *testing.T) config.Input {
 	}
 	project := filepath.Join(base, "repo")
 	writeFile(t, filepath.Join(project, ".git"), "gitdir: ../worktree-metadata\n")
-	system := filepath.Join(base, "system.yaml")
-	writeFile(t, system, "version: 1\n")
-	return config.Input{CWD: project, SystemFile: &system, UserConfigDir: filepath.Join(base, "user")}
+	return config.Input{CWD: project, UserConfigDir: filepath.Join(base, "user")}
 }
 
 // A higher-priority destination must win without rebasing inherited provider
 // paths against the checkout or discarding other fields from the same section.
 func TestLoadLayersAndPaths(t *testing.T) {
 	input := fixture(t)
-	writeFile(t, *input.SystemFile, "timeout: 3s\nnotify: {via: desktop}\n")
 	user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
-	writeFile(t, user, "apprise:\n  config: ../apprise/notifications.yaml\n  tag: personal\n  format: markdown\n")
+	writeFile(t, user, "timeout: 3s\nnotify: {via: desktop}\napprise:\n  config: ../apprise/notifications.yaml\n  tag: personal\n  format: markdown\n")
 	shared := filepath.Join(input.CWD, "tell.yaml")
-	writeFile(t, shared, "notify: {via: apprise}\napprise: {tag: team}\n")
+	writeFile(t, shared, "apprise: {tag: team}\n")
 	private := filepath.Join(input.CWD, ".tell.yaml")
-	writeFile(t, private, "apprise: {tag: local}\n")
+	writeFile(t, private, "notify: {via: apprise}\napprise: {tag: local}\n")
 	cfg, err := config.Load(input)
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +51,7 @@ func TestLoadLayersAndPaths(t *testing.T) {
 	if cfg.Apprise.Config != wantPath || cfg.Origins["apprise.config"] != user || cfg.Origins["apprise.tag"] != private {
 		t.Fatalf("lost path provenance: %+v", cfg)
 	}
-	if strings.Join(cfg.Sources, "|") != strings.Join([]string{*input.SystemFile, user, shared, private}, "|") {
+	if strings.Join(cfg.Sources, "|") != strings.Join([]string{user, shared, private}, "|") {
 		t.Fatalf("wrong sources: %v", cfg.Sources)
 	}
 	input.Overrides = map[string]config.Value{"apprise.config": {Text: "provider.yaml", Source: "flag:--apprise-config"}}
@@ -67,11 +64,66 @@ func TestLoadLayersAndPaths(t *testing.T) {
 	}
 }
 
+// A PR-controlled shared file must never redirect delivery, even if a later
+// trusted source overrides it. The same fields remain usable in personal layers.
+func TestPersonalRoutingSources(t *testing.T) {
+	for _, tc := range []struct{ key, data, value string }{
+		{"notify.via", "notify:\n  via: apprise\n", "apprise"},
+		{"apprise.config", "apprise:\n  config: provider.yaml\n", "provider.yaml"},
+		{"herdr.session", "herdr:\n  session: personal\n", "personal"},
+		{"hcom.to", "hcom:\n  to: reviewer\n", "reviewer"},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			input := fixture(t)
+			shared := filepath.Join(input.CWD, "tell.yaml")
+			writeFile(t, shared, tc.data)
+			input.Overrides = map[string]config.Value{tc.key: {Text: tc.value, Source: "flag"}}
+			_, err := config.Load(input)
+			if err == nil {
+				t.Fatal("accepted shared routing")
+			}
+			for _, want := range []string{shared + ":2:", tc.key, "user config", ".tell.yaml", "--config", "environment", "flags"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("missing %q in diagnostic: %v", want, err)
+				}
+			}
+			writeFile(t, shared, "version: 1\n")
+			input.Overrides = nil
+			for _, layer := range []string{"user", "private", "explicit"} {
+				t.Run(layer, func(t *testing.T) {
+					personal := input
+					path := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
+					switch layer {
+					case "private":
+						path = filepath.Join(input.CWD, ".tell.yaml")
+					case "explicit":
+						// Explicit selection is trusted even when named tell.yaml.
+						path = shared
+						personal.File = &path
+					}
+					writeFile(t, path, tc.data)
+					cfg, err := config.Load(personal)
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := tc.value
+					if tc.key == "apprise.config" {
+						want = filepath.Join(filepath.Dir(path), want)
+					}
+					if cfg.Values()[tc.key] != want || cfg.Origins[tc.key] != path {
+						t.Fatalf("lost personal routing: %+v", cfg)
+					}
+				})
+			}
+		})
+	}
+}
+
 // --config must not load broken automatic sources or accidentally inherit a
 // personal destination in CI. Overrides still apply to the selected file.
 func TestExplicitConfigIsolatesAutomaticFiles(t *testing.T) {
 	input := fixture(t)
-	writeFile(t, *input.SystemFile, "invalid: true\n")
+	writeFile(t, filepath.Join(input.UserConfigDir, "tell", "config.yaml"), "invalid: true\n")
 	writeFile(t, filepath.Join(input.CWD, "tell.yaml"), "apprise: {tag: unexpected}\n")
 	explicit := filepath.Join(input.CWD, "ci.yaml")
 	writeFile(t, explicit, "timeout: 7s\n")
@@ -116,10 +168,11 @@ func TestRejectAmbiguousOrInvalidConfiguration(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			input := fixture(t)
-			writeFile(t, *input.SystemFile, tc.data)
+			user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
+			writeFile(t, user, tc.data)
 			writeFile(t, filepath.Join(input.CWD, ".tell.yaml"), "timeout: 2s\nnotify: {via: stdout}\napprise: {tag: valid}\n")
 			_, err := config.Load(input)
-			if err == nil || !strings.Contains(err.Error(), *input.SystemFile) {
+			if err == nil || !strings.Contains(err.Error(), user) {
 				t.Fatalf("expected source diagnostic, got %v", err)
 			}
 			if strings.Contains(err.Error(), "secret-sentinel") {

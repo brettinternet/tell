@@ -8,12 +8,11 @@ are not implemented; selecting a provider does not execute or verify it.
 Lowest to highest priority:
 
 1. Built-in defaults.
-2. Optional `/etc/tell/config.yaml`.
-3. `$XDG_CONFIG_HOME/tell/config.yaml`, defaulting to `~/.config/tell/config.yaml`.
-4. Shared project `tell.yaml`.
-5. Private project `.tell.yaml`.
-6. `TELL_*` setting environment variables.
-7. Explicit CLI flags.
+2. `$XDG_CONFIG_HOME/tell/config.yaml`, defaulting to `~/.config/tell/config.yaml`.
+3. Shared project `tell.yaml` (shared fields only).
+4. Private project `.tell.yaml`.
+5. `TELL_*` setting environment variables.
+6. Explicit CLI flags.
 
 Mappings merge by field. Each field records its winning origin: default, absolute
 file path, environment name, or flag name. There are no list-valued settings yet.
@@ -21,15 +20,17 @@ Missing optional files are fine; unreadable files, directories, dangling symlink
 and malformed lower-priority files are errors even if a later layer overrides
 their values. No settings directory is created by inspection.
 
-`--config FILE` / `TELL_CONFIG` replaces **all automatic file sources**,
-including system config. The explicit file must exist. Defaults and setting
+`--config FILE` / `TELL_CONFIG` replaces **all automatic file sources**.
+The explicit file must exist. Defaults and setting
 env/flags still apply; use a controlled environment for reproducible CI.
 HOME and XDG_CONFIG_HOME are not consulted, so services without HOME can use it.
 
-`--system-config FILE` / `TELL_SYSTEM_CONFIG` substitutes an explicit, required
-system-defaults file for the optional /etc path. It has no effect when --config
-selects a single file. This supports alternate installations and isolated tests.
-System values are defaults, not enforced administrator policy.
+Shared `tell.yaml` rejects `notify.via`, `apprise.config`, `herdr.session`, and
+`hcom.to`, with a source/line diagnostic directing you to a personal source.
+Set routing in user config, private `.tell.yaml`, an explicit `--config` file,
+environment, or flags. Even a higher-priority override cannot make routing in
+automatically loaded shared config valid. Explicitly selecting `tell.yaml` with
+`--config` trusts that file as a personal source. There is no system config layer.
 
 `XDG_CONFIG_HOME` must be absolute when nonempty. Paths in YAML are relative to
 the file that declared them, resolved **before merging**. Paths from flags/env
@@ -46,8 +47,8 @@ boundary. Never inherit configuration above that boundary. With no marker, use
 the invocation directory. Selected project symlinks are canonicalized.
 
 --config does not change project selection. No repository code is executed while
-discovering or inspecting config. Future delivery uses repository routing policy,
-so review repository config before sending messages from untrusted checkouts.
+discovering or inspecting config. Shared repositories cannot select delivery
+destinations; private configuration and explicit invocation inputs are trusted.
 
 ## Settings
 
@@ -61,7 +62,8 @@ so review repository config before sending messages from untrusted checkouts.
 | herdr.session | unset | TELL_HERDR_SESSION | --herdr-session |
 | hcom.to | unset | TELL_HCOM_TO | --to |
 
-The table uses dotted names for reference; YAML must use nested mappings:
+The table uses dotted names for reference; YAML must use nested mappings.
+This complete example belongs in **user or private config**, not shared tell.yaml:
 
 ```yaml
 version: 1
@@ -114,12 +116,15 @@ remain standard text even with --json.
 
 ## Initialization
 
-`tell init` creates tell.yaml with commented examples; --local selects .tell.yaml
-with mode 0600. Existing regular files are kept byte-for-byte, including malformed
+`tell init` creates tell.yaml with commented shared-field examples; --local selects
+.tell.yaml with personal routing examples and mode 0600. `tell init --user` creates
+`$XDG_CONFIG_HOME/tell/config.yaml` (default `~/.config/tell/config.yaml`) with mode
+0600 and commented personal routing examples, creating parent directories as
+needed. --user cannot be combined with --local or --project. Existing regular files are kept byte-for-byte, including malformed
 files. Existing symlinks/directories are refused. Init never changes .gitignore;
 add `.tell.yaml` yourself. It does not materialize inherited values or read
 provider configuration, and refuses --config or setting overrides rather than
-silently ignoring them. Project selection still applies.
+silently ignoring them. Project selection applies to project init only.
 
 Keep .tell.yaml and provider credentials out of Git. A shared repository config
-should normally choose tags, not contain personal service destinations.
+may choose tags and format, but must not contain personal routing fields.

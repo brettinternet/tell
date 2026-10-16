@@ -23,6 +23,7 @@ bin/tell --help
 bin/tell --version
 bin/tell init                    # create tell.yaml; never overwrite
 bin/tell init --local            # create private .tell.yaml; ignore it in Git
+bin/tell init --user             # create personal user config (mode 0600)
 bin/tell config                  # effective values, origins, loaded files
 bin/tell config check            # validate without invoking providers
 bin/tell --json config check
@@ -35,21 +36,32 @@ bin/tell --config ./ci.yaml config check  # only this file, plus env/flags
 Configuration precedence, lowest to highest:
 
 ```text
-defaults → /etc/tell/config.yaml → user config
-         → tell.yaml → .tell.yaml → TELL_* environment → CLI flags
+defaults → user config → tell.yaml → .tell.yaml → TELL_* environment → CLI flags
 ```
 
 User config is `$XDG_CONFIG_HOME/tell/config.yaml`, or
 `~/.config/tell/config.yaml` when XDG is unset. Settings merge by field.
+Shared `tell.yaml` rejects personal routing (`notify.via`, `apprise.config`,
+`herdr.session`, `hcom.to`); put it in user config or private `.tell.yaml`.
+Explicit `--config`, environment, and flags also accept routing.
 
 ```yaml
 # tell.yaml — safe to share; provider credentials live elsewhere
 version: 1
 timeout: 10s
+apprise:
+  tag: project-alerts
+```
+
+Choose the route separately in user config:
+
+```yaml
+# ~/.config/tell/config.yaml (or $XDG_CONFIG_HOME/tell/config.yaml)
+version: 1
 notify:
   via: apprise
 apprise:
-  tag: project-alerts
+  config: ../apprise/apprise.yaml
 ```
 
 This currently configures and validates the intended route; **it does not send**.

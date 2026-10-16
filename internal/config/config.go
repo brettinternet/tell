@@ -22,11 +22,11 @@ type Value struct {
 }
 
 // Input supplies invocation context. Nil selectors are absent, not empty.
-// UserConfigDir contains the tell directory. Paths are never shell-expanded.
+// UserConfigDir is the base directory containing the tell directory. Paths are never shell-expanded.
 type Input struct {
-	CWD, UserConfigDir        string
-	Project, File, SystemFile *string
-	Overrides                 map[string]Value
+	CWD, UserConfigDir string
+	Project, File      *string
+	Overrides          map[string]Value
 }
 
 type Notify struct {
@@ -60,7 +60,7 @@ type Config struct {
 	Origins map[string]string `json:"origins"`
 }
 
-// Load merges system, user, shared-project, private-project, then invocation
+// Load merges user, shared-project, private-project, then invocation
 // settings. File replaces automatic file sources, not invocation overrides.
 func Load(input Input) (Config, error) {
 	project, err := ProjectDir(input)
@@ -78,30 +78,20 @@ func Load(input Input) (Config, error) {
 		if strings.TrimSpace(*input.File) == "" {
 			return Config{}, errors.New("config path must not be empty")
 		}
-		if err := cfg.applyFile(resolvePath(input.CWD, *input.File), false); err != nil {
+		if err := cfg.applyFile(resolvePath(input.CWD, *input.File), false, false); err != nil {
 			return Config{}, err
 		}
 	} else {
-		systemFile, optional := "/etc/tell/config.yaml", true
-		if input.SystemFile != nil {
-			if strings.TrimSpace(*input.SystemFile) == "" {
-				return Config{}, errors.New("system-config path must not be empty")
-			}
-			systemFile, optional = resolvePath(input.CWD, *input.SystemFile), false
-		}
-		if err := cfg.applyFile(systemFile, optional); err != nil {
-			return Config{}, err
-		}
 		if input.UserConfigDir != "" {
 			if !filepath.IsAbs(input.UserConfigDir) {
 				return Config{}, errors.New("user config directory must be absolute")
 			}
-			if err := cfg.applyFile(filepath.Join(input.UserConfigDir, "tell", "config.yaml"), true); err != nil {
+			if err := cfg.applyFile(filepath.Join(input.UserConfigDir, "tell", "config.yaml"), true, false); err != nil {
 				return Config{}, err
 			}
 		}
 		for _, name := range []string{"tell.yaml", ".tell.yaml"} {
-			if err := cfg.applyFile(filepath.Join(project, name), true); err != nil {
+			if err := cfg.applyFile(filepath.Join(project, name), true, name == "tell.yaml"); err != nil {
 				return Config{}, err
 			}
 		}
@@ -172,7 +162,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 	return nil
 }
 
-func (cfg *Config) applyFile(path string, optional bool) error {
+func (cfg *Config) applyFile(path string, optional, shared bool) error {
 	path, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -208,6 +198,12 @@ func (cfg *Config) applyFile(path string, optional bool) error {
 		return fmt.Errorf("config %s: %w", path, err)
 	}
 	for _, value := range values {
+		if shared {
+			switch value.key {
+			case "notify.via", "apprise.config", "herdr.session", "hcom.to":
+				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
+			}
+		}
 		if err := cfg.apply(value.key, value.text, filepath.Dir(path), path); err != nil {
 			return fmt.Errorf("config %s:%d: %w", path, value.line, err)
 		}

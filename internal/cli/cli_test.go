@@ -28,11 +28,6 @@ func environment(t *testing.T) string {
 	t.Chdir(base)
 	t.Setenv("HOME", base)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(base, "config"))
-	system := filepath.Join(base, "system.yaml")
-	if err := os.WriteFile(system, []byte("version: 1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("TELL_SYSTEM_CONFIG", system)
 	return base
 }
 
@@ -74,6 +69,92 @@ func TestCLIFlagEnvironmentPrecedence(t *testing.T) {
 	}
 	if result.Config.Timeout != "6s" || result.Config.Apprise.Tag != "flag" || result.Config.Origins["timeout"] != "flag:--timeout" {
 		t.Fatalf("flag precedence: %s", out)
+	}
+}
+
+// Destination environment/flag overrides must remain usable after shared-file
+// restrictions, without changing flag-over-environment precedence.
+func TestPersonalRoutingOverrides(t *testing.T) {
+	for _, tc := range []struct{ key, env, flag, value string }{
+		{"notify.via", "TELL_NOTIFY_VIA", "--via", "apprise"},
+		{"apprise.config", "TELL_APPRISE_CONFIG", "--apprise-config", "/personal/provider.yaml"},
+		{"herdr.session", "TELL_HERDR_SESSION", "--herdr-session", "personal"},
+		{"hcom.to", "TELL_HCOM_TO", "--to", "reviewer"},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			environment(t)
+			t.Setenv(tc.env, tc.value)
+			for _, flag := range []bool{false, true} {
+				args := []string{"--json", "config"}
+				source := "env:" + tc.env
+				if flag {
+					t.Setenv(tc.env, "")
+					args = append(args, tc.flag, tc.value)
+					source = "flag:" + tc.flag
+				}
+				code, out, errOut := run(args...)
+				var result struct{ Config config.Config }
+				if code != 0 || errOut != "" || json.Unmarshal([]byte(out), &result) != nil {
+					t.Fatalf("override: %d %s %s", code, out, errOut)
+				}
+				if result.Config.Values()[tc.key] != tc.value || result.Config.Origins[tc.key] != source {
+					t.Fatalf("wrong routing/provenance: %s", out)
+				}
+			}
+		})
+	}
+}
+
+// User init must honor XDG/HOME, preserve private data and refuse planted links.
+func TestCLIUserInit(t *testing.T) {
+	for _, xdg := range []bool{false, true} {
+		t.Run(map[bool]string{false: "home", true: "xdg"}[xdg], func(t *testing.T) {
+			base := environment(t)
+			dir := filepath.Join(base, "config")
+			if !xdg {
+				t.Setenv("XDG_CONFIG_HOME", "")
+				dir = filepath.Join(base, ".config")
+			}
+			path := filepath.Join(dir, "tell", "config.yaml")
+			code, out, errOut := run("init", "--user", "--json")
+			if code != 0 || !strings.Contains(out, `"created":true`) {
+				t.Fatalf("init user: %d %s %s", code, out, errOut)
+			}
+			info, err := os.Stat(path)
+			if err != nil || info.Mode().Perm() != 0o600 {
+				t.Fatalf("private file: %v %v", info, err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil || !strings.Contains(string(data), "#   config:") {
+				t.Fatalf("personal template: %s %v", data, err)
+			}
+			if code, out, errOut := run("config", "check"); code != 0 {
+				t.Fatalf("generated config invalid: %s %s", out, errOut)
+			}
+			if err := os.WriteFile(path, []byte("sentinel\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			code, out, errOut = run("init", "--user", "--json")
+			data, err = os.ReadFile(path)
+			if code != 0 || !strings.Contains(out, `"created":false`) || err != nil || string(data) != "sentinel\n" {
+				t.Fatalf("overwritten: %d %s %s %v", code, out, errOut, err)
+			}
+			target := filepath.Join(base, "saved.yaml")
+			if err := os.Rename(path, target); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, path); err != nil {
+				t.Fatal(err)
+			}
+			if code, _, _ := run("init", "--user"); code != 1 {
+				t.Fatalf("accepted symlink: %d", code)
+			}
+			for _, args := range [][]string{{"init", "--user", "--local"}, {"-C", base, "init", "--user"}} {
+				if code, _, _ := run(args...); code != 2 {
+					t.Fatalf("accepted conflicting target: %v", args)
+				}
+			}
+		})
 	}
 }
 

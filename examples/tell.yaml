@@ -1,7 +1,6 @@
+# Shared fields only; select delivery routes in user config or private .tell.yaml.
 version: 1
 timeout: 10s
-notify:
-  via: apprise
 apprise:
   tag: project-alerts
   format: markdown

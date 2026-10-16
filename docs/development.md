@@ -42,8 +42,8 @@ semantics when implemented. Prefer public-interface tests using real temporary
 files; do not test framework behavior or static configuration.
 
 Never read real user settings or contact notification services in tests. Set
-HOME/XDG_CONFIG_HOME and pass explicit config inputs; isolate the system config
-source too. Provider tests should use local executables, not network mocks.
+HOME/XDG_CONFIG_HOME and pass explicit config inputs. There is no system config
+source. Provider tests should use local executables, not network mocks.
 
 ## Worktrees and backlog
 

@@ -1,4 +1,2 @@
 # Development defaults; runtime providers are not invoked by this bootstrap.
 version: 1
-notify:
-  via: stdout

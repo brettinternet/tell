@@ -40,7 +40,6 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		Flags: []urfave.Flag{
 			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Select exactly this project directory", Sources: urfave.EnvVars("TELL_PROJECT")},
 			&urfave.StringFlag{Name: "config", Usage: "Replace all automatic config files with FILE", Sources: urfave.EnvVars("TELL_CONFIG")},
-			&urfave.StringFlag{Name: "system-config", Usage: "Use FILE instead of optional /etc/tell/config.yaml", Sources: urfave.EnvVars("TELL_SYSTEM_CONFIG")},
 			&urfave.BoolFlag{Name: "json", Usage: "Print one structured JSON result"},
 		},
 		Action: showConfig,
@@ -51,6 +50,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 			}},
 			{Name: "init", Usage: "Create tell.yaml without overwriting; never sends messages", Flags: []urfave.Flag{
 				&urfave.BoolFlag{Name: "local", Usage: "Create private .tell.yaml instead; add it to .gitignore"},
+				&urfave.BoolFlag{Name: "user", Usage: "Create personal user config instead"},
 			}, Action: initialize},
 		},
 	}
@@ -104,7 +104,7 @@ func input(cmd *urfave.Command) (config.Input, error) {
 	if err != nil {
 		return config.Input{}, err
 	}
-	values := config.Input{CWD: cwd, Project: selector(cmd, "project"), File: selector(cmd, "config"), SystemFile: selector(cmd, "system-config"), Overrides: map[string]config.Value{}}
+	values := config.Input{CWD: cwd, Project: selector(cmd, "project"), File: selector(cmd, "config"), Overrides: map[string]config.Value{}}
 	for _, spec := range settings {
 		if cmd.IsSet(spec.flag) {
 			values.Overrides[spec.key] = config.Value{Text: cmd.String(spec.flag), Source: "flag:--" + spec.flag}
@@ -217,7 +217,19 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	if values.File != nil || len(values.Overrides) != 0 {
 		return &failure{Code: "usage", Message: "init does not apply config or setting overrides; edit the generated file instead", usage: true}
 	}
-	path, created, err := config.Init(values, cmd.Bool("local"))
+	if cmd.Bool("user") && (cmd.Bool("local") || values.Project != nil) {
+		return &failure{Code: "usage", Message: "--user cannot be combined with --local or --project", usage: true}
+	}
+	var path string
+	var created bool
+	if cmd.Bool("user") {
+		values.UserConfigDir, err = userConfigDir()
+		if err == nil {
+			path, created, err = config.InitUser(values)
+		}
+	} else {
+		path, created, err = config.Init(values, cmd.Bool("local"))
+	}
 	if err != nil {
 		return err
 	}
