@@ -34,7 +34,6 @@ func Doctor(ctx context.Context, cfg config.Config) []Readiness {
 		{"apprise", cfg.Apprise.Config != "" || cfg.Apprise.Tag != "" || cfg.Apprise.Format != ""},
 		{"herdr", cfg.Herdr.Session != ""},
 		{"command", len(cfg.Notify.Command) > 0},
-		{"hcom", cfg.Hcom.To != ""},
 	} {
 		if entry.configured && entry.route != cfg.Notify.Via {
 			routes = append(routes, entry.route)
@@ -43,6 +42,14 @@ func Doctor(ctx context.Context, cfg config.Config) []Readiness {
 	results := make([]Readiness, 0, len(routes))
 	for _, route := range routes {
 		results = append(results, checkRoute(ctx, cfg, route, runtime.GOOS))
+	}
+	if cfg.Send.Via != "" || cfg.Send.To != "" {
+		_, failure := probeSend(ctx, cfg)
+		result := Readiness{Route: "send/" + cfg.Send.Via, Ready: failure == nil, Reason: "ready"}
+		if failure != nil {
+			result.Reason = failure.Failure.Reason
+		}
+		results = append(results, result)
 	}
 	return results
 }

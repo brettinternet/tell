@@ -79,7 +79,9 @@ func TestPersonalRoutingOverrides(t *testing.T) {
 		{"notify.via", "TELL_NOTIFY_VIA", "--via", "apprise"},
 		{"apprise.config", "TELL_APPRISE_CONFIG", "--apprise-config", "/personal/provider.yaml"},
 		{"herdr.session", "TELL_HERDR_SESSION", "--herdr-session", "personal"},
-		{"hcom.to", "TELL_HCOM_TO", "--to", "reviewer"},
+		{"send.to", "TELL_SEND_TO", "--to", "reviewer"},
+		{"send.via", "TELL_SEND_VIA", "--send-via", "hcom"},
+		{"send.from", "TELL_SEND_FROM", "--from", "nightly"},
 	} {
 		t.Run(tc.key, func(t *testing.T) {
 			environment(t)

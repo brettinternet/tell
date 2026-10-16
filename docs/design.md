@@ -9,12 +9,12 @@ human / script / scheduler hook
           │
          tell
           ├── notify: stderr / desktop / Herdr / Apprise (external services)
-          └── send: hcom participant
+          └── send: hcom participant mailbox / idle Herdr agent pane
 ```
 
 Configuration, inspection, and notify via stderr, desktop, Apprise, Herdr, and personal commands are implemented.
 Message normalization and embedded secret redaction are implemented.
-Agent send remains planned.
+Agent send through hcom and Herdr is implemented.
 Backlog.md is the work queue; this document records boundaries, not a second task list.
 
 The caller's scheduler (cron, launchd, CI, or Noon) owns schedules, queued runs,
@@ -32,7 +32,7 @@ scheduler hook that notifies only when a job's status changes.
 
 ## Commands and semantics
 
-Commands retain the conversation's separation (send remains planned):
+Commands retain the conversation's separation:
 - notify requests human attention. stderr is the safe built-in default; it
   keeps a calling script's stdout data and --json output intact.
 - send delivers a message to an existing agent through hcom or Herdr.
@@ -57,7 +57,7 @@ Secret redaction uses the embedded Gitleaks v8 default ruleset. Tell is the
 last point before third-party services and agent transcripts persist a message.
 
 Delivery destinations are personal. Routing fields (notify.via, apprise.config,
-herdr.session, hcom.to) now come only from user config, private
+herdr.session, send.via, send.to, send.from) now come only from user config, private
 .tell.yaml, --config, environment, or flags. Shared tell.yaml keeps shared
 semantics such as the Apprise tag and format. Repository scripts decide what
 happened; personal configuration decides where it goes.
@@ -99,7 +99,7 @@ No Markdown/HTML sanitization or other reformatting occurs.
 
 ## Outcomes
 
-Every notify invocation reports exactly one outcome. Callers decide
+Every notify or send invocation reports exactly one outcome. Callers decide
 whether to resend; the outcome says whether that is safe.
 
 | Exit | Outcome | Meaning | Resend? |
@@ -107,7 +107,7 @@ whether to resend; the outcome says whether that is safe.
 | 0 | accepted | The route accepted the message: printed, posted, or the provider exited 0. Not proof anyone read or acted on it. | No |
 | 1 | config | Configuration, input, or I/O error before delivery started. Nothing sent. | After fixing |
 | 2 | usage | Invalid invocation. Nothing sent. | After fixing |
-| 3 | not_sent | Route unavailable: executable missing, platform unsupported, target absent, or the provider matched no destination. Nothing sent. | Yes, or try another route |
+| 3 | not_sent | Route unavailable: executable missing, platform unsupported, target absent/invalid, agent busy/blocked, or the provider matched no destination. Nothing sent. | Yes, or try another route |
 | 4 | failed | The provider ran and reported failure. With reason partial, some destinations received it. | Not blindly |
 | 5 | uncertain | Timed out or cancelled after the provider started. It may have been delivered. | Not without checking |
 
@@ -140,6 +140,67 @@ No automatic retries, agent spawning, fallback to another session, fan-out,
 ACP/MCP server, or generic plugin registry in the initial delivery implementation.
 Timeout/cancellation may leave delivery uncertain; never relabel that success
 or blindly retry consequential agent instructions.
+
+## Agent delivery
+
+Personal `send.via` is hcom or herdr; `send.to` is exactly one recipient.
+No route/recipient is inferred from the caller's agent context. `send.from`
+defaults to `tell-automation`. `send --intent` defaults to inform; request is
+explicit and creates hcom reply obligations. Neither waits for replies.
+
+Every delivered body starts with this exact header (values vary with settings):
+
+```text
+[Tell automation: tell-automation; route: hcom; intent: inform]
+```
+
+The prepared sender-authored body follows on the next line. Send uses the same
+normalization, secret policy, and 16 KiB total body cap (including the header).
+Messages carry pointers, never raw job output, logs, PR text, or hook JSON.
+This is provenance, not proof that content is trusted or that detection found
+every secret.
+
+hcom is an optional external executable. Tell probes `hcom list --json` for
+one exact active full name, then invokes:
+
+```text
+hcom send @NAME --from SENDER --intent inform --json -- MESSAGE
+```
+
+MESSAGE is one argv element, including whitespace and leading dashes.
+Explicit target plus `--` prevents implicit stdin and body mentions from
+changing recipients. Tell refuses broadcasts, multi-targets, tag selectors,
+and remote hcom addressing. hcom owns its mailbox and delivers at the
+participant's next hook, without interrupting its current turn. Verified against
+upstream `669a06703aad3b503d6eac0ce9fd744bf3f7c771`, send.rs/list.rs;
+hcom was not installed during development. Exit 1 conflates provider errors
+and disappearing participants: a missing target at probe time is not_sent;
+a send-time exit 1 is conservatively failed, never automatically retried.
+
+Herdr 0.9.5 uses `--session SESSION agent get NAME`; Tell requires
+`result.agent.agent_status` idle or done, then invokes
+`--session SESSION agent prompt PANE_ID MESSAGE` with the resolved pane ID.
+Working/unknown states are not_sent/busy; dialogs are not_sent/blocked.
+Missing agents and executables are not_sent. Inherited HERDR_* variables
+are removed. It never starts/resumes agents, waits for completion, or falls back.
+**The idle check and prompt are not atomic:** an agent can start working in
+between, and a typed turn could steer it. Use hcom for non-interrupting delivery.
+Herdr's agent_blocked response is not_sent/blocked even if it raced the check.
+Provider failure is failed; timeout/cancellation after start or a malformed
+successful prompt receipt is uncertain. Check before resending.
+
+Send always writes one receipt line to stderr, never the body:
+
+```text
+tell send: route="hcom" recipient="reviewer" intent="inform" outcome=accepted
+```
+
+Failures append a fixed reason; invalid/unresolved recipient fields are empty.
+`--json` writes schema_version, route, recipient, intent, outcome, redactions,
+and optional error on stdout (unresolved metadata can be omitted).
+Provider diagnostics are never echoed. No subprocess inherits Tell's stdin.
+A broken receipt/output stream cannot undo dispatch or justify a resend.
+Bare `tell` inspects only; bare `tell send` rejects input without sending.
 
 ## Desktop delivery
 

@@ -9,8 +9,8 @@ invocation and exits.
 
 **Implemented:** strict layered configuration, source-aware inspection, JSON
 output, non-destructive project initialization, stderr/desktop/Apprise/Herdr/personal-command notifications,
-message normalization, embedded secret redaction, and development tooling.
-**Not implemented:** agent messaging. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
+message normalization, embedded secret redaction, agent messaging through hcom/Herdr, and development tooling.
+Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
 
 ## Try it
 
@@ -47,7 +47,7 @@ defaults → user config → tell.yaml → .tell.yaml → TELL_* environment →
 User config is `$XDG_CONFIG_HOME/tell/config.yaml`, or
 `~/.config/tell/config.yaml` when XDG is unset. Settings merge by field.
 Shared `tell.yaml` rejects personal routing (`notify.via`, `apprise.config`,
-`herdr.session`, `hcom.to`); put it in user config or private `.tell.yaml`.
+`herdr.session`, `send.via`, `send.to`, `send.from`); put it in user config or private `.tell.yaml`.
 Explicit `--config`, environment, and flags also accept routing.
 
 ```yaml
@@ -123,6 +123,30 @@ D-Bus, usually via `DBUS_SESSION_BUS_ADDRESS`; Tell inherits it, not discovers i
 Focus / Do Not Disturb can hide banners. Posted means accepted, not seen or
 acknowledged. See [desktop behavior](docs/design.md#desktop-delivery).
 
+## Agent messages
+
+Configure one recipient in personal config (never shared `tell.yaml`):
+
+```yaml
+send:
+  via: hcom
+  to: reviewer
+  from: tell-automation
+```
+
+`tell send "Tests failed; see noon logs 42"` sends information;
+`tell send --intent request "Triage PRs; report blockers"` requests action.
+Use `tell send -` only to explicitly read stdin. Each invocation prints one
+body-free receipt on stderr; `--json` also emits a structured result on stdout.
+Use `--send-via` to override the transport (`--via` still selects notifications).
+
+hcom queues a mailbox message for a participating agent's next hook. Herdr
+types a user turn only after checking idle/done; configure `send.via: herdr`,
+`send.to` as an agent name or pane ID, and an explicit `herdr.session`.
+There is a check-to-prompt race: use hcom when non-interruption is essential.
+Dispatch is not completion. See [agent delivery](docs/design.md#agent-delivery)
+and the [scheduled instruction example](examples/noon/README.md#scheduled-instructions).
+
 ## Scheduler hooks
 
 Use the [Noon hook example](examples/noon/README.md) to report failure/recovery
@@ -144,7 +168,7 @@ Task, Lefthook, Staticcheck, Gitleaks, govulncheck, git-cliff, Worktrunk, and
 Backlog.md. See [development](docs/development.md).
 
 No daemon, database, web UI, provider SDK, or scheduler is embedded.
-Apprise and Herdr are optional and external; hcom remains planned. None is
+Apprise, Herdr, and hcom are optional and external. None is
 required for building or inspecting configuration.
 
 MIT licensed.

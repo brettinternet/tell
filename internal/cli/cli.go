@@ -27,7 +27,9 @@ var settings = []settingSpec{
 	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag expression"},
 	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body format: text, markdown, html"},
 	{"herdr.session", "herdr-session", "TELL_HERDR_SESSION", "Explicit Herdr session"},
-	{"hcom.to", "to", "TELL_HCOM_TO", "hcom recipient"},
+	{"send.via", "send-via", "TELL_SEND_VIA", "Agent transport: hcom or herdr"},
+	{"send.to", "to", "TELL_SEND_TO", "One exact agent recipient (no @ prefix)"},
+	{"send.from", "from", "TELL_SEND_FROM", "Automated sender identity (default: tell-automation)"},
 }
 
 // NewRootCommand constructs a fresh tree without reading files or executing tools.
@@ -45,6 +47,9 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
+			{Name: "send", Usage: "Send to an existing agent; dispatch is not completion", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
+				&urfave.StringFlag{Name: "intent", Value: "inform", Usage: "Message intent: inform or request"},
+			}, Action: send},
 			{Name: "doctor", Usage: "Check configured routes without sending or starting services", Action: doctor},
 			{Name: "notify", Usage: "Notify via the selected route; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
 				&urfave.StringFlag{Name: "title", Usage: "Notification title (default: project directory name)"},
@@ -100,6 +105,13 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 			return 0
 		}
 		var result *delivery.Result
+		if commandRequested(root, args, "send") {
+			if !errors.As(err, &result) {
+				result = delivery.NewResult("", "usage", "invalid_invocation", "invalid send invocation; run tell send --help")
+			}
+			renderSend(result, jsonRequested(root, args), out, errOut)
+			return result.ExitCode()
+		}
 		if !errors.As(err, &result) && notifyRequested(root, args) {
 			result = delivery.NewResult("", "usage", "invalid_invocation", "invalid notify invocation; run tell notify --help")
 		}

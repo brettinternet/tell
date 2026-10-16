@@ -49,8 +49,10 @@ type Herdr struct {
 	Session string `json:"session,omitempty"`
 }
 
-type Hcom struct {
-	To string `json:"to,omitempty"`
+type Send struct {
+	Via  string `json:"via,omitempty"`
+	To   string `json:"to,omitempty"`
+	From string `json:"from"`
 }
 
 // Config is the effective snapshot. Provider files are referenced, never parsed.
@@ -62,7 +64,7 @@ type Config struct {
 	Secrets Secrets           `json:"secrets"`
 	Apprise Apprise           `json:"apprise"`
 	Herdr   Herdr             `json:"herdr"`
-	Hcom    Hcom              `json:"hcom"`
+	Send    Send              `json:"send"`
 	Sources []string          `json:"sources"`
 	Origins map[string]string `json:"origins"`
 }
@@ -75,7 +77,7 @@ func Load(input Input) (Config, error) {
 		return Config{}, err
 	}
 	cfg := Config{
-		Project: project, Timeout: "10s", Notify: Notify{Via: "stderr"}, Secrets: Secrets{Policy: "redact"},
+		Project: project, Timeout: "10s", Notify: Notify{Via: "stderr"}, Secrets: Secrets{Policy: "redact"}, Send: Send{From: "tell-automation"},
 		Sources: []string{}, Origins: map[string]string{},
 	}
 	for key := range cfg.Values() {
@@ -124,12 +126,12 @@ func (cfg Config) Values() map[string]string {
 		"timeout": cfg.Timeout, "notify.via": cfg.Notify.Via, "notify.command": command,
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
-		"hcom.to": cfg.Hcom.To, "secrets.policy": cfg.Secrets.Policy,
+		"send.via": cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
 	}
 }
 
 func (cfg *Config) apply(key, value, base, source string) error {
-	if strings.TrimSpace(value) == "" {
+	if strings.TrimSpace(value) == "" && key != "send.to" {
 		return fmt.Errorf("%s must not be empty", key)
 	}
 	// Terminal control bytes and NUL have no role in these settings.
@@ -171,8 +173,18 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		}
 	case "herdr.session":
 		cfg.Herdr.Session = value
-	case "hcom.to":
-		cfg.Hcom.To = value
+	case "send.via":
+		if value != "hcom" && value != "herdr" {
+			return errors.New("send.via must be hcom or herdr")
+		}
+		cfg.Send.Via = value
+	case "send.to":
+		cfg.Send.To = value
+	case "send.from":
+		if !ValidIdentity(value) {
+			return errors.New("send.from must be a simple identifier (letters, digits, underscores, hyphens; at most 64 bytes)")
+		}
+		cfg.Send.From = value
 	default:
 		return fmt.Errorf("unknown setting %q", key)
 	}
@@ -220,7 +232,7 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 			switch value.key {
 			case "secrets.policy", "notify.command":
 				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
-			case "notify.via", "apprise.config", "herdr.session", "hcom.to":
+			case "notify.via", "apprise.config", "herdr.session", "send.via", "send.to", "send.from":
 				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
 			}
 		}

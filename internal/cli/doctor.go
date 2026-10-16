@@ -13,6 +13,7 @@ import (
 type doctorReport struct {
 	SchemaVersion int                  `json:"schema_version"`
 	Selected      string               `json:"selected"`
+	SelectedSend  string               `json:"selected_send,omitempty"`
 	Ready         bool                 `json:"ready"`
 	Routes        []delivery.Readiness `json:"routes"`
 }
@@ -28,7 +29,13 @@ func doctor(ctx context.Context, cmd *urfave.Command) error {
 		return &failure{Code: "config", Message: "could not load configuration; run tell config check"}
 	}
 	routes := delivery.Doctor(ctx, cfg)
-	return &doctorReport{SchemaVersion: 1, Selected: cfg.Notify.Via, Ready: routes[0].Ready, Routes: routes}
+	ready := routes[0].Ready
+	selectedSend := ""
+	if cfg.Send.Via != "" || cfg.Send.To != "" {
+		selectedSend = "send/" + cfg.Send.Via
+		ready = ready && routes[len(routes)-1].Ready
+	}
+	return &doctorReport{SchemaVersion: 1, Selected: cfg.Notify.Via, SelectedSend: selectedSend, Ready: ready, Routes: routes}
 }
 
 func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut io.Writer) int {
@@ -38,7 +45,7 @@ func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut i
 	} else {
 		for _, route := range r.Routes {
 			selected := ""
-			if route.Route == r.Selected {
+			if route.Route == r.Selected || route.Route == r.SelectedSend {
 				selected = " (selected)"
 			}
 			count := ""

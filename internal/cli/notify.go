@@ -81,6 +81,10 @@ func (*resultWriteError) Error() string {
 
 // Locate the command without mistaking a flag value or message for a command.
 func notifyRequested(root *urfave.Command, args []string) bool {
+	return commandRequested(root, args, "notify")
+}
+
+func commandRequested(root *urfave.Command, args []string, command string) bool {
 	valueFlags := map[string]bool{}
 	for _, flag := range root.Flags {
 		if _, boolean := flag.(*urfave.BoolFlag); !boolean {
@@ -92,10 +96,10 @@ func notifyRequested(root *urfave.Command, args []string) bool {
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
-			return i+1 < len(args) && args[i+1] == "notify"
+			return i+1 < len(args) && args[i+1] == command
 		}
 		if !strings.HasPrefix(arg, "-") {
-			return arg == "notify"
+			return arg == command
 		}
 		name, _, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
 		if valueFlags[name] && !hasValue {

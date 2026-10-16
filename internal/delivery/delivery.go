@@ -21,6 +21,8 @@ type Result struct {
 	Redactions    int      `json:"redactions"`
 	Outcome       string   `json:"outcome"`
 	Route         string   `json:"route"`
+	Recipient     string   `json:"recipient,omitempty"`
+	Intent        string   `json:"intent,omitempty"`
 	Failure       *Failure `json:"error,omitempty"`
 }
 
@@ -145,9 +147,14 @@ func RunProcess(ctx context.Context, timeout time.Duration, route, name string, 
 }
 
 func runProcess(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string) (int, *Result) {
+	return process(ctx, timeout, route, name, args, stdin, env, nil)
+}
+
+func process(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string, stdout io.Writer) (int, *Result) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = stdout
 	cmd.Stdin, cmd.Env = stdin, env
 	// Bound stdin copying even if a descendant retains the pipe after exit.
 	cmd.WaitDelay = 100 * time.Millisecond

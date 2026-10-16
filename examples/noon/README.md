@@ -99,6 +99,44 @@ resending is safe. The hook ignores delivery exit codes with
 separate from notification outcome. **Never rerun a business job because its
 notification failed.** See [Tell outcomes](../../docs/design.md#outcomes).
 
+## Scheduled instructions
+
+Merge [scheduled-send.yaml](scheduled-send.yaml) into the repository's Noon
+config and review/approve the job. It sends an authored weekday PR-triage
+instruction, not job output. `missed: skip` prevents a missed instruction from
+being replayed late after sleep; `overlap: skip` avoids overlapping dispatches.
+Noon owns the schedule, missed runs, overlap, and history, not Tell.
+
+In the service user's personal Tell config, set:
+
+```yaml
+send:
+  via: hcom
+  to: reviewer
+  from: nightly
+```
+
+Ensure hcom is on the service PATH and reviewer participates in hcom. For Herdr,
+use `send.via: herdr`, an explicit name/pane ID in `send.to`, and
+`herdr.session: work`; the session and agent must already exist. Configure
+`notify.via` separately for a person (desktop, Apprise, etc.), then run
+`tell doctor` in the service environment before enabling the job.
+
+The shell in the example expands `NOON_RUN_ID` into a quoted pointer. Tell
+itself never reads Noon environment or JSON. A nonzero send fails the Noon run;
+its job-level `on_failure` notifies a person, including on the first failure.
+It deliberately does not use the transition-only notify.sh wrapper above.
+A failed hook does not change the recorded job outcome. Inspect the receipt in
+`noon logs RUN` before retrying: timeout/cancellation may mean delivered.
+
+hcom delivers a mailbox message on the recipient's next hook without steering
+its current turn. Herdr types a new user turn only after an idle/done check;
+that check can race with work starting, so use hcom when non-interruption is
+required. Busy/blocked agents are not prompted. A successful Noon run here means
+**dispatch**, not that the agent finished triage. Use a Noon `prompt`/`prompt_file`
+agent job instead when the work needs a fresh context or tracked completion.
+No reply waits, queues, retries, or completion tracking are added to Tell.
+
 ## Isolated verification
 
 `task smoke` builds Tell and runs the hook with a sanitized service-style

@@ -42,7 +42,7 @@ printf '%s' "$FIXTURE_SESSIONS"
 	t.Setenv("HERDR_SESSION", "wrong-session")
 	t.Setenv("HERDR_SOCKET_PATH", "private-socket")
 	t.Setenv("FIXTURE_SESSIONS", `{"sessions":[{"name":"private-session","running":true,"socket_path":"private-path"}]}`)
-	cfg := "notify: {via: apprise, command: [" + filepath.Join(dir, "personal") + ", private-argument]}\napprise: {config: private-config, tag: private-tag, format: markdown}\nherdr: {session: private-session}\nhcom: {to: private-recipient}\n"
+	cfg := "notify: {via: apprise, command: [" + filepath.Join(dir, "personal") + ", private-argument]}\napprise: {config: private-config, tag: private-tag, format: markdown}\nherdr: {session: private-session}\n"
 	if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ printf '%s' "$FIXTURE_SESSIONS"
 		for _, result := range report.Routes {
 			found[result.Route] = result
 		}
-		if len(found) != len(report.Routes) || len(found) < 4 || found["hcom"].Reason != "unsupported_route" || found["apprise"].Services == nil || *found["apprise"].Services != 2 {
+		if len(found) != len(report.Routes) || len(found) < 3 || found["apprise"].Services == nil || *found["apprise"].Services != 2 {
 			t.Fatalf("routes: %s", out)
 		}
 		for _, args := range [][]string{{"doctor", "--via", route}, {"--json", "doctor", "--via", route}} {

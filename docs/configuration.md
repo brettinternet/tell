@@ -28,7 +28,7 @@ env/flags still apply; use a controlled environment for reproducible CI.
 HOME and XDG_CONFIG_HOME are not consulted, so services without HOME can use it.
 
 Shared `tell.yaml` rejects `notify.command`, `notify.via`, `apprise.config`, `herdr.session`, and
-`hcom.to`, with a source/line diagnostic directing you to a personal source.
+`send.via`, `send.to`, and `send.from`, with a source/line diagnostic directing you to a personal source.
 Set routing in user config, private `.tell.yaml`, an explicit `--config` file,
 environment, or flags. Even a higher-priority override cannot make routing in
 automatically loaded shared config valid. Explicitly selecting `tell.yaml` with
@@ -65,7 +65,9 @@ destinations; private configuration and explicit invocation inputs are trusted.
 | apprise.tag | unset | TELL_APPRISE_TAG | --apprise-tag |
 | apprise.format | unset | TELL_APPRISE_FORMAT | --apprise-format |
 | herdr.session | unset | TELL_HERDR_SESSION | --herdr-session |
-| hcom.to | unset | TELL_HCOM_TO | --to |
+| send.via | unset | TELL_SEND_VIA | --send-via |
+| send.to | unset | TELL_SEND_TO | --to |
+| send.from | tell-automation | TELL_SEND_FROM | --from |
 
 The table uses dotted names for reference; YAML must use nested mappings.
 This complete example belongs in **user or private config**, not shared tell.yaml:
@@ -81,8 +83,10 @@ apprise:
   format: markdown
 herdr:
   session: main
-hcom:
+send:
+  via: hcom
   to: reviewer
+  from: tell-automation
 ```
 
 - secrets.policy is `redact` (replace detected secrets with `[REDACTED]`) or
@@ -98,8 +102,17 @@ hcom:
   does not read it or check that it exists during config inspection.
 - apprise.tag is a single expression preserved for Apprise.
 - apprise.format is text, markdown, or html.
-- herdr.session and hcom.to are explicit identifiers, not executable commands.
-- Optional settings are unset until supplied. An explicitly empty value is an
+- send.via is hcom or herdr, with no default transport. send.to is one exact local
+  hcom full name (no @ prefix), or a Herdr name/pane ID. Whitespace, lists,
+  wildcards, tag selectors ending in `-`, remote hcom targets, and `self` are refused.
+  Herdr also requires herdr.session. Missing/empty/invalid recipients yield
+  `not_sent` on send; no broadcast fallback exists.
+- send.from defaults to tell-automation; use a non-secret automation identity of
+  at most 64 ASCII letters/digits/underscores/hyphens, not starting with a hyphen.
+  The bootstrap hcom.to setting and TELL_HCOM_TO variable have been replaced by
+  send.to and TELL_SEND_TO; old YAML is rejected. `--via` is notify-only;
+  `--send-via` selects send, and `send --intent inform|request` selects intent.
+- Optional settings are unset until supplied. Except send.to, an explicitly empty value is an
   error; omit it instead. A flag replaces an env value before validation.
 - notify.command is a non-empty argv list of strings, with a non-blank executable
   and no NUL bytes. Empty arguments after the executable are allowed. Only user
@@ -134,9 +147,9 @@ Use the same user, environment, and config as the intended caller. It never
 sends a test message, starts services, installs providers, or repairs settings.
 
 The selected route is checked first, followed by other explicitly configured
-routes: any Apprise setting, herdr.session, notify.command, or hcom.to.
-Defaults alone do not add routes. hcom remains unsupported and is reported as
-such when configured. Use `--via desktop` to check desktop availability.
+notification routes: any Apprise setting, herdr.session, or notify.command.
+Configured send.via/to adds a separate `send/hcom` or `send/herdr` check.
+Defaults alone do not add routes. Use `--via desktop` to check desktop availability.
 
 - stderr needs no external executable.
 - desktop checks for osascript on macOS or notify-send on Linux; other platforms
@@ -152,15 +165,21 @@ such when configured. Use `--via desktop` to check desktop availability.
 - Herdr runs `session list --json` with inherited HERDR_* variables removed and
   requires an exact, running configured session. It does not attach or start one.
 
+- send/hcom runs `hcom list --json` and requires one exact active full name.
+- send/herdr runs `agent get` in the explicit session and requires idle/done.
+  Neither send probe submits a message; working/unknown is busy, dialogs are blocked.
+
 Each probe uses the configured timeout. Captured output is bounded to 1 MiB;
 oversized or malformed responses fail closed. Readiness is a point-in-time
 setup check, not a delivery guarantee or human acknowledgment.
 
-JSON is one schema_version 1 object with selected, ready, and routes.
+JSON is one schema_version 1 object with selected, ready, and routes, plus
+selected_send when agent messaging is configured.
 Each route has route, ready, and a fixed reason; Apprise also includes services
 when its dry-run output was collected. No raw configuration is included.
-Exit 0 means the selected route is ready, even if another configured route
-is not; exit 1 means it is not ready or configuration/output failed. Invalid
+Exit 0 means the selected notification route and configured send route are ready,
+even if another notification route is not; exit 1 means either selected route is
+not ready or configuration/output failed. Invalid
 invocations exit 2. Bare `tell` and `config check` still execute no providers.
 
 ## Strict YAML and output

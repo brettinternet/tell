@@ -1,0 +1,14 @@
+# Merge into noon.yaml, review/approve, and configure personal Tell routing.
+# Noon invokes run strings with /bin/sh -c; only the run pointer is interpolated.
+jobs:
+  triage:
+    schedule: weekdays at 9am
+    missed: skip
+    overlap: skip
+    timeout: 30s
+    run: >-
+      exec tell --timeout 10s send --intent request
+      "Triage new PRs and report blockers. Scheduled run ${NOON_RUN_ID:?}; see noon logs ${NOON_RUN_ID}."
+    on_failure: >-
+      tell --timeout 10s notify --type failure
+      "Agent dispatch failed for run ${NOON_RUN_ID:?}; inspect noon logs ${NOON_RUN_ID} before resending."

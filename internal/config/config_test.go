@@ -72,7 +72,9 @@ func TestPersonalRoutingSources(t *testing.T) {
 		{"notify.via", "notify:\n  via: apprise\n", "apprise"},
 		{"apprise.config", "apprise:\n  config: provider.yaml\n", "provider.yaml"},
 		{"herdr.session", "herdr:\n  session: personal\n", "personal"},
-		{"hcom.to", "hcom:\n  to: reviewer\n", "reviewer"},
+		{"send.to", "send:\n  to: reviewer\n", "reviewer"},
+		{"send.via", "send:\n  via: hcom\n", "hcom"},
+		{"send.from", "send:\n  from: nightly\n", "nightly"},
 	} {
 		t.Run(tc.key, func(t *testing.T) {
 			input := fixture(t)

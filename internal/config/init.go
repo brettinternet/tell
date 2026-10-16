@@ -82,6 +82,8 @@ version: 1
 #   format: markdown
 # herdr:
 #   session: main
-# hcom:
+# send:
+#   via: hcom
 #   to: reviewer
+#   from: tell-automation
 `
