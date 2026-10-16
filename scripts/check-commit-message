@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+message_file=${1:?usage: check-commit-message <message-file>}
+IFS= read -r subject < "$message_file" || :
+case "$subject" in
+  "Merge "*|"Revert \""*|"fixup! "*|"squash! "*) exit 0 ;;
+esac
+
+pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^ ].*$'
+if ! printf '%s\n' "$subject" | grep -Eq "$pattern"; then
+  printf '%s\n' 'Commit subject must follow Conventional Commits: type(scope): description' >&2
+  exit 1
+fi
+case "$subject" in
+  *.) printf '%s\n' 'Commit subject must not end with a period.' >&2; exit 1 ;;
+esac
