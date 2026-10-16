@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 21:41'
-updated_date: '2026-10-16 22:37'
-labels: []
+updated_date: '2026-10-16 23:11'
+labels:
+  - reviewed
 dependencies:
   - TELL-2
   - TELL-3
@@ -54,6 +55,8 @@ Non-goals: sending test notifications, installing or starting providers, repairi
 Implemented doctor in tell-12-doctor worktree. Verification: go test ./internal/cli ./internal/delivery and task ci pass (format, vet, Staticcheck, Gitleaks, govulncheck, unit, race, build, smoke). Fixture tests cover selected-vs-configured status, exact dry-run/list argv, EOF stdin, sanitized output, single schema_version 1 JSON object, missing/non-executable commands, zero services, stopped/missing sessions, malformed/oversized output, timeouts, unsupported desktop platforms, and no personal/desktop execution. Oversize regression caught and fixed bytes.Buffer ReadFrom bypass of the capture limit. Clean LSP diagnostics. Built CLI in empty environment with explicit empty config reports stderr ready in human and JSON modes. README/configuration/development setup docs recommend doctor and explain its limits. Independent safety review pending; next: resolve concrete findings, commit, fast-forward main, finalize task and clean owned worktree.
 
 Independent reviewer completed the single safety review with no validated remaining findings; confirmed named-buffer fix. Implementation committed as 4c1300e (feat: check route readiness without sending) after task check:staged and fast-forward merged into main. No push. Owned worktree/branch tell-12-doctor removed through Worktrunk; exact Herdr workspace wE3 verified absent afterward. No retained checkout or workspace, remaining blocker, or resumable implementation step.
+
+Review: no defects found. Verified read-only probes, sanitized output, selected-route exit semantics, and Herdr session list --json shape against the real Herdr CLI.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

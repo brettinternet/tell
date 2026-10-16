@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 21:41'
-updated_date: '2026-10-16 22:27'
-labels: []
+updated_date: '2026-10-16 23:11'
+labels:
+  - reviewed
 dependencies:
   - TELL-2
   - TELL-7
@@ -59,6 +60,8 @@ Non-goals: shell strings, templates or interpolation, multiple named commands, p
 Implementation complete in .worktrees/feat-tell-11-command. Focused go test ./internal/config ./internal/cli ./internal/delivery passed. TestCommandNotify exercises exact literal argv, prepared stdin through EOF, metadata env overrides, untouched caller stdin, safe inspection/output, exit 0/3/1/5, missing executable and absent command config. TestNotifyInterruption now covers command timeout and cancellation after start. TestCommandConfig and strict YAML cases cover personal trust, whole-list replacement, provenance and invalid list inputs. task ci passed (gofmt, vet, Staticcheck, changelog, unit/race tests, build/smoke, Gitleaks, govulncheck: no reachable vulnerabilities). LSP diagnostics clean on edited Go files. README/configuration/design document the exact contract and worked personal say wrapper. One independent boundary-focused review is underway; commit/merge/cleanup pending.
 
 Completed one independent reviewer pass: no validated findings. A 16KiB subprocess fixture with a helper retaining stdin returned accepted on macOS; preserved successful exit for Go ErrWaitDelay after bounded pipe cleanup, with cancellation still uncertain. Final task ci passed after that correction and again on integrated main. Implementation committed as 9b0354c (feat: deliver notifications through personal commands), rebased over concurrent documentation-only main changes and fast-forward merged. task check:staged passed before commit. No push. Verified session creation receipt, clean integrated worktree and idle shell pane; Worktrunk removed feat/tell-11-command worktree and branch, and Herdr workspace wDZ disappearance was verified. No remaining blocker or resumable implementation work.
+
+Review: no defects found. Verified literal argv without shell, stdin body via EOF, TELL_* env, exit mapping, missing/timeout/cancel outcomes, and file-only personal trust. Note: relative notify.command paths resolve against the caller cwd (documented as passed literally).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
