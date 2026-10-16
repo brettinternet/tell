@@ -2,65 +2,46 @@
 
 ## Boundary
 
-Tell is a short-lived CLI between repo automation and delivery tools:
-
 ```text
-human / script / scheduler hook
+person / script / scheduler hook
           │
-         tell
-          ├── notify: stderr / desktop / Herdr / Apprise (external services)
-          └── send: hcom participant mailbox / idle Herdr agent pane
+         tell  (one invocation, then exit)
+          ├── notify → stderr | desktop | Herdr | Apprise → services | your command
+          └── send   → hcom mailbox | idle Herdr agent pane
 ```
 
-Configuration, inspection, and notify via stderr, desktop, Apprise, Herdr, and personal commands are implemented.
-Message normalization and embedded secret redaction are implemented.
-Agent send through hcom and Herdr is implemented.
-Backlog.md is the work queue; this document records boundaries, not a second task list.
+| Owner | Owns |
+| --- | --- |
+| Scheduler (cron, launchd, CI, Noon) | schedules, queues, concurrency, cancellation, run history |
+| Repo scripts | which events matter, what agent work means |
+| Tell | routing, safe argv, bounded subprocesses, honest results |
+| Provider | destinations, credentials, native config |
 
-The caller's scheduler (cron, launchd, CI, or Noon) owns schedules, queued runs,
-concurrency, cancellation, and run history. Repo scripts decide what events
-deserve notification and what agent work means. Tell owns routing for one
-invocation, safe argv, bounded subprocess execution, and honest dispatch
-results. It owns no message database or background worker, and it never reads
-scheduler-specific environment or payloads: callers pass arguments or explicit
-stdin.
+Tell keeps no state. It never reads scheduler-specific environment or payloads;
+callers pass arguments or explicit stdin.
 
-Tell does not throttle, deduplicate, or rate-limit. That needs state shared
-across invocations, only the caller knows whether a message repeats, and a
-dropped alert costs more than a duplicate. Callers own it, for example a
-scheduler hook that notifies only when a job's status changes.
+Tell does not throttle, deduplicate, or rate-limit. That needs state across
+invocations, only the caller knows whether a message repeats, and a dropped
+alert costs more than a duplicate. A hook that notifies only on status change
+is the caller's job (see [examples/noon](../examples/noon/README.md)).
 
-## Commands and semantics
+There are no retries, fallback routes, fan-out, agent spawning, plugin
+registry, or ACP/MCP server. Backlog.md tracks planned work; this document
+describes what exists.
 
-Commands retain the conversation's separation:
-- notify requests human attention. stderr is the safe built-in default; it
-  keeps a calling script's stdout data and --json output intact.
-- send delivers a message to an existing agent through hcom or Herdr.
+## Commands
 
-Send carries the sender's own information or instructions. Instructions are
-legitimate when a person or their scheduled job authors them; the scheduler
-owns when they run, missed runs, and overlap. Messages carry pointers (run IDs,
-paths, URLs) rather than raw job output, so agents read untrusted data through
-their own tools. Tell never waits for a reply or for work to finish: tracked
-agent work belongs to a scheduler's agent jobs (such as Noon's), and
-ask-and-wait flows belong to Unharness.
+`notify` asks a person for attention. The default route, stderr, keeps a
+script's stdout and `--json` output clean. Desktop and Herdr cover common
+personal cases with no extra runtime. Apprise fans out to external services.
+The command route runs one personal executable with a fixed contract.
 
-Notify routes are thin built-ins plus one advanced provider. Built-ins cover the
-common personal cases with no extra runtime: stderr; desktop through osascript
-on macOS or notify-send on Linux; and an explicit Herdr session. Apprise handles
-fan-out to external services and owns their destinations and credentials. A
-user-owned command route runs a personal executable with a fixed contract,
-without shell strings or a plugin registry.
-
-Message preparation processes titles and bodies before any route runs (see below).
-Secret redaction uses the embedded Gitleaks v8 default ruleset. Tell is the
-last point before third-party services and agent transcripts persist a message.
-
-Delivery destinations are personal. Routing fields (notify.via, apprise.config,
-herdr.session, send.via, send.to, send.from) now come only from user config, private
-.tell.yaml, --config, environment, or flags. Shared tell.yaml keeps shared
-semantics such as the Apprise tag and format. Repository scripts decide what
-happened; personal configuration decides where it goes.
+`send` gives an existing agent information (`--intent inform`) or an
+instruction (`--intent request`). Instructions are legitimate when a person or
+their scheduled job wrote them. Send pointers (run IDs, paths, URLs), not raw
+job output, so agents read untrusted data through their own tools. Tell never
+waits for a reply or for the work to finish. Tracked agent work belongs to the
+scheduler's agent jobs (such as Noon's); ask-and-wait belongs to Unharness.
 
 ## Compatibility
 
@@ -85,292 +66,301 @@ success.
 
 ## Message preparation
 
-Every notification route receives the same prepared title and body, whether from
-literal arguments, explicit stdin, or the default project-directory title:
+Every route gets the same prepared title and body, in this order:
 
-- NUL anywhere in either original field rejects the invocation with exit 1
-  (`config/invalid_message`), even beyond the truncation limit. Nothing is sent.
-- C0 controls (U+0001–U+001F), DEL, and C1 controls (U+0080–U+009F) are removed,
-  except newline (LF) and tab. CR is removed, so CRLF becomes LF.
-- Terminal escape sequences are removed in full: CSI, OSC, DCS, SOS, PM, APC,
-  and ordinary ESC sequences, including their C1 forms. Control strings end at
-  BEL or ST; incomplete sequences are discarded through end of input.
-- Unicode bidi embedding/override controls U+202A–U+202E and isolate controls
-  U+2066–U+2069 are removed. Other Unicode text is preserved; malformed UTF-8
-  is replaced with U+FFFD.
-- After filtering, both fields are scanned offline using embedded Gitleaks rules.
-  Detected secret occurrences are replaced with **`[REDACTED]`** by default.
-  Personal-only `secrets.policy: reject` instead fails before dispatch with exit 1
-  (`config/secret_detected`). Scanner initialization errors fail closed with
-  `config/secret_scan_failed`. Inline `gitleaks:allow` comments cannot bypass scanning.
-  No local scanner config, ignore files, custom rules, or network validation is used.
-- After scanning and redaction, titles are capped at **256 bytes**, bodies at **16,384 bytes**.
-  Truncation keeps a UTF-8 boundary and appends **`[truncated]`** within that limit.
-  These are output limits, not limits on bytes read from stdin.
-- A body empty or whitespace-only after preparation fails with exit 1
-  (`config/empty_message`) before dispatch.
+1. **Reject NUL** anywhere in the original text: exit 1, `config/invalid_message`.
+2. **Strip controls**: C0, DEL, C1, and CR (so CRLF → LF). Newline and tab stay.
+3. **Strip terminal sequences** in full: CSI, OSC, DCS, SOS, PM, APC, and plain
+   ESC sequences, including C1 forms. Strings end at BEL or ST; an unterminated
+   sequence is dropped to end of input.
+4. **Strip bidi controls** U+202A–U+202E and U+2066–U+2069. Invalid UTF-8
+   becomes U+FFFD. Other text is untouched; no Markdown/HTML sanitizing.
+5. **Scan for secrets** with the embedded Gitleaks v8 default rules, offline.
+   Matches become `[REDACTED]`. With personal `secrets.policy: reject`, exit 1
+   `config/secret_detected` instead. A scanner error fails closed
+   (`config/secret_scan_failed`). `gitleaks:allow` does not bypass it. No local
+   rules, ignore files, or network checks.
+6. **Truncate** titles to 256 bytes and bodies to 16,384 bytes on a UTF-8
+   boundary, ending with `[truncated]` inside the limit. These cap output, not
+   stdin reads.
+7. **Reject empty**: a blank body exits 1, `config/empty_message`.
 
-Scanning precedes truncation so a secret crossing the output limit is not exposed
-as a partial token. JSON `redactions` counts merged replaced occurrences across
-both fields, including replacements subsequently truncated. Reject reports zero
-redactions because nothing is replaced or delivered. Default rules use patterns,
-entropy, and built-in allowlists; false positives and missed secrets are possible.
-Do not treat detection as proof that a message is safe to publish.
-No Markdown/HTML sanitization or other reformatting occurs.
+```console
+$ tell --json notify "key $AWS_ACCESS_KEY_ID done"
+key [REDACTED] done
+{"outcome":"accepted","redactions":1,"route":"stderr","schema_version":1}
+```
+
+Scanning runs before truncation so a secret at the limit is not leaked as a
+partial token. `redactions` counts replaced occurrences across both fields,
+including ones later truncated. `reject` reports zero. Detection uses patterns,
+entropy, and allowlists, so it has false positives and misses. It is not proof
+a message is safe.
 
 ## Outcomes
 
-Every notify or send invocation reports exactly one outcome. Callers decide
-whether to resend; the outcome says whether that is safe.
-
 | Exit | Outcome | Meaning | Resend? |
 | --- | --- | --- | --- |
-| 0 | accepted | The route accepted the message: printed, posted, or the provider exited 0. Not proof anyone read or acted on it. | No |
-| 1 | config | Configuration, input, or I/O error before delivery started. Nothing sent. | After fixing |
+| 0 | accepted | Printed, posted, or the provider exited 0. Not proof anyone read or acted on it. | No |
+| 1 | config | Configuration, input, or I/O error before delivery. Nothing sent. | After fixing |
 | 2 | usage | Invalid invocation. Nothing sent. | After fixing |
-| 3 | not_sent | Route unavailable: executable missing, platform unsupported, target absent/invalid, agent busy/blocked, or the provider matched no destination. Nothing sent. | Yes, or try another route |
-| 4 | failed | The provider ran and reported failure. With reason partial, some destinations received it. | Not blindly |
-| 5 | uncertain | Timed out or cancelled after the provider started. It may have been delivered. | Not without checking |
+| 3 | not_sent | Executable missing, platform unsupported, target absent/invalid, agent busy/blocked, or no destination matched. Nothing sent. | Yes, or another route |
+| 4 | failed | The provider ran and failed. Reason `partial` means some destinations got it. | Not blindly |
+| 5 | uncertain | Timed out or cancelled after the provider started. It may have arrived. | Not without checking |
 
-With --json, stdout receives one object with schema_version, outcome, and route;
-failures add error.code (the outcome), error.message, and a reason such as
-missing_executable, unsupported_route, no_match, partial, timeout,
-cancelled, secret_detected, secret_scan_failed, or unsupported_platform. Results never include the message body or raw provider output.
-Unknown provider exit codes map to failed, never accepted. The route is empty
-when invocation parsing or configuration fails before route resolution.
-The built-in stderr route writes the message there even in JSON mode; stdout
-contains only the result. A stderr write error is failed because a partial write
-may already have occurred. If writing an accepted JSON result fails, Tell warns
-on stderr and retains exit 0: output failure does not undo acceptance and must
-not invite a retry. A broken stdout cannot carry the promised JSON object.
-Cancellation while reading explicit stdin exits config/cancelled before delivery.
-
-Apprise is an optional external executable. Tell maps its exits 0 to accepted,
-3 to not_sent/no_match, 4 to failed/partial, and 5 to uncertain/timeout; all other
-exits (including 1 and 2) are failed/provider_failure. This mapping was verified
-against Apprise `8227752a16c630536daefc387a0e546580fed5ae`, `apprise/result.py`
-and `apprise/cli.py`. Older versions may report generic failure for no match;
-Tell does not infer success or safety from provider text. No destinations loaded
-can also produce exit 1. Provider output is discarded, never echoed.
-
-An accepted provider invocation does not prove a human read the notification,
-nor that an agent completed work. hcom recipients must participate in hcom;
-the wrapper must not silently target an arbitrary running terminal.
-
-No automatic retries, agent spawning, fallback to another session, fan-out,
-ACP/MCP server, or generic plugin registry in the initial delivery implementation.
-Timeout/cancellation may leave delivery uncertain; never relabel that success
-or blindly retry consequential agent instructions.
-
-## Agent delivery
-
-Personal `send.via` is hcom or herdr; `send.to` is exactly one recipient.
-No route/recipient is inferred from the caller's agent context. `send.from`
-defaults to `tell-automation`. `send --intent` defaults to inform; request is
-explicit and creates hcom reply obligations. Neither waits for replies.
-
-Every delivered body starts with this exact header (values vary with settings):
-
-```text
-[Tell automation: tell-automation; route: hcom; intent: inform]
+```console
+$ tell --json notify --via apprise "Deploy done"
+{"schema_version":1,"redactions":0,"outcome":"not_sent","route":"apprise","error":{"code":"not_sent","message":"provider executable was not found","reason":"missing_executable"}}
 ```
 
-The prepared sender-authored body follows on the next line. Send uses the same
-normalization, secret policy, and 16 KiB total body cap (including the header).
-Messages carry pointers, never raw job output, logs, PR text, or hook JSON.
-This is provenance, not proof that content is trusted or that detection found
-every secret.
+Reasons include `missing_executable`, `start_failed`, `unsupported_route`,
+`unsupported_platform`, `unsupported_message`, `missing_route`,
+`missing_target`, `missing_session`, `invalid_target`, `invalid_response`,
+`no_match`, `busy`, `blocked`, `partial`, `provider_failure`, `timeout`,
+`cancelled`, `secret_detected`, and `secret_scan_failed`. Results never include the body or
+provider output. Unknown provider exits are `failed`, never `accepted`.
 
-hcom is an optional external executable. Tell probes `hcom list --json` for
-one exact active full name, then invokes:
+- Cancellation before the provider starts, or while reading stdin, is `config`.
+- The stderr route writes the message to stderr even with `--json`; stdout holds
+  only the result. A stderr write error is `failed`, since part may be written.
+- If writing an accepted JSON result fails, Tell warns on stderr and keeps exit 0.
+  Output failure does not undo delivery and must not invite a resend.
 
-```text
-hcom send @NAME --from SENDER --intent inform --json -- MESSAGE
-```
+Never relabel `uncertain` as success or blindly resend a consequential agent
+instruction.
 
-MESSAGE is one argv element, including whitespace and leading dashes.
-Explicit target plus `--` prevents implicit stdin and body mentions from
-changing recipients. Tell refuses broadcasts, multi-targets, tag selectors,
-and remote hcom addressing. hcom owns its mailbox and delivers at the
-participant's next hook, without interrupting its current turn. Verified against
-upstream `669a06703aad3b503d6eac0ce9fd744bf3f7c771`, send.rs/list.rs;
-hcom was not installed during development. Exit 1 conflates provider errors
-and disappearing participants: a missing target at probe time is not_sent;
-a send-time exit 1 is conservatively failed, never automatically retried.
+## Stderr
 
-Herdr 0.9.5 uses `--session SESSION agent get NAME`; Tell requires
-`result.agent.agent_status` idle or done, then invokes
-`--session SESSION agent prompt PANE_ID MESSAGE` with the resolved pane ID.
-Working/unknown states are not_sent/busy; dialogs are not_sent/blocked.
-Missing agents and executables are not_sent. Inherited HERDR_* variables
-are removed. It never starts/resumes agents, waits for completion, or falls back.
-**The idle check and prompt are not atomic:** an agent can start working in
-between, and a typed turn could steer it. Use hcom for non-interrupting delivery.
-Herdr's agent_blocked response is not_sent/blocked even if it raced the check.
-Provider failure is failed; timeout/cancellation after start or a malformed
-successful prompt receipt is uncertain. Check before resending.
-
-Send always writes one receipt line to stderr, never the body:
-
-```text
-tell send: route="hcom" recipient="reviewer" intent="inform" outcome=accepted
-```
-
-Failures append a fixed reason; invalid/unresolved recipient fields are empty.
-`--json` writes schema_version, route, recipient, intent, outcome, redactions,
-and optional error on stdout (unresolved metadata can be omitted).
-Provider diagnostics are never echoed. No subprocess inherits Tell's stdin.
-A broken receipt/output stream cannot undo dispatch or justify a resend.
-Bare `tell` inspects only; bare `tell send` rejects input without sending.
+Writes the body to stderr. Nothing else.
 
 ## Desktop delivery
 
-macOS uses `osascript` with fixed AppleScript source and separate title/body argv;
-text is never interpolated into code. Notifications are attributed to Script
-Editor and may require notification permission in System Settings. macOS does
-not expose notification severity through this API; `--type` is ignored.
+| Platform | Runs | Type |
+| --- | --- | --- |
+| macOS | `osascript` with fixed AppleScript; title and body as separate argv | ignored |
+| Linux | `notify-send --urgency LEVEL -- TITLE BODY` | `failure` → critical, else normal |
+| other | — | `not_sent/unsupported_platform` |
 
-Linux uses `notify-send --urgency LEVEL -- TITLE BODY`. Failure maps to critical
-urgency; info, success, and warning use normal urgency. Install libnotify's
-`notify-send` and provide a session D-Bus. Scheduled services usually need
-`DBUS_SESSION_BUS_ADDRESS` from the user's desktop session. Tell inherits the
-environment without discovering sessions or reading scheduler-specific state.
+Text is never interpolated into code. On macOS, banners appear as **Script
+Editor**; allow its notifications in System Settings. On Linux, install
+libnotify's `notify-send` and run inside a desktop session. Scheduled services
+need the user's session D-Bus, usually `DBUS_SESSION_BUS_ADDRESS`; Tell inherits
+it and does not discover it.
 
-Both tools are resolved through PATH. Missing tools or unsupported platforms
-return not_sent before dispatch. A nonzero provider exit is failed; timeout or
-cancellation after start is uncertain. Cancellation before start is config.
-Provider output is discarded, stdin is closed, and there are no retries or
-fallbacks. Focus / Do Not Disturb or desktop policy can suppress a banner:
-accepted is posting acceptance, never acknowledgment.
+Both tools resolve through PATH. Stdin is closed and output discarded.
+Focus / Do Not Disturb can hide an accepted banner.
+
+## Apprise delivery
+
+Requires `apprise` on PATH. Apprise owns destinations, credentials, and tag
+semantics; Tell never opens its config file.
+
+```text
+apprise --title TITLE --body BODY --notification-type TYPE [--config FILE] [--tag TAG] [--input-format FORMAT]
+```
+
+Unset options are omitted so Apprise defaults apply (without `--tag`, only
+untagged services are notified). No URL arguments. Native `APPRISE_*`
+variables pass through uninterpreted. Stdin is closed and output discarded.
+
+| Apprise exit | Tell outcome |
+| --- | --- |
+| 0 | accepted |
+| 3 | not_sent/no_match |
+| 4 | failed/partial |
+| 5 | uncertain/timeout |
+| other (including 1, 2) | failed/provider_failure |
+
+Verified against Apprise `8227752a16c630536daefc387a0e546580fed5ae`
+(`apprise/result.py`, `apprise/cli.py`). Older versions may report no match as
+a generic failure, and no loaded destinations can also exit 1. Tell never
+infers success from provider text.
 
 ## Herdr delivery
 
-Requires the external `herdr` executable on PATH and an explicit local
-`herdr.session` in personal configuration, environment, or `--herdr-session`.
-Use `default` to explicitly select the default session. The session must already
-be running; Tell never launches, attaches, creates, discovers, or switches sessions.
+Requires `herdr` on PATH and an explicit, already-running `herdr.session`
+(use `default` for the default session). Tell never launches, attaches,
+creates, discovers, or switches sessions.
 
-Tell runs `herdr --session SESSION notification show TITLE --body BODY --sound none`
-with separate literal argv and closed stdin. Type does not change sound or
-severity. All inherited `HERDR_*` variables are removed from the child environment,
-including socket, session, pane, remote context, and config-path overrides.
-HOME/XDG_CONFIG_HOME still locate the user's normal Herdr configuration.
-No shell interpolation occurs.
+```text
+herdr --session SESSION notification show TITLE --body BODY --sound none
+```
 
-Verified against Herdr 0.9.5's `src/main.rs`, `src/session.rs`, and
-`src/cli/notification.rs`: explicit --session takes precedence over the socket
-environment, and notification dispatch connects to the existing API without
-entering the launch path. Herdr's global parser also scans message argv.
-Because it has no notification positional escape, Tell refuses a whole title
-or body equal to --session, --remote, --remote-keybindings, or --handoff, or
-starting with one of those names followed by "=". Titles equal to help, --help,
-or -h are also refused. This is `not_sent/unsupported_message`, before execution,
-rather than risking a changed target or treating help output as acceptance.
-These strings embedded within longer prose are unaffected.
+Every inherited `HERDR_*` variable is removed, including socket, session, pane,
+remote, and config-path overrides. HOME and XDG_CONFIG_HOME still locate the
+user's Herdr config. Type does not change sound or severity.
 
-A missing session is `not_sent/missing_target`; a missing executable is
-`not_sent/missing_executable`. An unreachable session or any other nonzero
-Herdr exit is `failed/provider_failure` (exit 4); Tell does not infer delivery
-from provider diagnostics. Timeout/cancellation after start is uncertain,
-before start is config. Child output is discarded, and JSON never contains
-message text or raw provider output. There are no retries or fallback routes.
-A posted notification is not human acknowledgment.
+Herdr's global parser also scans message argv and has no positional escape.
+So Tell refuses, as `not_sent/unsupported_message`, a title or body that equals
+`--session`, `--remote`, `--remote-keybindings`, or `--handoff` or starts with
+one followed by `=`, and a title equal to `help`, `--help`, or `-h`. The same
+strings inside longer text are fine. Verified against Herdr 0.9.5
+(`src/main.rs`, `src/session.rs`, `src/cli/notification.rs`): explicit
+`--session` beats the socket environment, and notification dispatch never
+enters the launch path.
+
+| Case | Outcome |
+| --- | --- |
+| no session configured | `not_sent/missing_target` |
+| no executable | `not_sent/missing_executable` |
+| session unreachable, other nonzero exit | `failed/provider_failure` |
 
 ## Command delivery
 
-Set an argv list in personal config; Tell never splits a shell string, expands
-variables, interpolates templates, or adds message arguments:
+Runs one personal executable. Configure argv as a list in user config,
+`.tell.yaml`, or `--config` (never `tell.yaml`):
 
 ```yaml
-# ~/.config/tell/config.yaml (or private .tell.yaml)
 notify:
   via: command
   command: [/Users/me/.local/bin/tell-speak]
 ```
 
-For example, save this executable wrapper at that absolute path on macOS
-(`chmod +x /Users/me/.local/bin/tell-speak`):
-
 ```sh
 #!/bin/sh
+# /Users/me/.local/bin/tell-speak (chmod +x); speaks the body on macOS
 exec /usr/bin/say -f -
 ```
 
-Run `tell notify "Build finished"` to speak the prepared body from stdin.
-The wrapper owns provider-specific behavior; Tell does not generate shell code.
+The child sees:
 
-Exact contract:
+```text
+stdin         prepared body, no trailing newline, then EOF
+TELL_TITLE    prepared title
+TELL_TYPE     info | success | warning | failure
+TELL_PROJECT  canonical absolute project directory
+```
 
-- argv is passed unchanged. Bare executable names resolve through PATH; relative
-  executable paths and arguments use the invocation working directory, not the
-  config directory or selected project. Prefer an absolute executable path.
-- Stdin is the prepared UTF-8 body, with no added newline, then EOF. The child
-  never inherits Tell's stdin, including when Tell consumes explicit `notify -`.
-- The inherited environment is supplemented (overriding same-named values) with
-  `TELL_TITLE` (prepared title), `TELL_TYPE` (info/success/warning/failure), and
-  `TELL_PROJECT` (canonical absolute selected project directory).
-- Child stdout/stderr are discarded. Tell never logs argv or provider output.
-  Credentials stay in provider-owned files or its environment.
-- Exit 0 means accepted; exit 3 promises nothing sent (`not_sent/no_match`);
-  every other nonzero exit is `failed/provider_failure`, including exit 5.
-  A missing executable is `not_sent/missing_executable`; other start failures
-  are `not_sent/start_failed`.
-- Missing notify.command is `config/invalid_config`. Cancellation before start
-  is config; timeout or cancellation after start is uncertain. The configured
-  timeout bounds execution and pipe cleanup has a short bounded grace period.
-  Tell kills the direct child, not a process tree: wrappers should `exec` their
-  provider and must not detach background deliveries.
-- There are no retries. Accepted is not human acknowledgment. Only `notify`
-  executes the command; bare Tell and config inspection never do.
+For `tell notify --type warning "Disk 91% full"` in `~/dev/app`:
 
-Shared tell.yaml rejects notify.command even when a personal layer overrides it.
-This is trusted personal execution policy, not a sandbox.
+```text
+TELL_TITLE=app
+TELL_TYPE=warning
+TELL_PROJECT=/Users/me/dev/app
+stdin: Disk 91% full
+```
 
-## Configuration ownership
+- argv is passed unchanged: no shell, splitting, templates, or added arguments.
+  Bare names resolve through PATH. Relative paths resolve against the current
+  directory, not the config file or project, so prefer absolute paths.
+- The child never inherits Tell's stdin, even with `notify -`. The three
+  variables override inherited ones of the same name.
+- Output is discarded. Tell never logs argv. Keep credentials in the provider's
+  own files or environment, not in argv.
+- Tell kills the direct child on timeout, not its process tree. Wrappers should
+  `exec` the provider and must not background deliveries.
 
-Use the implemented [configuration contract](configuration.md). Keep native
-provider configuration in that provider. Apprise owns destinations, credentials,
-and tag expression semantics. Tell forwards explicitly selected common options;
-unset provider options defer to provider behavior. Native provider files are not
-parsed or merged by Tell.
+| Child result | Outcome |
+| --- | --- |
+| exit 0 | accepted |
+| exit 3 (promise: nothing sent) | not_sent/no_match |
+| any other nonzero, including 5 | failed/provider_failure |
+| executable missing | not_sent/missing_executable |
+| other start failure | not_sent/start_failed |
+| `notify.command` unset | config/invalid_config |
 
-Private routing and explicit invocation inputs are trusted policy, not a sandbox.
-Shared tell.yaml rejects personal routing; no system layer is loaded.
-Do not add shared-config
-executable overrides, plugin-loading paths, command templates, or raw shell
-strings. Provider subprocesses receive argv, never interpolated shell code.
-Logs and errors must not echo credentials or raw message contents.
+This is trusted personal execution, not a sandbox. Only `notify` runs it;
+inspection never does.
+
+## Agent delivery
+
+`send.via` is `hcom` or `herdr`; `send.to` is exactly one recipient. Nothing is
+inferred from the caller's agent context. `--intent` defaults to `inform`;
+`request` is explicit and creates hcom reply obligations. Neither waits.
+
+Every body starts with a provenance header:
+
+```text
+[Tell automation: tell-automation; route: hcom; intent: inform]
+Tests failed; see noon logs 42
+```
+
+The header counts toward the 16 KiB body cap. Normalization and secret policy
+apply as for notify. The header records origin; it does not make content
+trusted.
+
+Each invocation prints one body-free receipt to stderr; `--json` adds a result
+on stdout:
+
+```console
+$ tell send "Tests failed; see noon logs 42"
+tell send: route="hcom" recipient="reviewer" intent="inform" outcome=accepted
+
+$ tell --json send --send-via hcom --to reviewer "hi"
+tell send: route="hcom" recipient="reviewer" intent="inform" outcome=not_sent reason=missing_executable
+{"schema_version":1,"redactions":0,"outcome":"not_sent","route":"hcom","recipient":"reviewer","intent":"inform","error":{"code":"not_sent","message":"provider executable was not found","reason":"missing_executable"}}
+```
+
+Unresolved fields are empty in the receipt and may be omitted from JSON. No
+subprocess inherits Tell's stdin. A broken output stream cannot undo dispatch.
+Bare `tell send` sends nothing.
+
+### hcom
+
+Tell checks `hcom list --json` for one exact active name, then runs:
+
+```text
+hcom send @NAME --from SENDER --intent INTENT --json -- MESSAGE
+```
+
+The explicit target and `--` stop stdin and body mentions from changing the
+recipient; MESSAGE is one argv element. Broadcasts, multiple targets, tag
+selectors, and remote addresses are refused. hcom delivers at the recipient's
+next hook without steering its current turn.
+
+hcom exit 1 covers both provider errors and a participant that vanished. A
+target missing at probe time is `not_sent`; exit 1 at send time is
+conservatively `failed`. Verified against hcom
+`669a06703aad3b503d6eac0ce9fd744bf3f7c771` (`send.rs`, `list.rs`); hcom was not
+installed during development.
+
+### Herdr
+
+Requires `herdr.session`. Against Herdr 0.9.5:
+
+```text
+herdr --session SESSION agent get NAME            # require agent_status idle or done
+herdr --session SESSION agent prompt PANE_ID MESSAGE
+```
+
+| Case | Outcome |
+| --- | --- |
+| working or unknown | not_sent/busy |
+| blocked on a dialog, or `agent_blocked` from prompt | not_sent/blocked |
+| agent or executable missing | not_sent |
+| no `herdr.session` | not_sent/missing_session |
+| provider error | failed |
+| timeout after start, malformed prompt receipt | uncertain |
+
+**The check and the prompt are not atomic.** The agent can start working in
+between, and the typed turn may steer it. Use hcom when interruption matters.
+`HERDR_*` variables are removed. Tell never starts or resumes agents.
 
 ## Scheduler hooks
 
-The [worked Noon example](../examples/noon/README.md) includes a repo-owned
-transition hook, job config, service setup, and isolated integration fixtures.
+A small hook script turns scheduler context (job, status, run ID) into Tell
+arguments. Literal message arguments never consume the hook's stdin, so
+payloads like Noon's JSON run summary stay with the hook; pass `-` only when
+stdin is the message.
 
-Schedulers call Tell like any script. A small hook script translates the
-scheduler's context (job, status, run ID) into Tell arguments; Tell has no
-scheduler-specific protocol. Literal notify arguments do not consume a hook's
-stdin, so payloads such as Noon's JSON run summary stay with the hook.
-Explicitly choose `-` only when its contents are the message.
+Keep delivery inside the hook budget: Noon allows 30 seconds, and Tell's 10s
+default leaves room for startup and cleanup. A failed hook is not a redelivery
+mechanism; never rerun a business job to resend an alert.
 
-Keep delivery inside the hook's budget: Noon allows 30 seconds, and Tell's
-default 10-second delivery timeout leaves room for hook supervision.
-A failed hook is not a durable notification-redelivery mechanism; do not rerun a
-successful business job to resend an alert.
+Services do not inherit an interactive Herdr session or agent identity. Set
+PATH, config, and targets explicitly per user. For agent work that needs
+completion tracking, use the scheduler's agent jobs, not hcom dispatch.
 
-Scheduled services do not inherit an interactive Herdr session or agent identity.
-Resolve executable paths/configuration from explicit per-user setup and pass
-session/recipient targets deliberately. For scheduled agent work with
-completion tracking, use the scheduler's agent execution (such as Noon agent
-jobs), not successful hcom dispatch as a proxy for completion.
+See the [Noon example](../examples/noon/README.md).
 
-## Implementation shape
+## Implementation
 
-cmd/tell remains the process boundary. internal/cli handles arguments and
-rendering; internal/config owns strict file resolution. internal/delivery owns
-stderr, desktop, Apprise, Herdr, personal commands, dispatch outcomes, and bounded
-subprocess execution. No interface registry for known tools.
+| Package | Owns |
+| --- | --- |
+| `cmd/tell` | process boundary |
+| `internal/cli` | arguments, rendering |
+| `internal/config` | strict file resolution |
+| `internal/delivery` | routes, outcomes, bounded subprocesses |
 
-Verification should use real temporary files and local fixture executables.
-Critical tests cover argument preservation, config provenance, process timeout/
-cancellation, provider exit failures, and redaction. Never send real messages
-from the automated suite.
+Routes are plain subprocess adapters with no interface registry. Tests use real
+temp files and local fixture executables, and never send real messages.
