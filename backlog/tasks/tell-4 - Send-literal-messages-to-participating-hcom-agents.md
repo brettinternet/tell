@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@brett'
 created_date: '2026-10-16 20:29'
-updated_date: '2026-10-16 22:54'
-labels: []
+updated_date: '2026-10-16 23:40'
+labels:
+  - reviewed
 dependencies:
   - TELL-2
   - TELL-7
@@ -78,6 +79,8 @@ Implementation in .worktrees/tell-4-send: send.via/to/from (personal sources), h
 Acceptance evidence: AC1/2/4 TestSendLiteralAndStdin passes for both routes, literal/explicit stdin and inform/request, exact single-recipient argv/header, body-free one-line stderr and JSON metadata. AC3 TestSendRefusesUnsafeTargets and TestSendOutcomes pass: unsafe/absent targets, working/blocked/unknown states, missing executables, failed providers, post-start timeout/cancellation, no retries or inherited stdin. AC5 TestPersonalRoutingSources/Overrides and TestSendReadinessAndPreparation pass for personal routing, read-only doctor, normalization and redaction. AC6 full task ci passes after correction; Noon config check accepts scheduled-send.yaml; isolated /tmp/tell-scheduled-example-check.py executed both YAML shell commands with a fake Tell, confirming failed dispatch exit propagation, literal NOON_RUN_ID pointer, and separate human failure notification. Docs cover missed: skip, timing ownership, transport semantics/race, dispatch versus completion, and Noon agent jobs.
 Single independent verification pass found hcom unknown states treated as active. Fixed with confirmed active/listening/blocked allowlist (upstream shared/constants.rs); extended public CLI regressions proving unknown/error/launching/inactive states neither send nor report ready. Full task ci rerun PASS; affected LSP clean. No further general review performed.
 Delivery: implementation commit 6296b134b143d6f24bbb89d328f76c9e1317460d fast-forward merged into main after rebasing over concurrent backlog-only commit 2da4b7b; preserved that change. task check:staged passed. Owned worktree/branch tell-4-send removed via Worktrunk; exact Herdr workspace wE6 confirmed absent. No retained checkout/workspace, blocker, or resumable implementation step. No push.
+
+Review: one finding, fixed in dafa204. A read-only recipient check (hcom list, herdr agent get) that timed out returned uncertain/timeout (exit 5, 'delivery may have occurred') though nothing was sent, discouraging a safe resend; reproduced with a built binary and stalled fixtures for both routes. probeSend now maps an interrupted probe to not_sent/timeout (or config/cancelled); docs updated; TestSendOutcomes probe-timeout regression fails without the fix. Otherwise sound: explicit @target and -- for hcom, provenance header keeps Herdr prompt text from starting with a reserved option, idle/done gate pins the resolved pane ID, no inherited stdin, body-free receipts. hcom list --json shape (array of name/status) rechecked against upstream 669a067. task ci passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

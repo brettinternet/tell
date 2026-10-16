@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 20:29'
-updated_date: '2026-10-16 22:44'
-labels: []
+updated_date: '2026-10-16 23:40'
+labels:
+  - reviewed
 dependencies:
   - TELL-2
   - TELL-3
@@ -67,6 +68,8 @@ Non-goals: a Noon integration package, changes to the sibling Noon checkout, par
 Implementation verification: sh -n examples/noon/notify.sh and mise exec -- task ci passed in tell-5-noon-hooks (2026-10-16). Smoke fixture checks first failure, timeout, repeated failure/success suppression, timeout recovery, unknown/pruned predecessor suppression, exact literal context/log pointer, destination and canonical project, and one provider attempt with hook success even when provider exits 7. JSON summary/log sentinel text is excluded by exact body assertion. No real services contacted. NOON-31 merged during work; replaced initial history-query prototype with POSIX shell and documented minimum Noon commit 2d3d376. Full CI includes vet, staticcheck, unit/race/smoke, Gitleaks and govulncheck. LSP supplemental checks unavailable (Go report unknown; Python server exited before prototype removal). Focused independent review pending.
 
 Final acceptance/delivery: AC1/AC3 proven by TestNoonHook exact destination, metadata and body assertions under isolated HOME/XDG/PATH with Noon-shaped stdin and log sentinel. AC2 proven by transition table and failing-provider case; docs specify 10s Tell vs 30s Noon budget and no retries. AC4 service documentation covers PATH, HOME/XDG, desktop/D-Bus/macOS permissions, explicit Herdr session, doctor limitations, exits 0–5 and best-effort || true. task ci and task check:staged passed. Independent reviewer PASS: no validated findings; confirmed shipped Noon snapshot contract and context isolation. Implementation committed as f5d9bed and fast-forward merged to main. Owned worktree/branch tell-5-noon-hooks removed through Worktrunk; exact associated Herdr workspace wE5 disappearance verified. No push. No blocker or remaining item-scoped step.
+
+Review: no findings. Hook transition table matches Noon's NOON_STATUS/NOON_PREVIOUS_STATUS contract (bump docs/hooks.md); message is literal argv with </dev/null, so JSON stdin and logs never reach Tell. Both examples pass current noon config check; smoke TestNoonHook passed in task ci.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

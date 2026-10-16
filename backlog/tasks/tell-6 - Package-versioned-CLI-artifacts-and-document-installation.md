@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 20:29'
-updated_date: '2026-10-16 23:01'
-labels: []
+updated_date: '2026-10-16 23:40'
+labels:
+  - reviewed
 dependencies:
   - TELL-4
 references:
@@ -73,6 +74,8 @@ Implemented four-platform packaging and tag-release workflow in .worktrees/tell-
 Independent read-only reviewer completed one general review: no validated findings. Implementation committed as d0b47a0 (chore: package versioned release artifacts), after task check:staged passed. Integration pending: concurrent primary-checkout documentation edits overlap README.md and docs/design.md. User explicitly chose to wait for the other writer to commit; do not stash, overwrite, or commit their changes. Next: verify the Worklease claim, refresh primary status, merge the committed documentation into tell-6-release and reconcile only task-scoped docs if needed, rerun affected checks, merge locally to main, finalize Backlog and clean the receipt-owned worktree. Live mise install remains pending by AC5; no publication is authorized.
 
 Integration complete: waited for independent documentation commit 508d1df, merged it into the implementation branch and preserved its rewritten structure while retaining release instructions and compatibility promises. Reconciliation commit 97449c1; reran task ci and VERSION=v1.2.3 task cli:package successfully on that commit (host --version reported full 97449c1c2115664dc01e69b66140a308b5befc7f metadata). main fast-forwarded to 97449c1. Worktrunk removed the receipt-verified tell-6-release checkout and branch; associated wE8 workspace was inspected (idle zsh only) and removed by the hook. AC2/4 workflow verified by Actionlint, ShellCheck and independent release-safety review; publication path creates GitHub Releases with four archives, checksums and generated notes only after exact-tag main-push CI success. AC5 is satisfied at its explicitly allowed pre-publication boundary: matrix and default mise command validated statically, live installation PENDING until authorized publication. No push or release occurred. Unrelated TELL-14 task left untouched. No implementation blocker or next implementation step remains.
+
+Review: no functional findings. Release gate (exact tag commit, main push CI via gh run watch), minimal permissions, refusal to overwrite releases, and archive layout/checksums verified; VERSION=v1.2.3 task cli:package, actionlint and shellcheck pass. Cleanup in 5d7865a: restored collapsed backslash line continuations in scripts/package.sh and release.yaml (worked, but unreadable). Note: a tag on a main commit without its own push CI run (pushed mid-batch) fails closed. Live mise install still pending publication.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
