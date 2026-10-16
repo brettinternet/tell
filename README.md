@@ -31,6 +31,7 @@ bin/tell --json notify --type success "Build finished"
 bin/tell config                  # effective values, origins, loaded files
 bin/tell config check            # validate without invoking providers
 bin/tell --json config check
+bin/tell doctor                  # read-only route readiness; no messages sent
 TELL_TIMEOUT=5s bin/tell config
 bin/tell --timeout 8s config     # flags override environment
 bin/tell -C ../another-repo config
@@ -67,6 +68,11 @@ notify:
 apprise:
   config: ../apprise/apprise.yaml
 ```
+
+After configuring a route, run `tell doctor` (or `tell --json doctor`) to check
+readiness without sending. It checks the selected and all explicitly configured
+routes; only the selected route determines success. See [readiness](docs/configuration.md#route-readiness)
+for checks and limitations.
 
 Run `tell notify "Build finished"` to deliver using the selected personal route.
 The default route is stderr. Apprise is an **optional external executable** on PATH;

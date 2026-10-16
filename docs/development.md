@@ -7,7 +7,9 @@ to a Go-only CLI. Go 1.27.2, urfave/cli v3, and strict YAML configuration match 
 
 Run `mise trust && mise exec -- task init` to install pinned tools, Go modules,
 and Lefthook hooks. No service starts. The build uses Go; provider runtimes are
-optional external tools, not embedded dependencies.
+optional external tools, not embedded dependencies. After configuring a delivery
+route, run `tell doctor` to check readiness without sending; see
+[route readiness](configuration.md#route-readiness) for its limits.
 
 - `task cli:build` builds bin/tell; `task cli:run -- --help` runs from source.
 - `task check` checks gofmt, vet, Staticcheck, and changelog generation.

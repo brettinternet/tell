@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/brettinternet/tell/internal/config"
 )
 
 // Guard both platforms against source/option injection even on single-OS CI.
@@ -22,6 +24,13 @@ func TestDesktopLiteralArguments(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nprintf '%s\\000' \"$@\" > \"$FIXTURE_RECORD\"\n"), 0o700); err != nil {
 					t.Fatal(err)
 				}
+			}
+			readiness := checkRoute(context.Background(), config.Config{}, "desktop", platform)
+			if readiness.Ready != (platform != "windows") || (platform == "windows" && readiness.Reason != "unsupported_platform") {
+				t.Fatalf("readiness: %+v", readiness)
+			}
+			if _, err := os.Stat(record); !os.IsNotExist(err) {
+				t.Fatal("desktop readiness executed provider")
 			}
 			for _, kind := range []string{"info", "success", "warning", "failure"} {
 				message := Message{Title: "-title ' \" \\\nnext", Body: "--body ' \" \\\n$(no-shell)", Type: kind}

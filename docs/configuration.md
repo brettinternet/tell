@@ -109,7 +109,7 @@ hcom:
   with your provider or executable, not in command arguments.
 
 Apprise inherits native APPRISE_* environment variables; Tell does not interpret
-or display them. Tell always supplies --body, --title, and --notification-type.
+or display them. For delivery, Tell always supplies --body, --title, and --notification-type.
 Unset config, tag, and format options are omitted so Apprise's native behavior
 applies (without --tag, only untagged services are notified). No URL arguments
 are accepted. Apprise stdin is closed; stdout/stderr are discarded.
@@ -126,6 +126,42 @@ Desktop providers, Herdr, and Apprise receive the body via argv, so local proces
 Do not include secrets in notifications.
 
 For the personal command route, see the [exact contract and worked example](design.md#command-delivery).
+
+## Route readiness
+
+After configuration, run `tell doctor`, or `tell --json doctor` for automation.
+Use the same user, environment, and config as the intended caller. It never
+sends a test message, starts services, installs providers, or repairs settings.
+
+The selected route is checked first, followed by other explicitly configured
+routes: any Apprise setting, herdr.session, notify.command, or hcom.to.
+Defaults alone do not add routes. hcom remains unsupported and is reported as
+such when configured. Use `--via desktop` to check desktop availability.
+
+- stderr needs no external executable.
+- desktop checks for osascript on macOS or notify-send on Linux; other platforms
+  are unsupported. It does not execute them or verify notification permissions,
+  D-Bus connectivity, Focus settings, or visible banners.
+- command checks executable resolution/permissions only; it never runs the
+  command or exposes its path/arguments. This cannot verify interpreter availability
+  or the command's own provider configuration.
+- Apprise runs `--dry-run` with the effective config, tag, and format, inherits
+  native APPRISE_* settings, and reports only the matching service count.
+  Zero matches or a failed dry run are not ready. No URLs or provider diagnostics
+  are printed. Apprise itself reads its configuration.
+- Herdr runs `session list --json` with inherited HERDR_* variables removed and
+  requires an exact, running configured session. It does not attach or start one.
+
+Each probe uses the configured timeout. Captured output is bounded to 1 MiB;
+oversized or malformed responses fail closed. Readiness is a point-in-time
+setup check, not a delivery guarantee or human acknowledgment.
+
+JSON is one schema_version 1 object with selected, ready, and routes.
+Each route has route, ready, and a fixed reason; Apprise also includes services
+when its dry-run output was collected. No raw configuration is included.
+Exit 0 means the selected route is ready, even if another configured route
+is not; exit 1 means it is not ready or configuration/output failed. Invalid
+invocations exit 2. Bare `tell` and `config check` still execute no providers.
 
 ## Strict YAML and output
 

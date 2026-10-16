@@ -45,6 +45,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
+			{Name: "doctor", Usage: "Check configured routes without sending or starting services", Action: doctor},
 			{Name: "notify", Usage: "Notify via the selected route; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
 				&urfave.StringFlag{Name: "title", Usage: "Notification title (default: project directory name)"},
 				&urfave.StringFlag{Name: "type", Value: "info", Usage: "Notification type: info, success, warning, failure"},
@@ -87,6 +88,10 @@ func (err *failure) Error() string { return err.Message }
 func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut io.Writer) int {
 	root := NewRootCommand(build, out, errOut)
 	if err := root.Run(ctx, args); err != nil {
+		var report *doctorReport
+		if errors.As(err, &report) {
+			return report.render(root, args, out, errOut)
+		}
 		var outputError *resultWriteError
 		if errors.As(err, &outputError) {
 			// Delivery was accepted. A broken result stream must not invite a resend

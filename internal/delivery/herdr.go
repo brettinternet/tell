@@ -2,7 +2,6 @@ package delivery
 
 import (
 	"context"
-	"os"
 	"strings"
 	"time"
 )
@@ -27,12 +26,7 @@ func notifyHerdr(ctx context.Context, timeout time.Duration, session string, mes
 	}
 	// Do not carry another pane's session/socket/config routing into the child.
 	// HOME/XDG_CONFIG_HOME still locate the user's normal Herdr installation.
-	env := make([]string, 0, len(os.Environ()))
-	for _, entry := range os.Environ() {
-		if !strings.HasPrefix(entry, "HERDR_") {
-			env = append(env, entry)
-		}
-	}
+	env := herdrEnv()
 	args := []string{"--session", session, "notification", "show", message.Title, "--body", message.Body, "--sound", "none"}
 	code, failure := runProcess(ctx, timeout, route, "herdr", args, nil, env)
 	if failure != nil {
