@@ -1,0 +1,8 @@
+# Install as ~/.config/tell/config.yaml (or under XDG_CONFIG_HOME).
+version: 1
+notify:
+  via: desktop
+apprise:
+  config: ../apprise/apprise.yaml
+herdr:
+  session: main

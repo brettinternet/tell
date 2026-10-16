@@ -12,10 +12,10 @@ tasks:
     desc: Run tell from source
     cmd: mise exec go -- go run ./cmd/tell {{.CLI_ARGS}}
   fix:
-    cmd: find cmd internal -type f -name '*.go' -exec mise exec go -- gofmt -w {} +
+    cmd: find cmd internal integration -type f -name '*.go' -exec mise exec go -- gofmt -w {} +
   check:
     cmds:
-      - test -z "$(find cmd internal -type f -name '*.go' -exec mise exec go -- gofmt -l {} +)"
+      - test -z "$(find cmd internal integration -type f -name '*.go' -exec mise exec go -- gofmt -l {} +)"
       - mise exec go -- go vet ./...
       - mise exec staticcheck -- staticcheck ./...
   test:

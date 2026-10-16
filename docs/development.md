@@ -27,6 +27,7 @@ Commit. Never push without instruction. Release publication is not wired up.
 - `internal/cli`: urfave commands, flag/env handling, human/JSON output.
 - `internal/config`: strict YAML, source selection, precedence, validation; no CLI-framework dependency.
 - `scripts/`: development checks; no runtime service.
+- `integration/`: built-binary smoke tests behind the `smoke` build tag.
 - `backlog/`: authoritative work queue managed through Backlog.md.
 
 Create packages only when functionality needs them. Do not copy Noon's scheduler,

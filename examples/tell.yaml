@@ -1,0 +1,7 @@
+version: 1
+timeout: 10s
+notify:
+  via: apprise
+apprise:
+  tag: project-alerts
+  format: markdown

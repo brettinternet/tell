@@ -2,19 +2,79 @@
 
 **Small delivery plumbing for humans and agents.**
 
-A Go CLI intended to route notifications through Apprise and Herdr, and messages
-through hcom. Repo scripts own workflows; Noon owns scheduling and queued jobs.
-Tell executes one invocation and exits.
+A Go CLI for consistent notification and message routing from terminals, scripts,
+and repo automation. Repo scripts own workflows; Noon owns schedules, queues, and
+run history. Tell executes one invocation and exits.
 
-Bootstrap in progress: tooling and Backlog.md are established. Configuration
-inspection and initialization are being implemented; delivery adapters are
-tracked separately. Nothing sends notifications or starts a service yet.
+**Implemented:** strict layered configuration, source-aware inspection, JSON
+output, non-destructive project initialization, and development tooling.
+**Not implemented:** notification delivery, agent messaging, provider execution,
+or retries. These are tracked in Backlog.md; there are no successful stub commands.
 
-## Development
+## Try it
 
 ```sh
 mise trust
 mise exec -- task init
+task cli:build
+
+bin/tell                         # inspect settings; sends nothing
+bin/tell --help
+bin/tell --version
+bin/tell init                    # create tell.yaml; never overwrite
+bin/tell init --local            # create private .tell.yaml; ignore it in Git
+bin/tell config                  # effective values, origins, loaded files
+bin/tell config check            # validate without invoking providers
+bin/tell --json config check
+TELL_TIMEOUT=5s bin/tell config
+bin/tell --timeout 8s config     # flags override environment
+bin/tell -C ../another-repo config
+bin/tell --config ./ci.yaml config check  # only this file, plus env/flags
 ```
 
-See [development](docs/development.md). MIT licensed.
+Configuration precedence, lowest to highest:
+
+```text
+defaults → /etc/tell/config.yaml → user config
+         → tell.yaml → .tell.yaml → TELL_* environment → CLI flags
+```
+
+User config is `$XDG_CONFIG_HOME/tell/config.yaml`, or
+`~/.config/tell/config.yaml` when XDG is unset. Settings merge by field.
+
+```yaml
+# tell.yaml — safe to share; provider credentials live elsewhere
+version: 1
+timeout: 10s
+notify:
+  via: apprise
+apprise:
+  tag: project-alerts
+```
+
+This currently configures and validates the intended route; **it does not send**.
+Apprise owns its native configuration, credentials, and provider integrations.
+Tell stores only a local config-file reference, tag, and format; it never opens
+the referenced Apprise file during inspection.
+
+See [configuration](docs/configuration.md) for all keys, flags, paths, and error
+semantics; [design](docs/design.md) for the delivery boundary and planned adapters.
+
+## Development
+
+```sh
+task test
+task ci
+task backlog
+task backlog:next
+```
+
+Tooling follows the sibling hum, bump (Noon), and project repositories: mise,
+Task, Lefthook, Staticcheck, Gitleaks, govulncheck, git-cliff, Worktrunk, and
+Backlog.md. See [development](docs/development.md).
+
+No daemon, database, web UI, provider SDK, or scheduler is embedded.
+Apprise/Herdr/hcom will be optional external executables for their respective
+adapters, not requirements for building or inspecting configuration.
+
+MIT licensed.
