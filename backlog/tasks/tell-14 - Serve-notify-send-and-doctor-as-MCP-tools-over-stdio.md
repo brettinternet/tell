@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 22:57'
-updated_date: '2026-10-16 23:30'
-labels: []
+updated_date: '2026-10-16 23:49'
+labels:
+  - reviewed
 dependencies: []
 references:
   - 'https://github.com/modelcontextprotocol/go-sdk'
@@ -59,6 +60,8 @@ Non-goals: HTTP/SSE transports; resources or prompts; MCP-specific retries, queu
 Implementation complete in owned .worktrees/tell-14-mcp; initial task ci and focused protocol/config checks passed. Single independent review reproduced stale schemas after live opt-in changes and SDK malformed-parameter body disclosure. Live-schema correction and bidirectional regression pass task ci. Confidentiality correction is underway. Binary cancellation after fixture provider start returned uncertain/cancelled; no user decision needed. Next: verify confidentiality regression, commit, merge and cleanup.
 
 Verified all criteria: mise exec -- task ci passed after both review corrections and again on integrated main (unit, race, smoke, vet, Staticcheck, formatting, security). Public MCP tests cover exactly three tools, read-only doctor, configured notify/Apprise and hcom/Herdr send, allowlisted/default-deny overrides, per-call config edits/recovery, outcomes and confidentiality. Bidirectional live opt-in schema regression passes. Manual binary checks: terminal stdin prints client setup and exits; protocol notify keeps body on stderr; cancellation after provider start returns uncertain/cancelled; malformed metadata returns generic -32602 without body. Config/CLI tests verify strict personal-only bool, origin and false flag precedence. Single independent review found stale schemas and SDK error disclosure; both fixed with regression evidence. Implementation commit 23d51bd (rebased from 7dffe46) merged locally to main; no push. Owned worktree/branch tell-14-mcp removed via Worktrunk; Herdr wEA verified absent. Unrelated review-tell-4-5-6 left untouched. No blockers or remaining implementation steps.
+
+Review: no defects found; no code changes. Traced per-call config loading, two-stage override gate (fields allowlisted from live config, rechecked after applying overrides), live tools/list schemas, response sanitization and EOF drain in ServeStdio. Built-binary probes over stdio: notify accepted with body only on server stderr; default-deny via override returns usage/agent_targets_disabled without delivery; non-object arguments, unknown tool and a notification method sent with an id return generic errors without echoing the body; client responses with unknown ids do not stall shutdown. Agent-supplied herdr_session cannot inject Herdr options: Herdr 0.9.5 session.rs consumes the next argv unconditionally and validates the name before remote/machine parsing. task ci passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 20:28'
-updated_date: '2026-10-16 22:04'
-labels: []
+updated_date: '2026-10-16 23:49'
+labels:
+  - reviewed
 dependencies:
   - TELL-1
   - TELL-7
@@ -64,6 +65,8 @@ Non-goals: desktop, command, Herdr, or hcom routes; message normalization and se
 Implemented in .worktrees/tell-2-notify (branch tell-2-notify). Confirmed Apprise result enum and CLI against upstream 8227752a16c630536daefc387a0e546580fed5ae: 0 success, 3 no_match, 4 partial, 5 timeout; other exits fail. task ci passed (unit tests, race, vet, Staticcheck, smoke, Gitleaks, govulncheck, changelog validation). Local fixtures verify exact argv, stdin isolation, title/type defaults, failure/partial/missing executable and timeout/cancellation; no real services contacted. Documentation/templates updated. Single independent delivery-safety review in progress; then commit, merge, and owned-worktree cleanup.
 
 Final acceptance: task ci passed after review fixes, including test, race, smoke, vet, Staticcheck, changelog, Gitleaks and govulncheck. AC1: TestNotifyInputIsolation and built-binary smoke cover literal/explicit stdin, untouched stdout, empty-input rejection before providers. AC2/5: TestAppriseArguments verifies real fixture argv for all types, default project title, optional arguments omitted; config tests verify stderr defaults. AC3/4: TestNotifyOutcomes and TestNotifyInterruption verify private single-object JSON, missing executable=3, partial/failure=4, timeout/cancellation=5, no-match=3 and unsupported routes; provider stdin and raw output are isolated. AC6: README, configuration/design docs, help, templates, examples, config output updated and CI green. Single independent review found idle-stdin cancellation hang and post-delivery JSON-write misclassification; both fixed with regressions. Direct binary checks confirm SIGTERM with open idle stdin exits config/cancelled promptly, and read-only stdout after delivery retains accepted exit 0 with safe warning. Implementation commit 6ceeaf650ae3080232fc1bda4331bec170665934 fast-forward merged into main. task test passed on main. Owned tell-2-notify worktree and branch removed through Worktrunk; exact Herdr workspace absence verified. No push. No blockers or remaining steps.
+
+Review: no defects found; no code changes. Built-binary probes with local fixtures: Apprise argv keeps dash-leading body and tag as option values (Click options consume the next token), always passes --body so stdin is never read (fixture saw empty stdin); exits 3/4/5/2 map to not_sent/failed/uncertain/failed; provider timeout maps to uncertain/timeout; provider stderr never surfaces; stdin is not read without '-'; empty stdin is config/empty_message. Apprise exit enum rechecked against upstream cli.py (ctx.exit(status)). Observation, not fixed (TELL-10 scope): notify - reads stdin unbounded and gitleaks scans the whole input before truncation, ~3s per MB of high-entropy text (5 MB took 17s, 200 MB exceeded 2 min), so piping large logs is slow and memory-heavy. task ci passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

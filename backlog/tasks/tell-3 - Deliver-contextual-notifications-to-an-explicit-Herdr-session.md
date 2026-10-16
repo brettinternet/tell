@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 20:28'
-updated_date: '2026-10-16 22:32'
-labels: []
+updated_date: '2026-10-16 23:49'
+labels:
+  - reviewed
 dependencies:
   - TELL-2
 documentation:
@@ -53,6 +54,8 @@ Non-goals: pane, tab, or workspace control; agent prompting; starting or creatin
 Implemented in .worktrees/tell-3-herdr. Verification: mise exec -- go test ./internal/cli ./internal/delivery passed; mise exec -- task ci passed (unit, race, smoke, vet, Staticcheck, formatting, Gitleaks, govulncheck). All affected Go LSP diagnostics clean. AC1: local fixture verifies configured session and prepared title/body as separate NUL-recorded argv. AC2: fixtures verify no execution without target, missing tool, all inherited HERDR_* stripped, no execution during inspection, reserved global-option payload rejection. Direct built Tell invocation against installed Herdr 0.9.5 with isolated temporary HOME/XDG and wrong inherited socket/session returned exit 4 failed/provider_failure for unreachable session; no Herdr/session directory created and no payload diagnostics. Upstream v0.9.5 session.rs/main.rs/cli notification and remote parsers confirm explicit-session precedence and connect-only dispatch. AC3: interruption fixture covers timeout and cancellation, provider-output privacy and nonzero exits; documentation explicitly distinguishes posting from acknowledgment. Independent target-safety review pending; next: resolve findings, commit/merge, finalize and clean owned checkout.
 
 Independent reviewer completed with no validated findings after tracing upstream session/remote/machine/help parsing and notification dispatch. Implementation committed as 3fbc26dc7bbf81b2b7e80278e5abf5b5a45c6316 after task check:staged, fast-forward merged into main. Owned tell-3-herdr worktree and branch removed with Worktrunk; associated Herdr workspace disappearance verified. No push, no remaining blocker or resumable implementation step.
+
+Review: no defects found; no code changes. Rechecked Herdr v0.9.5 argv handling: maybe_run_machine only scans the prefix; session::configure_from_args consumes the --session value unconditionally, so payloads are reachable only via a later --session/--session= (rejected by Tell); remote parsing runs after; print_requested_help fires only when --help/-h directly follows the subcommand path (only the title position, which Tell rejects); notification show takes the first argv as title, so '--' and '--body' titles are literal. Built-binary fixture: title '--' and body '--help' reach Herdr as separate literal argv, all HERDR_* stripped, nonzero exit is failed/provider_failure, --session=evil body returns not_sent before running. task ci passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
