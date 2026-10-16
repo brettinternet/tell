@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 21:29'
-updated_date: '2026-10-16 21:57'
-labels: []
+updated_date: '2026-10-16 23:20'
+labels:
+  - reviewed
 dependencies:
   - TELL-1
 documentation:
@@ -57,6 +58,8 @@ Non-goals: new settings or commands; changing env/flag precedence; changing othe
 Implemented in .worktrees/tell-7-personal-routing. Verification passed: mise exec -- go test ./internal/... and mise exec -- task ci (gofmt, vet, Staticcheck, Gitleaks, govulncheck, unit tests, race tests, binary smoke). Regression tests cover all four shared routing rejections with source/line guidance despite overrides; user/private/explicit sources and env/flag precedence; user init HOME/XDG, 0600, no overwrite, target symlink refusal, conflicting targets. Direct built-binary checks passed for both example configs, shared/user init + config check, removed --system-config rejection and ignored obsolete environment variable. Source/test LSP diagnostics clean; smoke diagnostics unknown but compiled/executed by task ci. Focused independent review pending; no acceptance checked yet.
 
 Independent reviewer completed one read-only review: no validated findings. Implementation committed on the worktree, then integrated by cherry-pick as 3e38b73 after concurrent main documentation commits were amended; all unrelated changes preserved. task check:staged passed before commits, and task ci passed again on integrated main. Owned worktree/branch tell-7-personal-routing removed through Worktrunk after receipt and idle-pane verification; post-remove Herdr hook succeeded. No push. No blocker or remaining implementation step.
+
+Review: shared tell.yaml rejection, system-layer removal, and init --user (0600, XDG, no overwrite, symlink refusal) are correct. Finding, not fixed by request: a committed .tell.yaml is loaded as private config, so a PR checkout can still choose routing, including notify.command code execution (reproduced with a built binary: committed notify.command [/usr/bin/touch, FILE] ran on tell notify, exit 0). Follow-up: TELL-15.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

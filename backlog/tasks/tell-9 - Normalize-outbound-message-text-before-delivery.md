@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 21:41'
-updated_date: '2026-10-16 22:09'
-labels: []
+updated_date: '2026-10-16 23:20'
+labels:
+  - reviewed
 dependencies:
   - TELL-2
 documentation:
@@ -51,6 +52,8 @@ Non-goals: markdown or HTML sanitization (format is chosen by personal config), 
 Implemented central preparation before dispatch. Evidence: go test ./internal/cli ./internal/delivery passed; task ci passed twice (unit, race, built-binary smoke, vet, Staticcheck, Gitleaks, govulncheck). CLI tests exercise title/body ANSI and C1 sequences, bidi overrides/isolates, newline/tab preservation, malformed UTF-8 replacement, NUL including beyond limits with no provider launch, empty-after-filtering rejection, and multibyte title/body truncation within 256/16384 bytes. Direct built-binary stdin checks confirm ANSI/bidi removal and config/invalid_message exit 1 for NUL. Independent review identified ESC followed by ignored DEL/C0 leaking sequence payload; fixed and added regression inputs. Direct reruns now produce safetail and safered, and full task ci passes. LSP diagnostics clean. Docs state exact removal rules and limits. Review completion and commit/integration pending.
 
 Delivery complete: implementation fcdda0e merged to main as 03e08e8, preserving concurrent scheduler-neutral documentation changes. task check:staged passed before both commits; task ci passed again on merged main. Single independent reviewer concluded with only the DEL/C0 escape finding, already corrected and executably revalidated by parent. Owned worktree tell-9-normalize and its branch removed via Worktrunk; associated Herdr workspace wDW verified gone. No push performed, no remaining blocker or resumable implementation step.
+
+Review: no findings. 30s fuzz of normalize (6.5M execs, limits 12-4096) never produced output over the limit, invalid UTF-8, C0 except newline/tab, C1, or bidi override/isolate characters, and normalization is idempotent, so scanning before truncation remains sound. NUL rejection runs before any route.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

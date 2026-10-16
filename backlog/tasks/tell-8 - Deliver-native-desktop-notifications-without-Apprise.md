@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 21:30'
-updated_date: '2026-10-16 22:20'
-labels: []
+updated_date: '2026-10-16 23:20'
+labels:
+  - reviewed
 dependencies:
   - TELL-2
 documentation:
@@ -56,6 +57,8 @@ Non-goals: Apprise or terminal-notifier for desktop, Windows, notification actio
 
 <!-- SECTION:NOTES:BEGIN -->
 Verification: mise exec -- go test ./internal/delivery ./internal/cli passed. mise exec -- task ci passed (unit tests, race, vet, Staticcheck, build, smoke, Gitleaks, govulncheck). TestDesktopLiteralArguments exercised both macOS and Linux using local fixture executables, preserving literal quotes/backslashes/newlines/leading dashes and rejecting unsupported platforms/missing tools. TestDesktopNotify and TestNotifyInterruption verify provider failures and timeout/cancellation outcomes without leaking raw output. LSP diagnostics clean. README, design/configuration docs and personal example explain permissions, session D-Bus, urgency and acknowledgment limits. One scoped self-review found no concrete defects. Implementation committed as 8bf8dbef2bc9ac711674938752e9db48667409c8 and fast-forward merged into main; no push. Remaining delivery step: finalize task record and remove verified session-owned worktree.
+
+Review: no findings. osascript and notify-send receive title/body as literal argv after --; checked directly that osascript keeps leading-dash and '--' titles as argv items. Unsupported platform and missing executable return not_sent before any process starts; exit/timeout/cancel mapping goes through the shared process helper.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
