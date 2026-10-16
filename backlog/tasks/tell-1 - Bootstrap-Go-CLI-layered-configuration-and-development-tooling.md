@@ -1,10 +1,10 @@
 ---
 id: TELL-1
 title: 'Bootstrap Go CLI, layered configuration, and development tooling'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-16 20:19'
-updated_date: '2026-10-16 20:19'
+updated_date: '2026-10-16 20:30'
 labels: []
 dependencies: []
 ordinal: 1000
@@ -18,11 +18,16 @@ Tell needs a safe reusable foundation for notifications and agent messages invok
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 mise exec -- task ci passes: source/static/race checks, security scans, and isolated binary smoke.
-- [ ] #2 mise exec -- task test verifies configuration precedence, explicit-config isolation, strict YAML rejection, Git-boundary discovery, source-relative paths, and no-overwrite init through public interfaces.
-- [ ] #3 Built tell supports help/version, safe no-argument config inspection, config check, --json, init and init --local; unsupported delivery commands fail rather than pretend to send.
-- [ ] #4 README and docs distinguish implemented bootstrap from future adapters; Backlog.md tracks bounded dependent delivery work; intended files are committed with Conventional Commits and no push.
+- [x] #1 mise exec -- task ci passes: source/static/race checks, security scans, and isolated binary smoke.
+- [x] #2 mise exec -- task test verifies configuration precedence, explicit-config isolation, strict YAML rejection, Git-boundary discovery, source-relative paths, and no-overwrite init through public interfaces.
+- [x] #3 Built tell supports help/version, safe no-argument config inspection, config check, --json, init and init --local; unsupported delivery commands fail rather than pretend to send.
+- [x] #4 README and docs distinguish implemented bootstrap from future adapters; Backlog.md tracks bounded dependent delivery work; intended files are committed with Conventional Commits and no push.
 <!-- AC:END -->
+
+## Definition of Done
+<!-- DOD:BEGIN -->
+- [x] #1 Acceptance evidence is recorded in notes, relevant checks pass, and intended changes are committed without an unauthorized push.
+<!-- DOD:END -->
 
 ## Implementation Plan
 
@@ -32,3 +37,19 @@ Tell needs a safe reusable foundation for notifications and agent messages invok
 3. Add critical parsing/precedence/init regressions after implementation and an isolated binary smoke check.
 4. Document implemented behavior, seed dependent adapter tasks through Backlog.md, run the complete gate, obtain independent configuration-boundary verification, and commit the completed bootstrap.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AC#1: mise exec -- task ci passed: Gitleaks, govulncheck (no vulnerabilities), gofmt/vet/Staticcheck, git-cliff, unit tests, race tests, and isolated binary smoke. mise exec -- task init also completed successfully.
+AC#2: mise exec -- task test passed public-interface regression tests for all config layers, field/path provenance, explicit-file isolation, malformed/ambiguous YAML, worktree boundaries, dangling symlinks, flag/env precedence, JSON failures, and no-overwrite initialization. Tests were added after implementation; none were weakened.
+AC#3: mise exec -- task smoke passed built-binary help/version, no-argument JSON inspection, config check, shared/private init, invalid-config exits, and unsupported delivery-command rejection with sanitized HOME/config/environment.
+AC#4: README/docs/examples clearly distinguish implemented config from future adapters; Backlog CLI created TELL-2 through TELL-6 with dependencies and acceptance. Commits d726d5d (tooling) and ea23bb4 (configuration CLI/docs/tests) contain the implementation; the final backlog-state commit records this completion. No push or PR was performed.
+Independent verifier e250b7e2 reran tests, full CI, and smoke and found no implementation defect; its only outstanding criterion was the then-uncommitted implementation, resolved by ea23bb4. Its observed backlog changes were this parent sessions authorized task creation/updates. LSP diagnostics were clean. No worktrees or services were created.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Bootstrapped a Go/urfave CLI with system/user/shared/private YAML plus env/flag precedence, source-aware inspection, strict validation, and safe init. Reused sibling tooling and created five dependent delivery/integration/packaging tasks. Full local CI, independent verification, and staged secret checks passed. Provider delivery remains intentionally unimplemented.
+<!-- SECTION:FINAL_SUMMARY:END -->

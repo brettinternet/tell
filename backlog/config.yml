@@ -4,7 +4,7 @@ statuses: ["To Do", "In Progress", "Done"]
 labels: []
 date_format: yyyy-mm-dd
 max_column_width: 20
-default_editor: "/Users/brett/.bin/context-editor"
+default_editor: "vi"
 auto_open_browser: false
 default_port: 6420
 remote_operations: false
