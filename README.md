@@ -7,9 +7,9 @@ and repo automation. Repo scripts own workflows; Noon owns schedules, queues, an
 run history. Tell executes one invocation and exits.
 
 **Implemented:** strict layered configuration, source-aware inspection, JSON
-output, non-destructive project initialization, and development tooling.
-**Not implemented:** notification delivery, agent messaging, provider execution,
-or retries. These are tracked in Backlog.md; there are no successful stub commands.
+output, non-destructive project initialization, stderr/Apprise notifications, and development tooling.
+**Not implemented:** desktop/Herdr/command routes, agent messaging, message
+normalization or secret redaction. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
 
 ## Try it
 
@@ -24,6 +24,9 @@ bin/tell --version
 bin/tell init                    # create tell.yaml; never overwrite
 bin/tell init --local            # create private .tell.yaml; ignore it in Git
 bin/tell init --user             # create personal user config (mode 0600)
+bin/tell notify "Build finished"  # default: stderr, stdout untouched
+printf 'Build finished' | bin/tell notify -  # explicitly read stdin
+bin/tell --json notify --type success "Build finished"
 bin/tell config                  # effective values, origins, loaded files
 bin/tell config check            # validate without invoking providers
 bin/tell --json config check
@@ -64,10 +67,17 @@ apprise:
   config: ../apprise/apprise.yaml
 ```
 
-This currently configures and validates the intended route; **it does not send**.
-Apprise owns its native configuration, credentials, and provider integrations.
-Tell stores only a local config-file reference, tag, and format; it never opens
-the referenced Apprise file during inspection.
+Run `tell notify "Build finished"` to deliver using the selected personal route.
+The default route is stderr. Apprise is an **optional external executable** on PATH;
+it owns native configuration, credentials, and provider integrations. Tell passes
+explicit options only and never opens the referenced Apprise file during inspection.
+
+Messages are one literal argument, or `-` to explicitly read stdin. Empty messages
+fail before delivery. `--title` defaults to the selected project directory name;
+`--type` accepts info (default), success, warning, or failure. Provider acceptance
+is **not human acknowledgment**. JSON results never contain message bodies;
+timeout/cancellation after provider start means delivery is uncertain. See the
+[outcome table](docs/design.md#outcomes) before deciding to resend.
 
 See [configuration](docs/configuration.md) for all keys, flags, paths, and error
 semantics; [design](docs/design.md) for the delivery boundary and planned adapters.
@@ -86,7 +96,7 @@ Task, Lefthook, Staticcheck, Gitleaks, govulncheck, git-cliff, Worktrunk, and
 Backlog.md. See [development](docs/development.md).
 
 No daemon, database, web UI, provider SDK, or scheduler is embedded.
-Apprise/Herdr/hcom will be optional external executables for their respective
-adapters, not requirements for building or inspecting configuration.
+Apprise is optional and external; Herdr/hcom adapters remain planned. None is
+required for building or inspecting configuration.
 
 MIT licensed.

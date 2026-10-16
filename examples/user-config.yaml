@@ -1,7 +1,9 @@
 # Install as ~/.config/tell/config.yaml (or under XDG_CONFIG_HOME).
+# notify writes to stderr by default; select apprise to use optional external Apprise.
+# Provider acceptance is not human acknowledgment.
 version: 1
 notify:
-  via: desktop
+  via: stderr
 apprise:
   config: ../apprise/apprise.yaml
 herdr:

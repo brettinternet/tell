@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -60,11 +61,31 @@ func TestBinary(t *testing.T) {
 			t.Fatalf("%v: %d %s", args, code, output)
 		}
 	}
-	output, code := invoke("notify", "must not send")
-	if code != 2 {
-		t.Fatalf("unsupported delivery must fail: %d %s", code, output)
+	// The binary must preserve stdout and consume stdin only when selected.
+	for _, fromStdin := range []bool{false, true} {
+		message := "literal notification"
+		input := "hook summary"
+		if fromStdin {
+			message = "-"
+		}
+		command := exec.Command(binary, "--config", explicit, "--via", "stderr", "notify", message)
+		command.Dir = home
+		command.Env = []string{}
+		command.Stdin = strings.NewReader(input)
+		var out, errOut bytes.Buffer
+		command.Stdout, command.Stderr = &out, &errOut
+		if err := command.Run(); err != nil {
+			t.Fatal(err)
+		}
+		want := message + "\n"
+		if fromStdin {
+			want = input + "\n"
+		}
+		if out.Len() != 0 || errOut.String() != want {
+			t.Fatalf("notification: %q %q", out.String(), errOut.String())
+		}
 	}
-	output, code = invoke("--json", "--timeout", "0s", "config", "check")
+	output, code := invoke("--json", "--timeout", "0s", "config", "check")
 	if code != 1 || !json.Valid([]byte(output)) || !strings.Contains(output, "positive") {
 		t.Fatalf("invalid config: %d %s", code, output)
 	}

@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/brettinternet/tell/internal/config"
+	"github.com/brettinternet/tell/internal/delivery"
 	urfave "github.com/urfave/cli/v3"
 )
 
@@ -21,7 +22,7 @@ type settingSpec struct{ key, flag, env, usage string }
 
 var settings = []settingSpec{
 	{"timeout", "timeout", "TELL_TIMEOUT", "Provider execution timeout (positive duration)"},
-	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification destination: stdout, desktop, apprise, herdr"},
+	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification destination: stderr, apprise (desktop and herdr are planned)"},
 	{"apprise.config", "apprise-config", "TELL_APPRISE_CONFIG", "Local Apprise config path; Tell does not read its contents"},
 	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag expression"},
 	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body format: text, markdown, html"},
@@ -33,7 +34,7 @@ var settings = []settingSpec{
 func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Command {
 	root := &urfave.Command{
 		Name: "tell", Usage: "Delivery plumbing for humans and agents",
-		Description: "Inspect layered settings and initialize project configuration. Delivery adapters are not implemented yet; no command sends a message.",
+		Description: "Inspect settings safely, or notify via stderr or optional external Apprise. Provider acceptance is not human acknowledgment. With no command, inspect only.",
 		Version:     fmt.Sprintf("%s (commit %s, built %s)", build.Version, build.Commit, build.BuildTime),
 		Writer:      out, ErrWriter: errOut, EnableShellCompletion: true,
 		ExitErrHandler: func(context.Context, *urfave.Command, error) {},
@@ -44,6 +45,10 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
+			{Name: "notify", Usage: "Notify via stderr or Apprise; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
+				&urfave.StringFlag{Name: "title", Usage: "Notification title (default: project directory name)"},
+				&urfave.StringFlag{Name: "type", Value: "info", Usage: "Notification type: info, success, warning, failure"},
+			}, Action: notify},
 			{Name: "config", Usage: "Inspect effective settings and origins without sending anything", Action: showConfig, Commands: []*urfave.Command{
 				{Name: "show", Usage: "Show effective settings and origins", Action: showConfig},
 				{Name: "check", Usage: "Validate settings without invoking providers", Action: checkConfig},
@@ -82,6 +87,25 @@ func (err *failure) Error() string { return err.Message }
 func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut io.Writer) int {
 	root := NewRootCommand(build, out, errOut)
 	if err := root.Run(ctx, args); err != nil {
+		var outputError *resultWriteError
+		if errors.As(err, &outputError) {
+			// Delivery was accepted. A broken result stream must not invite a resend
+			// by reporting usage/config (both promise nothing was sent).
+			fmt.Fprintf(errOut, "tell: %s\n", outputError.Error())
+			return 0
+		}
+		var result *delivery.Result
+		if !errors.As(err, &result) && notifyRequested(root, args) {
+			result = delivery.NewResult("", "usage", "invalid_invocation", "invalid notify invocation; run tell notify --help")
+		}
+		if result != nil {
+			if jsonRequested(root, args) {
+				_ = json.NewEncoder(out).Encode(result)
+			} else {
+				fmt.Fprintf(errOut, "tell: %s\n", result.Error())
+			}
+			return result.ExitCode()
+		}
 		var issue *failure
 		if !errors.As(err, &issue) {
 			issue = &failure{Code: "error", Message: err.Error()}
@@ -151,6 +175,10 @@ func load(cmd *urfave.Command) (config.Config, error) {
 	if err := noArgs(cmd); err != nil {
 		return config.Config{}, err
 	}
+	return loadSettings(cmd)
+}
+
+func loadSettings(cmd *urfave.Command) (config.Config, error) {
 	values, err := input(cmd)
 	if err == nil && values.File == nil {
 		values.UserConfigDir, err = userConfigDir()
@@ -190,7 +218,7 @@ func showConfig(_ context.Context, cmd *urfave.Command) error {
 	for _, source := range cfg.Sources {
 		fmt.Fprintf(cmd.Writer, "  %q\n", source)
 	}
-	fmt.Fprintln(cmd.Writer, "Configuration only; delivery adapters are not implemented yet.")
+	fmt.Fprintln(cmd.Writer, "Inspection only; notify delivers via stderr or optional external Apprise. Provider acceptance is not human acknowledgment.")
 	return nil
 }
 

@@ -8,13 +8,13 @@ Tell is a short-lived CLI between repo automation and delivery tools:
 human / script / Noon job
           │
          tell
-          ├── notify: stdout / desktop / Herdr / Apprise (external services)
+          ├── notify: stderr / desktop / Herdr / Apprise (external services)
           └── send: hcom participant
 ```
 
-The configuration and inspection foundation is implemented. The adapters and
-commands below are planned, not existing interfaces. Backlog.md is the work
-queue; this document records the intended boundaries, not a second task list.
+Configuration, inspection, and notify via stderr and Apprise are implemented.
+Desktop, Herdr, user-owned commands, send, and message preparation remain planned.
+Backlog.md is the work queue; this document records boundaries, not a second task list.
 
 Noon owns schedules, queued runs, concurrency, cancellation, and run history.
 Repo scripts decide what events deserve notification and what agent work means.
@@ -23,7 +23,7 @@ and honest dispatch results. It owns no message database or background worker.
 
 ## Commands and semantics
 
-Planned commands retain the conversation's separation:
+Commands retain the conversation's separation (send remains planned):
 - notify requests human attention. stderr is the safe built-in default; it
   keeps a calling script's stdout data and --json output intact.
 - send delivers a message to an existing agent through hcom or Herdr.
@@ -42,7 +42,7 @@ fan-out to external services and owns their destinations and credentials. A
 user-owned command route runs a personal executable with a fixed contract,
 without shell strings or a plugin registry.
 
-Before any route runs, titles and bodies pass one preparation step: control
+Planned message preparation will process titles and bodies before any route runs: control
 characters removed, lengths capped with a visible marker, and secrets redacted
 with an embedded scanner ruleset. Tell is the last point before third-party
 services and agent transcripts persist a message.
@@ -55,7 +55,7 @@ happened; personal configuration decides where it goes.
 
 ## Outcomes
 
-Every delivery invocation (planned) reports exactly one outcome. Callers decide
+Every notify invocation reports exactly one outcome. Callers decide
 whether to resend; the outcome says whether that is safe.
 
 | Exit | Outcome | Meaning | Resend? |
@@ -69,9 +69,24 @@ whether to resend; the outcome says whether that is safe.
 
 With --json, stdout receives one object with schema_version, outcome, and route;
 failures add error.code (the outcome), error.message, and a reason such as
-missing_executable, unsupported_platform, no_match, partial, timeout,
-cancelled, or secret_detected. Results never include the message body or raw provider output.
-Unknown provider exit codes map to failed, never accepted.
+missing_executable, unsupported_route, no_match, partial, timeout,
+or cancelled. Planned routes may add unsupported_platform or secret_detected. Results never include the message body or raw provider output.
+Unknown provider exit codes map to failed, never accepted. The route is empty
+when invocation parsing or configuration fails before route resolution.
+The built-in stderr route writes the message there even in JSON mode; stdout
+contains only the result. A stderr write error is failed because a partial write
+may already have occurred. If writing an accepted JSON result fails, Tell warns
+on stderr and retains exit 0: output failure does not undo acceptance and must
+not invite a retry. A broken stdout cannot carry the promised JSON object.
+Cancellation while reading explicit stdin exits config/cancelled before delivery.
+
+Apprise is an optional external executable. Tell maps its exits 0 to accepted,
+3 to not_sent/no_match, 4 to failed/partial, and 5 to uncertain/timeout; all other
+exits (including 1 and 2) are failed/provider_failure. This mapping was verified
+against Apprise `8227752a16c630536daefc387a0e546580fed5ae`, `apprise/result.py`
+and `apprise/cli.py`. Older versions may report generic failure for no match;
+Tell does not infer success or safety from provider text. No destinations loaded
+can also produce exit 1. Provider output is discarded, never echoed.
 
 An accepted provider invocation does not prove a human read the notification,
 nor that an agent completed work. hcom recipients must participate in hcom;
@@ -101,8 +116,9 @@ Logs and errors must not echo credentials or raw message contents.
 
 Noon's current lifecycle hooks receive environment values such as NOON_JOB,
 NOON_STATUS, NOON_RUN_ID, NOON_PROJECT and NOON_LOG_FILE, plus a JSON run summary
-on stdin. A small repo-owned script can translate those into Tell arguments once
-delivery exists; no Noon-specific protocol is needed in Tell.
+on stdin. A small repo-owned script can translate those into Tell arguments;
+no Noon-specific protocol is needed in Tell. Literal notify arguments do not
+consume that stdin. Explicitly choose `-` only when its contents are the message.
 
 Noon's hooks have a 30-second budget and separate hook status from job status.
 Tell's default 10-second delivery timeout leaves room for hook supervision.
@@ -118,9 +134,8 @@ as a proxy for completion.
 ## Implementation shape
 
 cmd/tell remains the process boundary. internal/cli handles arguments and
-rendering; internal/config owns strict file resolution. Add a concrete delivery
-package only with its first adapter. Reuse a subprocess helper when a second
-adapter needs the same lifecycle contract. No interface registry for three
+rendering; internal/config owns strict file resolution. internal/delivery owns
+stderr, Apprise, dispatch outcomes, and bounded subprocess execution. No interface registry for three
 known tools.
 
 Verification should use real temporary files and local fixture executables.

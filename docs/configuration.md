@@ -1,7 +1,8 @@
 # Configuration
 
-Everything on this page is implemented configuration behavior. Delivery adapters
-are not implemented; selecting a provider does not execute or verify it.
+Everything on this page is implemented configuration behavior. `notify` delivers
+via stderr or optional external Apprise. Inspection never executes a provider.
+Provider acceptance is not human acknowledgment.
 
 ## Sources
 
@@ -55,7 +56,7 @@ destinations; private configuration and explicit invocation inputs are trusted.
 | YAML field | Default | Environment | Flag |
 | --- | --- | --- | --- |
 | timeout | 10s | TELL_TIMEOUT | --timeout |
-| notify.via | stdout | TELL_NOTIFY_VIA | --via |
+| notify.via | stderr | TELL_NOTIFY_VIA | --via |
 | apprise.config | unset | TELL_APPRISE_CONFIG | --apprise-config |
 | apprise.tag | unset | TELL_APPRISE_TAG | --apprise-tag |
 | apprise.format | unset | TELL_APPRISE_FORMAT | --apprise-format |
@@ -81,7 +82,9 @@ hcom:
 ```
 
 - timeout is a positive Go duration; zero and indefinite waits are refused.
-- notify.via is stdout, desktop, apprise, or herdr.
+- notify.via is stderr or apprise. desktop and herdr are accepted configuration
+  values for planned routes; invoking them returns not_sent, never success.
+  The former bootstrap value stdout is no longer accepted.
 - apprise.config is a local file path, never a credential-bearing URL. Tell
   does not read it or check that it exists during config inspection.
 - apprise.tag is a single expression preserved for Apprise.
@@ -91,8 +94,19 @@ hcom:
   error; omit it instead. A flag replaces an env value before validation.
 - No arbitrary argv, provider URLs, plugin paths, or credential fields are accepted.
 
-Native APPRISE_* forwarding belongs to the future delivery adapter; currently
-Tell does not interpret or display those variables.
+Apprise inherits native APPRISE_* environment variables; Tell does not interpret
+or display them. Tell always supplies --body, --title, and --notification-type.
+Unset config, tag, and format options are omitted so Apprise's native behavior
+applies (without --tag, only untagged services are notified). No URL arguments
+are accepted. Provider stdin is closed; stdout/stderr are discarded.
+
+`tell notify MESSAGE` never reads stdin; `tell notify -` explicitly reads it.
+`--title` defaults to the selected project directory name. `--type` is info
+(default), success, warning, or failure. These are invocation flags, not YAML
+settings. Empty or whitespace-only messages are refused. Text is otherwise
+forwarded unchanged: normalization and secret redaction remain planned.
+Apprise receives the body via argv, so local process inspection may reveal it.
+Do not include secrets in notifications.
 
 ## Strict YAML and output
 
@@ -112,7 +126,10 @@ terminal control sequences from being interpreted.
 includes config; check also includes valid: true. Failures include an error with
 code and message. Human errors go to stderr. Exit codes: 0 success, 2 usage
 error, 1 configuration/I/O failure. Help, version, and shell-completion output
-remain standard text even with --json.
+remain standard text even with --json. Delivery has its own
+[outcomes and exit codes](design.md#outcomes), including uncertain delivery.
+For notify JSON, route is an empty string when parsing/configuration failed
+before a route could be resolved; errors never echo invocation input.
 
 ## Initialization
 

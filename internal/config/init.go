@@ -57,7 +57,8 @@ func createTemplate(path string, mode os.FileMode, content string) (string, bool
 	return path, true, errors.Join(writeErr, file.Close())
 }
 
-const sharedTemplate = `# Tell settings. This bootstrap only inspects configuration; it sends nothing.
+const sharedTemplate = `# Tell settings. Inspection sends nothing; notify delivers via stderr or Apprise.
+# Apprise is optional and external. Provider acceptance is not human acknowledgment.
 # Routing belongs in user config or private .tell.yaml, never shared tell.yaml.
 # Ignore .tell.yaml in Git. Keep credentials in your provider's configuration.
 version: 1
@@ -67,13 +68,14 @@ version: 1
 #   format: markdown
 `
 
-const personalTemplate = `# Personal Tell settings; inspection sends nothing.
+const personalTemplate = `# Personal Tell settings; inspection sends nothing. notify uses stderr or Apprise.
+# Apprise is optional and external. Provider acceptance is not human acknowledgment.
 # Keep credentials in your provider's configuration. Ignore .tell.yaml in Git.
 version: 1
 # timeout: 10s
 # Personal routing examples:
 # notify:
-#   via: stdout
+#   via: stderr
 # apprise:
 #   config: /absolute/path/to/apprise.yaml
 #   tag: project-alerts

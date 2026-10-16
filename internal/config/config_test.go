@@ -144,7 +144,7 @@ func TestCommentOnlyFileIsEmptyLayer(t *testing.T) {
 	shared := filepath.Join(input.CWD, "tell.yaml")
 	writeFile(t, shared, "# version: 1\n# notify: {via: apprise}\n\n")
 	cfg, err := config.Load(input)
-	if err != nil || cfg.Notify.Via != "stdout" || cfg.Sources[len(cfg.Sources)-1] != shared {
+	if err != nil || cfg.Notify.Via != "stderr" || cfg.Sources[len(cfg.Sources)-1] != shared {
 		t.Fatalf("comment-only layer: %+v %v", cfg, err)
 	}
 }
@@ -170,7 +170,7 @@ func TestRejectAmbiguousOrInvalidConfiguration(t *testing.T) {
 			input := fixture(t)
 			user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
 			writeFile(t, user, tc.data)
-			writeFile(t, filepath.Join(input.CWD, ".tell.yaml"), "timeout: 2s\nnotify: {via: stdout}\napprise: {tag: valid}\n")
+			writeFile(t, filepath.Join(input.CWD, ".tell.yaml"), "timeout: 2s\nnotify: {via: stderr}\napprise: {tag: valid}\n")
 			_, err := config.Load(input)
 			if err == nil || !strings.Contains(err.Error(), user) {
 				t.Fatalf("expected source diagnostic, got %v", err)
@@ -196,7 +196,7 @@ func TestProjectBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Project != repo || cfg.Notify.Via != "stdout" {
+	if cfg.Project != repo || cfg.Notify.Via != "stderr" {
 		t.Fatalf("escaped Git boundary: %+v", cfg)
 	}
 	input.Project = &input.CWD

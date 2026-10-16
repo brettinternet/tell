@@ -68,7 +68,7 @@ func Load(input Input) (Config, error) {
 		return Config{}, err
 	}
 	cfg := Config{
-		Project: project, Timeout: "10s", Notify: Notify{Via: "stdout"},
+		Project: project, Timeout: "10s", Notify: Notify{Via: "stderr"},
 		Sources: []string{}, Origins: map[string]string{},
 	}
 	for key := range cfg.Values() {
@@ -132,10 +132,10 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		cfg.Timeout = value
 	case "notify.via":
 		switch value {
-		case "stdout", "desktop", "apprise", "herdr":
+		case "stderr", "desktop", "apprise", "herdr":
 			cfg.Notify.Via = value
 		default:
-			return errors.New("notify.via must be stdout, desktop, apprise, or herdr")
+			return errors.New("notify.via must be stderr, desktop, apprise, or herdr")
 		}
 	case "apprise.config":
 		if strings.Contains(value, "://") {
