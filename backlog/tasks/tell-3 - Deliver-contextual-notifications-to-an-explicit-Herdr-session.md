@@ -4,7 +4,7 @@ title: Deliver contextual notifications to an explicit Herdr session
 status: To Do
 assignee: []
 created_date: '2026-10-16 20:28'
-updated_date: '2026-10-16 20:47'
+updated_date: '2026-10-16 21:30'
 labels: []
 dependencies:
   - TELL-2
@@ -31,7 +31,7 @@ Non-goals: pane, tab, or workspace control; agent prompting; starting or creatin
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 task test exercises notify --via herdr through a local fixture executable and verifies that the title, body, and configured herdr.session reach Herdr as separate literal argv elements.
-- [ ] #2 A missing herdr.session fails before any subprocess runs; inherited HERDR_* variables that point at another session never change the target; a missing or unreachable session fails visibly with non-zero status without creating or starting a session or choosing another destination.
+- [ ] #2 A missing herdr.session or herdr executable returns not_sent before anything runs; inherited HERDR_* variables that point at another session never change the target; an unreachable session fails visibly per docs/design.md outcomes without creating or starting a session or choosing another destination.
 - [ ] #3 task ci passes; Herdr delivery keeps TELL-2's timeout and redaction contract, and docs state that a posted notification is not human acknowledgment.
 <!-- AC:END -->
 

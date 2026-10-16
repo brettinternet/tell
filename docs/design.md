@@ -8,7 +8,7 @@ Tell is a short-lived CLI between repo automation and delivery tools:
 human / script / Noon job
           │
          tell
-          ├── notify: stdout / Apprise desktop or external destinations / Herdr
+          ├── notify: stdout / desktop / Herdr / Apprise (external services)
           └── send: hcom participant
 ```
 
@@ -26,6 +26,37 @@ and honest dispatch results. It owns no message database or background worker.
 Planned commands retain the conversation's separation:
 - notify requests human attention. stdout is the safe built-in default.
 - send delivers a message to a participating hcom agent.
+
+Notify routes are thin built-ins plus one advanced provider. Built-ins cover the
+common personal cases with no extra runtime: stdout; desktop through osascript
+on macOS or notify-send on Linux; and an explicit Herdr session. Apprise handles
+fan-out to external services and owns their destinations and credentials.
+
+Delivery destinations are personal. Routing fields (notify.via, apprise.config,
+herdr.session, hcom.to) are planned to come only from user config, private
+.tell.yaml, --config, environment, or flags. Shared tell.yaml keeps shared
+semantics such as the Apprise tag and format. Repository scripts decide what
+happened; personal configuration decides where it goes.
+
+## Outcomes
+
+Every delivery invocation (planned) reports exactly one outcome. Callers decide
+whether to resend; the outcome says whether that is safe.
+
+| Exit | Outcome | Meaning | Resend? |
+| --- | --- | --- | --- |
+| 0 | accepted | The route accepted the message: printed, posted, or the provider exited 0. Not proof anyone read or acted on it. | No |
+| 1 | config | Configuration, input, or I/O error before delivery started. Nothing sent. | After fixing |
+| 2 | usage | Invalid invocation. Nothing sent. | After fixing |
+| 3 | not_sent | Route unavailable: executable missing, platform unsupported, target absent, or the provider matched no destination. Nothing sent. | Yes, or try another route |
+| 4 | failed | The provider ran and reported failure. With reason partial, some destinations received it. | Not blindly |
+| 5 | uncertain | Timed out or cancelled after the provider started. It may have been delivered. | Not without checking |
+
+With --json, stdout receives one object with schema_version, outcome, and route;
+failures add error.code (the outcome), error.message, and a reason such as
+missing_executable, unsupported_platform, no_match, partial, timeout, or
+cancelled. Results never include the message body or raw provider output.
+Unknown provider exit codes map to failed, never accepted.
 
 An accepted provider invocation does not prove a human read the notification,
 nor that an agent completed work. hcom recipients must participate in hcom;
