@@ -22,7 +22,7 @@ type settingSpec struct{ key, flag, env, usage string }
 
 var settings = []settingSpec{
 	{"timeout", "timeout", "TELL_TIMEOUT", "Provider execution timeout (positive duration)"},
-	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification destination: stderr, apprise (desktop and herdr are planned)"},
+	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification destination: stderr, desktop, apprise (herdr is planned)"},
 	{"apprise.config", "apprise-config", "TELL_APPRISE_CONFIG", "Local Apprise config path; Tell does not read its contents"},
 	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag expression"},
 	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body format: text, markdown, html"},

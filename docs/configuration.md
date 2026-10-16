@@ -1,7 +1,7 @@
 # Configuration
 
 Everything on this page is implemented configuration behavior. `notify` delivers
-via stderr or optional external Apprise. Inspection never executes a provider.
+via stderr, native desktop, or optional external Apprise. Inspection never executes a provider.
 Provider acceptance is not human acknowledgment.
 
 ## Sources
@@ -88,8 +88,8 @@ hcom:
   shared `tell.yaml` rejects it, even when another layer overrides it. No
   environment or flag override, disable switch, or custom rules are supported.
 - timeout is a positive Go duration; zero and indefinite waits are refused.
-- notify.via is stderr or apprise. desktop and herdr are accepted configuration
-  values for planned routes; invoking them returns not_sent, never success.
+- notify.via is stderr, desktop, or apprise. herdr is accepted configuration
+  for a planned route; invoking it returns not_sent, never success.
   The former bootstrap value stdout is no longer accepted.
 - apprise.config is a local file path, never a credential-bearing URL. Tell
   does not read it or check that it exists during config inspection.
@@ -114,7 +114,7 @@ normalized, scanned with embedded Gitleaks default rules, then truncated; see
 [message preparation](design.md#message-preparation). JSON results include a
 `redactions` count (merged replaced occurrences across both fields). Scanning
 is offline and best-effort; undetected secrets can still be delivered.
-Apprise receives the body via argv, so local process inspection may reveal it.
+Desktop providers and Apprise receive the body via argv, so local process inspection may reveal it.
 Do not include secrets in notifications.
 
 ## Strict YAML and output

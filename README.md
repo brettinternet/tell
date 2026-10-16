@@ -8,9 +8,9 @@ CI, or Noon) owns schedules, queues, and run history. Tell executes one
 invocation and exits.
 
 **Implemented:** strict layered configuration, source-aware inspection, JSON
-output, non-destructive project initialization, stderr/Apprise notifications,
+output, non-destructive project initialization, stderr/desktop/Apprise notifications,
 message normalization, embedded secret redaction, and development tooling.
-**Not implemented:** desktop/Herdr/command routes or agent messaging. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
+**Not implemented:** Herdr/command routes or agent messaging. Tell never automatically retries. These are tracked in Backlog.md; there are no successful stub commands.
 
 ## Try it
 
@@ -89,6 +89,19 @@ timeout/cancellation after provider start means delivery is uncertain. See the
 
 See [configuration](docs/configuration.md) for all keys, flags, paths, and error
 semantics; [design](docs/design.md) for the delivery boundary and planned adapters.
+
+## Native desktop notifications
+
+`tell notify --via desktop "Build finished"` uses macOS `osascript` or Linux
+`notify-send`, without Apprise or terminal-notifier. Set `notify.via: desktop`
+in personal config to make it your default; bare `tell` still only inspects.
+
+On macOS, banners are attributed to **Script Editor**; allow its notifications
+in System Settings when prompted. On Linux, install `notify-send` (libnotify)
+and run within a desktop session. Scheduled services need the user's session
+D-Bus, usually via `DBUS_SESSION_BUS_ADDRESS`; Tell inherits it, not discovers it.
+Focus / Do Not Disturb can hide banners. Posted means accepted, not seen or
+acknowledged. See [desktop behavior](docs/design.md#desktop-delivery).
 
 ## Development
 

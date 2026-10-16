@@ -1,5 +1,6 @@
 # Install as ~/.config/tell/config.yaml (or under XDG_CONFIG_HOME).
-# notify writes to stderr by default; select apprise to use optional external Apprise.
+# notify writes to stderr by default; select desktop for native macOS/Linux banners,
+# or apprise to use optional external Apprise. Desktop setup: docs/design.md#desktop-delivery.
 # Provider acceptance is not human acknowledgment.
 version: 1
 notify:

@@ -12,8 +12,8 @@ human / script / scheduler hook
           └── send: hcom participant
 ```
 
-Configuration, inspection, and notify via stderr and Apprise are implemented.
-Message normalization and embedded secret redaction are implemented. Desktop,
+Configuration, inspection, and notify via stderr, desktop, and Apprise are implemented.
+Message normalization and embedded secret redaction are implemented.
 Herdr, user-owned commands, and send remain planned.
 Backlog.md is the work queue; this document records boundaries, not a second task list.
 
@@ -114,7 +114,7 @@ whether to resend; the outcome says whether that is safe.
 With --json, stdout receives one object with schema_version, outcome, and route;
 failures add error.code (the outcome), error.message, and a reason such as
 missing_executable, unsupported_route, no_match, partial, timeout,
-cancelled, secret_detected, or secret_scan_failed. Planned routes may add unsupported_platform. Results never include the message body or raw provider output.
+cancelled, secret_detected, secret_scan_failed, or unsupported_platform. Results never include the message body or raw provider output.
 Unknown provider exit codes map to failed, never accepted. The route is empty
 when invocation parsing or configuration fails before route resolution.
 The built-in stderr route writes the message there even in JSON mode; stdout
@@ -140,6 +140,26 @@ No automatic retries, agent spawning, fallback to another session, fan-out,
 ACP/MCP server, or generic plugin registry in the initial delivery implementation.
 Timeout/cancellation may leave delivery uncertain; never relabel that success
 or blindly retry consequential agent instructions.
+
+## Desktop delivery
+
+macOS uses `osascript` with fixed AppleScript source and separate title/body argv;
+text is never interpolated into code. Notifications are attributed to Script
+Editor and may require notification permission in System Settings. macOS does
+not expose notification severity through this API; `--type` is ignored.
+
+Linux uses `notify-send --urgency LEVEL -- TITLE BODY`. Failure maps to critical
+urgency; info, success, and warning use normal urgency. Install libnotify's
+`notify-send` and provide a session D-Bus. Scheduled services usually need
+`DBUS_SESSION_BUS_ADDRESS` from the user's desktop session. Tell inherits the
+environment without discovering sessions or reading scheduler-specific state.
+
+Both tools are resolved through PATH. Missing tools or unsupported platforms
+return not_sent before dispatch. A nonzero provider exit is failed; timeout or
+cancellation after start is uncertain. Cancellation before start is config.
+Provider output is discarded, stdin is closed, and there are no retries or
+fallbacks. Focus / Do Not Disturb or desktop policy can suppress a banner:
+accepted is posting acceptance, never acknowledgment.
 
 ## Configuration ownership
 
@@ -179,7 +199,7 @@ jobs), not successful hcom dispatch as a proxy for completion.
 
 cmd/tell remains the process boundary. internal/cli handles arguments and
 rendering; internal/config owns strict file resolution. internal/delivery owns
-stderr, Apprise, dispatch outcomes, and bounded subprocess execution. No interface registry for three
+stderr, desktop, Apprise, dispatch outcomes, and bounded subprocess execution. No interface registry for three
 known tools.
 
 Verification should use real temporary files and local fixture executables.

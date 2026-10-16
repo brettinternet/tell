@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/brettinternet/tell/internal/config"
@@ -78,6 +79,9 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 			return NewResult(route, "failed", "io", "could not write notification to stderr")
 		}
 		return NewResult(route, "accepted", "", "")
+	case "desktop":
+		timeout, _ := time.ParseDuration(cfg.Timeout)
+		return notifyDesktop(ctx, timeout, message, runtime.GOOS)
 	case "apprise":
 		args := []string{"--title", message.Title, "--body", message.Body, "--notification-type", message.Type}
 		for _, option := range []struct{ flag, value string }{

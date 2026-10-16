@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ import (
 
 // Real argv and stdin boundaries prevent accidental routing changes, shell
 // interpretation, leaked secrets, and consumption of a Noon hook's JSON input.
-func provider(t *testing.T) string {
+func provider(t *testing.T, names ...string) string {
 	t.Helper()
 	dir := t.TempDir()
 	record := filepath.Join(dir, "args")
@@ -36,8 +37,11 @@ if [ "$FIXTURE_WAIT" = yes ]; then
 fi
 exit "${FIXTURE_EXIT:-0}"
 `
-	if err := os.WriteFile(filepath.Join(dir, "apprise"), []byte(script), 0o700); err != nil {
-		t.Fatal(err)
+	names = append(names, "apprise")
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Setenv("PATH", dir)
 	t.Setenv("FIXTURE_RECORD", record)
@@ -175,7 +179,7 @@ func TestNotifyOutcomes(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	code, out, errOut := run("--json", "--via", "apprise", "notify", "body-sentinel")
 	assertResult(t, code, out, errOut, "apprise", "not_sent", "missing_executable")
-	for _, route := range []string{"desktop", "herdr"} {
+	for _, route := range []string{"herdr"} {
 		code, out, errOut = run("--json", "--via", route, "notify", "body-sentinel")
 		assertResult(t, code, out, errOut, route, "not_sent", "unsupported_route")
 	}
@@ -377,47 +381,73 @@ func TestNotifySecrets(t *testing.T) {
 }
 
 func TestNotifyInterruption(t *testing.T) {
-	for _, cancelAfterStart := range []bool{false, true} {
-		t.Run(map[bool]string{false: "timeout", true: "cancellation"}[cancelAfterStart], func(t *testing.T) {
-			environment(t)
-			record := provider(t)
-			t.Setenv("FIXTURE_WAIT", "yes")
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			timeout := "100ms"
-			if cancelAfterStart {
-				timeout = "5s"
-			}
-			var out, errOut bytes.Buffer
-			done := make(chan int, 1)
-			go func() {
-				done <- cli.Run(ctx, []string{"tell", "--json", "--timeout", timeout, "--via", "apprise", "notify", "body-sentinel"}, config.BuildOpts{}, &out, &errOut)
-			}()
-			if cancelAfterStart {
-				deadline := time.After(3 * time.Second)
-				ticker := time.NewTicker(time.Millisecond)
-				defer ticker.Stop()
-			waitStart:
-				for {
-					select {
-					case <-ticker.C:
-						if _, err := os.Stat(record); err == nil {
+	for _, route := range []string{"apprise", "desktop"} {
+		for _, cancelAfterStart := range []bool{false, true} {
+			t.Run(map[bool]string{false: "timeout", true: "cancellation"}[cancelAfterStart], func(t *testing.T) {
+				environment(t)
+				record := provider(t, "osascript", "notify-send")
+				t.Setenv("FIXTURE_WAIT", "yes")
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				timeout := "100ms"
+				if cancelAfterStart {
+					timeout = "5s"
+				}
+				var out, errOut bytes.Buffer
+				done := make(chan int, 1)
+				go func() {
+					done <- cli.Run(ctx, []string{"tell", "--json", "--timeout", timeout, "--via", route, "notify", "body-sentinel"}, config.BuildOpts{}, &out, &errOut)
+				}()
+				if cancelAfterStart {
+					deadline := time.After(3 * time.Second)
+					ticker := time.NewTicker(time.Millisecond)
+					defer ticker.Stop()
+				waitStart:
+					for {
+						select {
+						case <-ticker.C:
+							if _, err := os.Stat(record); err == nil {
+								cancel()
+								break waitStart
+							}
+						case <-deadline:
 							cancel()
-							break waitStart
+							<-done
+							t.Fatal("provider did not start")
 						}
-					case <-deadline:
-						cancel()
-						<-done
-						t.Fatal("provider did not start")
 					}
 				}
-			}
-			code := <-done
-			reason := "timeout"
-			if cancelAfterStart {
-				reason = "cancelled"
-			}
-			assertResult(t, code, out.String(), errOut.String(), "apprise", "uncertain", reason)
-		})
+				code := <-done
+				reason := "timeout"
+				if cancelAfterStart {
+					reason = "cancelled"
+				}
+				assertResult(t, code, out.String(), errOut.String(), route, "uncertain", reason)
+			})
+		}
 	}
+}
+
+func TestDesktopNotify(t *testing.T) {
+	environment(t)
+	record := provider(t, "osascript", "notify-send")
+	for _, exit := range []string{"0", "1", "3", "5"} {
+		t.Setenv("FIXTURE_EXIT", exit)
+		code, out, errOut := run("--json", "--via", "desktop", "notify", "body-sentinel")
+		outcome, reason := "accepted", ""
+		if exit != "0" {
+			outcome, reason = "failed", "provider_failure"
+		}
+		assertResult(t, code, out, errOut, "desktop", outcome, reason)
+	}
+	if _, err := os.Stat(record); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	code, out, errOut := run("--json", "--via", "desktop", "notify", "body-sentinel")
+	reason := "missing_executable"
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		reason = "unsupported_platform"
+	}
+	assertResult(t, code, out, errOut, "desktop", "not_sent", reason)
 }
