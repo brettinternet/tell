@@ -9,7 +9,7 @@ tell notify "Build finished"                         # person: stderr, desktop, 
 tell send --intent request "Triage PRs; report blockers"   # agent: hcom mailbox or idle Herdr pane
 ```
 
-Tell is a Go CLI for terminals, scripts, and scheduler hooks. Your scheduler
+Tell is a CLI for terminals, scripts, and scheduler hooks. Your scheduler
 (cron, launchd, CI, Noon) owns schedules, retries, and history. Your scripts
 decide what is worth saying. Tell routes one message and reports what happened.
 It has no daemon, queue, database, or retries.
@@ -63,8 +63,8 @@ See the [compatibility promise](docs/design.md#compatibility).
 
 ```sh
 mise trust
-mise exec -- task init
-mise exec -- task cli:build   # → bin/tell
+task init
+task cli:build   # → bin/tell
 ```
 
 Apprise, Herdr, and hcom are optional external tools. None is needed to build
