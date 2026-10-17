@@ -59,15 +59,15 @@ exit "${FIXTURE_EXIT:-0}"
 		{"3", "not_sent", "no_match"}, {"1", "failed", "provider_failure"}, {"5", "failed", "provider_failure"},
 	} {
 		t.Setenv("FIXTURE_EXIT", tc.exit)
-		code, out, errOut := run("--json", "--via", "command", "notify", "body-sentinel")
+		code, out, errOut := run("--json", "notify", "--via", "command", "body-sentinel")
 		assertResult(t, code, out, errOut, "command", tc.outcome, tc.reason)
 	}
 	t.Setenv("PATH", t.TempDir())
-	code, out, errOut = run("--json", "--via", "command", "notify", "body-sentinel")
+	code, out, errOut = run("--json", "notify", "--via", "command", "body-sentinel")
 	assertResult(t, code, out, errOut, "command", "not_sent", "missing_executable")
 	if err := os.WriteFile(userConfig, []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	code, out, errOut = run("--json", "--via", "command", "notify", "body-sentinel")
+	code, out, errOut = run("--json", "notify", "--via", "command", "body-sentinel")
 	assertResult(t, code, out, errOut, "command", "config", "invalid_config")
 }

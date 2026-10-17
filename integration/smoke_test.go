@@ -71,7 +71,7 @@ func TestBinary(t *testing.T) {
 		if fromStdin {
 			message = "-"
 		}
-		command := exec.Command(binary, "--config", explicit, "--via", "stderr", "notify", message)
+		command := exec.Command(binary, "--config", explicit, "notify", "--via", "stderr", message)
 		command.Dir = home
 		command.Env = []string{}
 		command.Stdin = strings.NewReader(input)

@@ -106,7 +106,7 @@ func TestMCPAgentTargetsOverrideSources(t *testing.T) {
 	if err := os.WriteFile(userConfig, []byte("mcp: {agent_targets: true}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	code, out, errOut = run("--mcp-agent-targets=false", "config", "--json")
+	code, out, errOut = run("config", "--mcp-agent-targets=false", "--json")
 	if code != 0 || errOut != "" || json.Unmarshal([]byte(out), &result) != nil {
 		t.Fatalf("flag override: %d %s %s", code, out, errOut)
 	}
@@ -123,10 +123,13 @@ func TestPersonalRoutingOverrides(t *testing.T) {
 	for _, tc := range []struct{ key, env, flag, value string }{
 		{"notify.via", "TELL_NOTIFY_VIA", "--via", "apprise"},
 		{"apprise.config", "TELL_APPRISE_CONFIG", "--apprise-config", "/personal/provider.yaml"},
+		{"apprise.tag", "TELL_APPRISE_TAG", "--apprise-tag", "alerts"},
+		{"apprise.format", "TELL_APPRISE_FORMAT", "--apprise-format", "markdown"},
 		{"herdr.session", "TELL_HERDR_SESSION", "--herdr-session", "personal"},
 		{"send.to", "TELL_SEND_TO", "--to", "reviewer"},
 		{"send.via", "TELL_SEND_VIA", "--send-via", "hcom"},
 		{"send.from", "TELL_SEND_FROM", "--from", "nightly"},
+		{"mcp.agent_targets", "TELL_MCP_AGENT_TARGETS", "--mcp-agent-targets", "true"},
 	} {
 		t.Run(tc.key, func(t *testing.T) {
 			environment(t)
@@ -136,16 +139,23 @@ func TestPersonalRoutingOverrides(t *testing.T) {
 				source := "env:" + tc.env
 				if flag {
 					t.Setenv(tc.env, "")
-					args = append(args, tc.flag, tc.value)
+					args = append(args, tc.flag+"="+tc.value)
 					source = "flag:" + tc.flag
 				}
-				code, out, errOut := run(args...)
-				var result struct{ Config config.Config }
-				if code != 0 || errOut != "" || json.Unmarshal([]byte(out), &result) != nil {
-					t.Fatalf("override: %d %s %s", code, out, errOut)
-				}
-				if result.Config.Values()[tc.key] != tc.value || result.Config.Origins[tc.key] != source {
-					t.Fatalf("wrong routing/provenance: %s", out)
+				for _, subcommand := range []string{"", "show", "check"} {
+					invocation := append([]string{}, args[:2]...)
+					if subcommand != "" {
+						invocation = append(invocation, subcommand)
+					}
+					invocation = append(invocation, args[2:]...)
+					code, out, errOut := run(invocation...)
+					var result struct{ Config config.Config }
+					if code != 0 || errOut != "" || json.Unmarshal([]byte(out), &result) != nil {
+						t.Fatalf("override %v: %d %s %s", invocation, code, out, errOut)
+					}
+					if result.Config.Values()[tc.key] != tc.value || result.Config.Origins[tc.key] != source {
+						t.Fatalf("wrong routing/provenance: %s", out)
+					}
 				}
 			}
 		})
@@ -229,7 +239,7 @@ func TestCLIErrorOutput(t *testing.T) {
 		t.Fatalf("bad usage error: %d %s %s", code, out, errOut)
 	}
 	for _, args := range [][]string{
-		{"--apprise-tag", "--json", "--unknown"},
+		{"notify", "--apprise-tag", "--json", "--unknown"},
 		{"-c", "-j", "--unknown"},
 		{"notify", "-t", "-j", "--unknown"},
 		{"-j=false", "--unknown"},
@@ -380,12 +390,12 @@ func TestForwardedErrorsPreservePrivacy(t *testing.T) {
 	environment(t)
 	for _, command := range []string{"notify", "send"} {
 		for _, structured := range []bool{false, true} {
-			args := []string{command, "--mcp-agent-targets=body-sentinel", "body-sentinel"}
+			args := []string{command, "--json=body-sentinel", "body-sentinel"}
 			if structured {
 				args = append([]string{"--json"}, args...)
 			}
 			code, out, diag := run(args...)
-			if code != 2 || strings.Contains(out+diag, "body-sentinel") || !strings.Contains(out+diag, "for flag -mcp-agent-targets: parse error") {
+			if code != 2 || strings.Contains(out+diag, "body-sentinel") || !strings.Contains(out+diag, "for flag -json: parse error") {
 				t.Fatalf("parser disclosure: %d %s %s", code, out, diag)
 			}
 		}

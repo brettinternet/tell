@@ -102,7 +102,7 @@ and desktop environment:
 
 ```sh
 tell -C /absolute/path/to/repo doctor
-tell -C /absolute/path/to/repo --via herdr --herdr-session work doctor
+tell -C /absolute/path/to/repo doctor --via herdr --herdr-session work
 ```
 
 Doctor sends nothing and checks setup, not credentials, reachability, or GUI

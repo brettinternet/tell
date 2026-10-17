@@ -44,7 +44,6 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Select exactly this project directory [$TELL_PROJECT]"},
 			&urfave.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Replace all automatic config files with FILE [$TELL_CONFIG]"},
 			&urfave.BoolFlag{Name: "json", Aliases: []string{"j"}, Usage: "Print one structured JSON result"},
-			&urfave.BoolFlag{Name: "mcp-agent-targets", Usage: "Allow MCP agents to override route and recipient selectors [$TELL_MCP_AGENT_TARGETS]"},
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
@@ -66,12 +65,28 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 			}, Action: initialize},
 		},
 	}
-	for _, spec := range settings {
-		// Resolve these env vars in input(), keeping exact flag/env provenance
-		// instead of losing it in the CLI framework's combined value source.
-		root.Flags = append(root.Flags, &urfave.StringFlag{Name: spec.flag, Usage: spec.usage + " [$" + spec.env + "]"})
-	}
 	_ = root.Walk(func(cmd *urfave.Command) error {
+		for _, spec := range settings {
+			include := false
+			switch cmd.Name {
+			case "tell":
+				include = spec.key == "timeout"
+			case "notify":
+				include = strings.HasPrefix(spec.key, "notify.") || strings.HasPrefix(spec.key, "apprise.") || spec.key == "herdr.session"
+			case "send":
+				include = strings.HasPrefix(spec.key, "send.") || spec.key == "herdr.session"
+			case "doctor", "config", "mcp":
+				include = spec.key != "timeout"
+			}
+			if include {
+				// Resolve env in input() to retain exact flag/env provenance.
+				// Config subcommands inherit these flags from config.
+				cmd.Flags = append(cmd.Flags, &urfave.StringFlag{Name: spec.flag, Usage: spec.usage + " [$" + spec.env + "]"})
+			}
+		}
+		if cmd.Name == "doctor" || cmd.Name == "config" || cmd.Name == "mcp" {
+			cmd.Flags = append(cmd.Flags, &urfave.BoolFlag{Name: "mcp-agent-targets", Usage: "Allow MCP agents to override route and recipient selectors [$TELL_MCP_AGENT_TARGETS]"})
+		}
 		cmd.HideHelpCommand = len(cmd.Commands) == 0
 		cmd.OnUsageError = func(_ context.Context, _ *urfave.Command, err error, _ bool) error {
 			message := err.Error()

@@ -167,7 +167,10 @@ tell: --timeout: timeout must be a positive Go duration, such as 10s
 Short forms: `-c`/`--config`, `-j`/`--json`, `-C`/`--project`, and
 `-u`/`--user` for `init`. Use `-i`/`--intent` for `send`.
 `-h`/`--help` and `-v`/`--version` remain available.
-See [configuration](docs/configuration.md) for every key.
+Only `--project`, `--config`, `--json`, and `--timeout` are global.
+Put routing flags after the command: `tell doctor --via desktop`,
+`tell send --send-via hcom --to reviewer "Hello"`.
+See [configuration](docs/configuration.md) for every key and command's flags.
 
 ## Notification routes
 

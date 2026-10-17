@@ -105,9 +105,9 @@ func TestNotifyInputIsolation(t *testing.T) {
 		t.Fatalf("stdin body: %q", errOut)
 	}
 	for _, args := range [][]string{
-		{"--json", "--via", "apprise", "notify", ""},
-		{"--json", "--via", "apprise", "notify", "-"},
-		{"--json", "--via", "apprise", "notify", "  \n"},
+		{"--json", "notify", "--via", "apprise", ""},
+		{"--json", "notify", "--via", "apprise", "-"},
+		{"--json", "notify", "--via", "apprise", "  \n"},
 	} {
 		code, out, errOut = run(args...)
 		assertResult(t, code, out, errOut, "apprise", "config", "empty_message")
@@ -126,7 +126,7 @@ func TestAppriseArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, kind := range []string{"", "info", "success", "warning", "failure"} {
-		args := []string{"--json", "-C", project, "--via", "apprise", "notify"}
+		args := []string{"--json", "-C", project, "notify", "--via", "apprise"}
 		expected := []string{"--title", "selected-project", "--body", "body-sentinel ; $(no-shell)\nnext", "--notification-type", "info"}
 		if kind != "" {
 			args = append(args, "--type", kind, "--title", "custom title", "--apprise-config", "provider.yaml", "--apprise-tag", "a,b c", "--apprise-format", "markdown")
@@ -166,20 +166,20 @@ func TestNotifyOutcomes(t *testing.T) {
 		{"5", "uncertain", "timeout", 5}, {"77", "failed", "provider_failure", 4},
 	} {
 		t.Setenv("FIXTURE_EXIT", tc.exit)
-		code, out, errOut := run("--json", "--via", "apprise", "notify", "body-sentinel")
+		code, out, errOut := run("--json", "notify", "--via", "apprise", "body-sentinel")
 		if code != tc.code || errOut != "" {
 			t.Fatalf("exit %s: %d %s", tc.exit, code, errOut)
 		}
 		assertResult(t, code, out, errOut, "apprise", tc.outcome, tc.reason)
-		code, out, errOut = run("--via", "apprise", "notify", "body-sentinel")
+		code, out, errOut = run("notify", "--via", "apprise", "body-sentinel")
 		if code != tc.code || out != "" || strings.Contains(errOut, "credential://") || strings.Contains(errOut, "body-sentinel") || strings.Contains(errOut, "raw-provider-output") {
 			t.Fatalf("unsafe human error: %d %s %s", code, out, errOut)
 		}
 	}
 	t.Setenv("PATH", t.TempDir())
-	code, out, errOut := run("--json", "--via", "apprise", "notify", "body-sentinel")
+	code, out, errOut := run("--json", "notify", "--via", "apprise", "body-sentinel")
 	assertResult(t, code, out, errOut, "apprise", "not_sent", "missing_executable")
-	code, out, errOut = run("--json", "--via", "herdr", "notify", "body-sentinel")
+	code, out, errOut = run("--json", "notify", "--via", "herdr", "body-sentinel")
 	assertResult(t, code, out, errOut, "herdr", "not_sent", "missing_target")
 	for _, args := range [][]string{
 		{"--json", "notify"}, {"--json", "notify", "body-sentinel", "extra"},
@@ -213,7 +213,7 @@ func TestNotifyInputCancellation(t *testing.T) {
 	var out, errOut bytes.Buffer
 	done := make(chan int, 1)
 	go func() {
-		done <- cli.Run(ctx, []string{"tell", "--json", "--via", "apprise", "notify", "-"}, config.BuildOpts{}, &out, &errOut)
+		done <- cli.Run(ctx, []string{"tell", "--json", "notify", "--via", "apprise", "-"}, config.BuildOpts{}, &out, &errOut)
 	}()
 	// Give the command time to enter its read; stdin remains open throughout.
 	time.AfterFunc(50*time.Millisecond, cancel)
@@ -261,7 +261,7 @@ func TestNotifyPreparation(t *testing.T) {
 		if code != 0 || out != "" || errOut != tc.want+"\n" {
 			t.Fatalf("stderr normalization: %d %q %q", code, out, errOut)
 		}
-		code, out, errOut = run("--json", "--via", "apprise", "notify", "--title", tc.input, tc.input)
+		code, out, errOut = run("--json", "notify", "--via", "apprise", "--title", tc.input, tc.input)
 		assertResult(t, code, out, errOut, "apprise", "accepted", "")
 		data, err := os.ReadFile(record)
 		if err != nil {
@@ -274,7 +274,7 @@ func TestNotifyPreparation(t *testing.T) {
 	}
 	for _, count := range []int{1, 10000} {
 		input := strings.Repeat("界", count)
-		code, out, errOut := run("--json", "--via", "apprise", "notify", "--title", input, input)
+		code, out, errOut := run("--json", "notify", "--via", "apprise", "--title", input, input)
 		assertResult(t, code, out, errOut, "apprise", "accepted", "")
 		data, err := os.ReadFile(record)
 		if err != nil {
@@ -307,7 +307,7 @@ func TestNotifyPreparationRejectsBeforeDispatch(t *testing.T) {
 			{"title", "\x1b[31m\u202e", "empty_message"},
 		} {
 			stdin(t, tc.body)
-			code, out, errOut := run("--json", "--via", route, "notify", "--title", tc.title, "-")
+			code, out, errOut := run("--json", "notify", "--via", route, "--title", tc.title, "-")
 			assertResult(t, code, out, errOut, route, "config", tc.reason)
 			if code != 1 || errOut != "" {
 				t.Fatalf("invalid input dispatched: %d %q", code, errOut)
@@ -338,7 +338,7 @@ func TestNotifySecrets(t *testing.T) {
 				} else {
 					body = token
 				}
-				code, out, errOut := run("--json", "--via", "apprise", "notify", "--title", title, body)
+				code, out, errOut := run("--json", "notify", "--via", "apprise", "--title", title, body)
 				if strings.Contains(out+errOut, token) {
 					t.Fatal("secret leaked in result")
 				}
@@ -379,7 +379,7 @@ func TestNotifySecrets(t *testing.T) {
 		environment(t)
 		record := provider(t)
 		value := "aZ3kP9qW7xL2mN8vB4tR6yH1"
-		code, out, errOut := run("--json", "--via", "apprise", "notify", "--title", "api_key="+value, "value "+value)
+		code, out, errOut := run("--json", "notify", "--via", "apprise", "--title", "api_key="+value, "value "+value)
 		assertResult(t, code, out, errOut, "apprise", "accepted", "")
 		data, err := os.ReadFile(record)
 		if err != nil || strings.Contains(string(data), value) {
@@ -406,7 +406,7 @@ func TestNotifyInterruption(t *testing.T) {
 				var out, errOut bytes.Buffer
 				done := make(chan int, 1)
 				go func() {
-					done <- cli.Run(ctx, []string{"tell", "--json", "--timeout", timeout, "--via", route, "notify", "body-sentinel"}, config.BuildOpts{}, &out, &errOut)
+					done <- cli.Run(ctx, []string{"tell", "--json", "--timeout", timeout, "notify", "--via", route, "body-sentinel"}, config.BuildOpts{}, &out, &errOut)
 				}()
 				if cancelAfterStart {
 					deadline := time.After(3 * time.Second)
@@ -443,7 +443,7 @@ func TestDesktopNotify(t *testing.T) {
 	record := provider(t, "osascript", "notify-send")
 	for _, exit := range []string{"0", "1", "3", "5"} {
 		t.Setenv("FIXTURE_EXIT", exit)
-		code, out, errOut := run("--json", "--via", "desktop", "notify", "body-sentinel")
+		code, out, errOut := run("--json", "notify", "--via", "desktop", "body-sentinel")
 		outcome, reason := "accepted", ""
 		if exit != "0" {
 			outcome, reason = "failed", "provider_failure"
@@ -454,7 +454,7 @@ func TestDesktopNotify(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", t.TempDir())
-	code, out, errOut := run("--json", "--via", "desktop", "notify", "body-sentinel")
+	code, out, errOut := run("--json", "notify", "--via", "desktop", "body-sentinel")
 	reason := "missing_executable"
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		reason = "unsupported_platform"

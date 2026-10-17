@@ -89,7 +89,7 @@ exit "${FIXTURE_EXIT:-0}"
 }
 
 func sendArgs(route string) []string {
-	return []string{"--json", "--send-via", route, "--to", "reviewer", "--herdr-session", "work", "send"}
+	return []string{"--json", "send", "--send-via", route, "--to", "reviewer", "--herdr-session", "work"}
 }
 
 func checkSendReceipt(t *testing.T, code int, out, diag, route, outcome, reason string) delivery.Result {
@@ -158,7 +158,7 @@ func TestSendRefusesUnsafeTargets(t *testing.T) {
 			t.Run(route+target, func(t *testing.T) {
 				environment(t)
 				record := sendProvider(t)
-				code, out, diag := run("--json", "--send-via", route, "--to", target, "--herdr-session", "work", "send", "body-sentinel")
+				code, out, diag := run("--json", "send", "--send-via", route, "--to", target, "--herdr-session", "work", "body-sentinel")
 				reason := "invalid_target"
 				if target == "" {
 					reason = "missing_target"
@@ -178,7 +178,7 @@ func TestSendRefusesUnsafeTargets(t *testing.T) {
 			t.Setenv("FIXTURE_AGENTS", `[{"name":"reviewer","status":"`+state+`"}]`)
 			code, out, diag := run(append(sendArgs("hcom"), "body-sentinel")...)
 			checkSendReceipt(t, code, out, diag, "hcom", "not_sent", "missing_target")
-			code, out, diag = run("--json", "--send-via", "hcom", "--to", "reviewer", "doctor")
+			code, out, diag = run("--json", "doctor", "--send-via", "hcom", "--to", "reviewer")
 			var report struct {
 				Ready  bool
 				Routes []delivery.Readiness

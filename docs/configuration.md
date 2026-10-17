@@ -165,13 +165,27 @@ Short forms: `-c`/`--config`, `-j`/`--json`, `-C`/`--project`,
 `-t`/`--title` and `-n`/`--type` for `notify`, `-i`/`--intent` for `send`,
 and `-u`/`--user` for `init`. `-h`/`--help` and `-v`/`--version` are unchanged.
 
+Global flags are `--project`, `--config`, `--json`, and `--timeout` (plus
+help/version). Put all other flags after the command:
+
+- `notify`: `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`,
+  `--herdr-session`, `--title`, `--type`.
+- `send`: `--send-via`, `--to`, `--from`, `--herdr-session`, `--intent`.
+- `doctor`, `config` (including `show` and `check`), and `mcp`: every setting
+  flag in the table above, including `--mcp-agent-targets`.
+- `init`: `--user`; no command-specific setting flags. Global `--config` and
+  `--timeout` overrides are rejected because init does not apply settings.
+
+Environment variables and configuration precedence are unchanged. For example,
+use `tell doctor --via desktop`; routing flags before the command are rejected.
+
 Message flags are per invocation, not settings:
 
 ```sh
 tell notify --title "CI" --type failure "Tests failed"   # --type: info|success|warning|failure
 tell notify - < message.txt                              # stdin only with -
 tell send --intent request "Triage PRs"                  # --intent: inform|request
-tell --send-via herdr --to reviewer send "..."           # --via is notify-only
+tell send --send-via herdr --to reviewer "..."           # --via is notify-only
 ```
 
 `-t`/`--title` defaults to the project directory name. Empty messages are refused.
@@ -197,7 +211,7 @@ $ tell --json doctor
 It checks the selected route, then every explicitly configured one (any Apprise
 setting, `herdr.session`, `notify.command`), plus `send/hcom` or `send/herdr`
 when `send.via`/`send.to` are set. Defaults alone add nothing; use
-`tell --via desktop doctor` to check desktop.
+`tell doctor --via desktop` to check desktop.
 
 | Route | Check | Does not verify |
 | --- | --- | --- |
