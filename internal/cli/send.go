@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/brettinternet/tell/internal/delivery"
 	urfave "github.com/urfave/cli/v3"
@@ -19,13 +20,13 @@ func send(ctx context.Context, cmd *urfave.Command) error {
 	intent := cmd.String("intent")
 	var result *delivery.Result
 	switch {
-	case cmd.NArg() != 1:
-		result = delivery.NewResult(cfg.Send.Via, "usage", "invalid_input", "send requires one message argument or - for stdin")
+	case cmd.NArg() == 0:
+		result = delivery.NewResult(cfg.Send.Via, "usage", "invalid_input", "send requires a message or - for stdin")
 	case intent != "inform" && intent != "request":
 		result = delivery.NewResult(cfg.Send.Via, "usage", "invalid_intent", fmt.Sprintf("invalid --intent %q; must be inform or request", usageValue(cmd, intent)))
 	default:
-		body := cmd.Args().First()
-		if body == "-" {
+		body := strings.Join(cmd.Args().Slice(), " ")
+		if cmd.NArg() == 1 && body == "-" {
 			data, err := readMessage(ctx, cmd.Reader)
 			if err != nil {
 				reason := "input_io"

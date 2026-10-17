@@ -92,12 +92,32 @@ func TestNotifyInputIsolation(t *testing.T) {
 	environment(t)
 	record := provider(t)
 	in := stdin(t, "hook summary\n")
-	code, out, errOut := run("notify", "literal")
-	if code != 0 || out != "" || errOut != "literal\n" {
-		t.Fatalf("stderr: %d %q %q", code, out, errOut)
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"Build", "finished"}, "Build finished"},
+		{[]string{"Build  finished"}, "Build  finished"},
+		{[]string{"-", "finished"}, "- finished"},
+		{[]string{"Build", "-", "finished"}, "Build - finished"},
+		{[]string{"--title", "-", "Build", "finished"}, "Build finished"},
+		{[]string{" - "}, " - "},
+	} {
+		code, out, errOut := run(append([]string{"notify"}, tc.args...)...)
+		if code != 0 || out != "" || errOut != tc.want+"\n" {
+			t.Fatalf("stderr: %d %q %q", code, out, errOut)
+		}
+		if pos, _ := in.Seek(0, io.SeekCurrent); pos != 0 {
+			t.Fatal("literal consumed stdin")
+		}
+	}
+	code, out, errOut := run("--json", "notify")
+	assertResult(t, code, out, errOut, "stderr", "usage", "invalid_input")
+	if code != 2 {
+		t.Fatalf("missing message exit: %d", code)
 	}
 	if pos, _ := in.Seek(0, io.SeekCurrent); pos != 0 {
-		t.Fatal("literal consumed stdin")
+		t.Fatal("missing message consumed stdin")
 	}
 	code, out, errOut = run("--json", "notify", "-")
 	assertResult(t, code, out, "", "stderr", "accepted", "")
@@ -182,7 +202,7 @@ func TestNotifyOutcomes(t *testing.T) {
 	code, out, errOut = run("--json", "notify", "--via", "herdr", "body-sentinel")
 	assertResult(t, code, out, errOut, "herdr", "not_sent", "missing_target")
 	for _, args := range [][]string{
-		{"--json", "notify"}, {"--json", "notify", "body-sentinel", "extra"},
+		{"--json", "notify"},
 		{"--json", "notify", "--type", "body-sentinel", "body-sentinel"},
 	} {
 		code, out, errOut = run(args...)

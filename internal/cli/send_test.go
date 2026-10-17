@@ -24,7 +24,7 @@ func TestSendHumanFailures(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"input", []string{"send"}, "send requires one message argument or - for stdin"},
+		{"input", []string{"send"}, "send requires a message or - for stdin"},
 		{"route", []string{"send", "body-sentinel"}, "send.via in personal config, --send-via, or TELL_SEND_VIA"},
 		{"target", []string{"send", "--send-via", "hcom", "body-sentinel"}, "send.to in personal config, --to, or TELL_SEND_TO"},
 		{"session", []string{"send", "--send-via", "herdr", "--to", "reviewer", "body-sentinel"}, "herdr.session in personal config, --herdr-session, or TELL_HERDR_SESSION"},
@@ -109,9 +109,9 @@ func checkSendReceipt(t *testing.T, code int, out, diag, route, outcome, reason 
 // literal and explicit stdin messages must cross exactly the same boundary.
 func TestSendLiteralAndStdin(t *testing.T) {
 	for _, route := range []string{"hcom", "herdr"} {
-		for _, input := range []bool{false, true} {
+		for _, input := range []string{"literal", "stdin", "words", "leading-dash", "middle-dash", "missing"} {
 			for _, intent := range []string{"inform", "request"} {
-				t.Run(route+intent+map[bool]string{true: "stdin", false: "literal"}[input], func(t *testing.T) {
+				t.Run(route+intent+input, func(t *testing.T) {
 					environment(t)
 					record := sendProvider(t)
 					body := "--leading 'quoted'  \t @someone\nbody-sentinel ; $(no-shell)\n"
@@ -120,12 +120,37 @@ func TestSendLiteralAndStdin(t *testing.T) {
 					if intent == "request" {
 						args = append(args, "--intent", intent)
 					}
-					if input {
+					switch input {
+					case "stdin":
 						args = append(args, "-")
-					} else {
+					case "words":
+						args = append(args, "Tests", "failed")
+						body = "Tests failed"
+					case "leading-dash":
+						args = append(args, "-", "failed")
+						body = "- failed"
+					case "middle-dash":
+						args = append(args, "Tests", "-", "failed")
+						body = "Tests - failed"
+					case "literal":
 						args = append(args, "--", body)
 					}
 					code, out, diag := run(args...)
+					if input != "stdin" {
+						if pos, _ := in.Seek(0, io.SeekCurrent); pos != 0 {
+							t.Fatal("non-stdin invocation consumed stdin")
+						}
+					}
+					if input == "missing" {
+						checkSendReceipt(t, code, out, diag, route, "usage", "invalid_input")
+						if code != 2 {
+							t.Fatalf("missing message exit: %d", code)
+						}
+						if _, err := os.Stat(record + ".sent"); !os.IsNotExist(err) {
+							t.Fatal("missing message dispatched")
+						}
+						return
+					}
 					result := checkSendReceipt(t, code, out, diag, route, "accepted", "")
 					if result.Recipient != "reviewer" || result.Intent != intent {
 						t.Fatalf("metadata: %s", out)
@@ -139,11 +164,6 @@ func TestSendLiteralAndStdin(t *testing.T) {
 					got := strings.Split(strings.TrimSuffix(string(data), "\x00"), "\x00")
 					if err != nil || !reflect.DeepEqual(got, want) {
 						t.Fatalf("argv: %#v want %#v: %v", got, want, err)
-					}
-					if !input {
-						if pos, _ := in.Seek(0, io.SeekCurrent); pos != 0 {
-							t.Fatal("literal consumed stdin")
-						}
 					}
 				})
 			}

@@ -95,6 +95,12 @@ Build finished
 $ printf 'Build finished' | tell notify -     # stdin only when you pass -
 ```
 
+Both `notify` and `send` join message arguments with single spaces:
+`tell notify Build finished` and `tell send Tests failed` need no quotes.
+A single quoted argument keeps its spacing. Only a lone `-` reads stdin;
+`-` among other words is literal text. No message arguments is a usage error,
+not an instruction to read stdin. Shell quoting rules still apply.
+
 Detected secrets are redacted before delivery:
 
 ```console

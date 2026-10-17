@@ -188,6 +188,13 @@ tell send --intent request "Triage PRs"                  # --intent: inform|requ
 tell send --send-via herdr --to reviewer "..."           # --via is notify-only
 ```
 
+`notify` and `send` accept `MESSAGE... | -`. Positional arguments are joined
+with single spaces: `tell notify Build finished` sends `Build finished`, and
+`tell send Tests failed` sends `Tests failed`. A single quoted argument keeps
+its spacing. A lone `-` reads stdin; a `-` among other words is literal text.
+No arguments is a usage error (exit 2), even when stdin is piped. Shell quoting
+rules still apply; use `--` before a message that starts with a flag-like word.
+
 `-t`/`--title` defaults to the project directory name. Empty messages are refused.
 Text is normalized and scanned before delivery; see
 [message preparation](design.md#message-preparation). Scanning is best-effort,

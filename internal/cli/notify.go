@@ -17,8 +17,8 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 		return delivery.NewResult("", "config", "invalid_config", err.Error())
 	}
 	route := cfg.Notify.Via
-	if cmd.NArg() != 1 {
-		return delivery.NewResult(route, "usage", "invalid_input", "notify requires one message argument or - for stdin")
+	if cmd.NArg() == 0 {
+		return delivery.NewResult(route, "usage", "invalid_input", "notify requires a message or - for stdin")
 	}
 	kind := cmd.String("type")
 	switch kind {
@@ -26,8 +26,8 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 	default:
 		return delivery.NewResult(route, "usage", "invalid_type", fmt.Sprintf("invalid --type %q; must be info, success, warning, or failure", usageValue(cmd, kind)))
 	}
-	body := cmd.Args().First()
-	if body == "-" {
+	body := strings.Join(cmd.Args().Slice(), " ")
+	if cmd.NArg() == 1 && body == "-" {
 		data, err := readMessage(ctx, cmd.Reader)
 		if ctx.Err() != nil {
 			return delivery.NewResult(route, "config", "cancelled", "notification cancelled before delivery")

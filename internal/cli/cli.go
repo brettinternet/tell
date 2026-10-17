@@ -47,12 +47,12 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
-			{Name: "send", Usage: "Send to an existing agent; dispatch is not completion", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
+			{Name: "send", Usage: "Send to an existing agent; dispatch is not completion", ArgsUsage: "MESSAGE... | -", Flags: []urfave.Flag{
 				&urfave.StringFlag{Name: "intent", Aliases: []string{"i"}, Value: "inform", Usage: "Message intent: inform or request"},
 			}, Action: send},
 			{Name: "doctor", Usage: "Check configured routes without sending or starting services", Action: doctor},
 			{Name: "mcp", Usage: "Serve notify, send, and doctor as MCP tools over stdio", Action: mcpCommand(build.Version)},
-			{Name: "notify", Usage: "Notify via the selected route; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
+			{Name: "notify", Usage: "Notify via the selected route; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE... | -", Flags: []urfave.Flag{
 				&urfave.StringFlag{Name: "title", Aliases: []string{"t"}, Usage: "Notification title (default: project directory name)"},
 				&urfave.StringFlag{Name: "type", Aliases: []string{"n"}, Value: "info", Usage: "Notification type: info, success, warning, failure"},
 			}, Action: notify},
@@ -116,6 +116,7 @@ func (err *failure) Error() string { return err.Message }
 // help, version, and shell completion retain their standard text formats.
 func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut io.Writer) int {
 	root := NewRootCommand(build, out, errOut)
+	args = preserveMessageDash(root, args)
 	if err := root.Run(ctx, args); err != nil {
 		var report *doctorReport
 		if errors.As(err, &report) {
@@ -352,9 +353,32 @@ func emit(cmd *urfave.Command, result map[string]any) error {
 	return json.NewEncoder(cmd.Writer).Encode(result)
 }
 
-// Match Noon's output-mode handling on parse errors without treating a string
-// flag's value (for example --apprise-tag --json) as an output flag.
-func jsonRequested(root *urfave.Command, args []string) bool {
+// urfave v3.13 drops arguments after a bare dash. Protect a message dash
+// with the end-of-options marker, without changing dashes used as flag values.
+func preserveMessageDash(root *urfave.Command, args []string) []string {
+	if !notifyRequested(root, args) && !commandRequested(root, args, "send") {
+		return args
+	}
+	valueFlags := commandValueFlags(root)
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return args
+		}
+		if strings.TrimSpace(arg) == "-" {
+			return slices.Insert(slices.Clone(args), i, "--")
+		}
+		if strings.HasPrefix(arg, "-") {
+			name, _, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+			if valueFlags[name] && !hasValue {
+				i++
+			}
+		}
+	}
+	return args
+}
+
+func commandValueFlags(root *urfave.Command) map[string]bool {
 	valueFlags := map[string]bool{}
 	_ = root.Walk(func(cmd *urfave.Command) error {
 		for _, flag := range cmd.Flags {
@@ -366,6 +390,13 @@ func jsonRequested(root *urfave.Command, args []string) bool {
 		}
 		return nil
 	})
+	return valueFlags
+}
+
+// Match Noon's output-mode handling on parse errors without treating a string
+// flag's value (for example --apprise-tag --json) as an output flag.
+func jsonRequested(root *urfave.Command, args []string) bool {
+	valueFlags := commandValueFlags(root)
 	requested := false
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
