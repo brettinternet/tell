@@ -23,9 +23,11 @@ esac
 mkdir -p dist/package-check
 tar -xzf "$release_dir/tell-$VERSION-$platform-$arch.tar.gz" -C dist/package-check
 actual="$(dist/package-check/bin/tell --version)"
-expected="tell version ${VERSION#v} (commit $BUILD_COMMIT, built $BUILD_TIME)"
+short_commit="$(printf '%.7s' "$BUILD_COMMIT")"
+expected="tell ${VERSION#v} ($short_commit, built $BUILD_TIME)"
 test "$actual" = "$expected" || {
   printf 'Expected: %s\nActual: %s\n' "$expected" "$actual" >&2
   exit 1
 }
+test "$(dist/package-check/bin/tell version)" = "$expected"
 printf '%s\n' "$actual"

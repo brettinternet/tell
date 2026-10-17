@@ -54,8 +54,9 @@ a participating recipient; desktop uses macOS osascript or Linux notify-send
 and a desktop D-Bus session. The command route requires your own executable.
 Credentials remain with each provider. Run `tell doctor` before delivery.
 
-`tell --version` reports the version (without the tag's `v`), source commit,
-and build timestamp. Source-only `task cli:build` remains `dev`; versioned
+`tell --version` (or `tell version`) reports the version (without the tag's `v`),
+seven-character source commit, and build timestamp:
+`tell 0.18.2 (47b389f, built 2026-10-16T21:43:17Z)`. Source-only `task cli:build` remains `dev`; versioned
 archives use [the packaging task](docs/development.md#release-packaging).
 See the [compatibility promise](docs/design.md#compatibility).
 

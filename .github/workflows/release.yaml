@@ -92,6 +92,6 @@ jobs:
           actual="$(mise exec github:brettinternet/tell@latest -- tell --version)"
           printf '%s\n' "$actual"
           case "$actual" in
-            "tell version ${RELEASE_TAG#v} (commit "*) ;;
+            "tell ${RELEASE_TAG#v} ("*) ;;
             *) echo "mise did not install the expected release" >&2; exit 1 ;;
           esac

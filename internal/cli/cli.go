@@ -20,6 +20,12 @@ import (
 	urfave "github.com/urfave/cli/v3"
 )
 
+func init() {
+	urfave.VersionPrinter = func(cmd *urfave.Command) {
+		fmt.Fprintf(cmd.Writer, "%s %s\n", cmd.Name, cmd.Version)
+	}
+}
+
 type settingSpec struct{ key, flag, env, usage string }
 
 var settings = []settingSpec{
@@ -39,7 +45,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 	root := &urfave.Command{
 		Name: "tell", Usage: "Send a notification to a person or a message to an agent",
 		Description: "Send one message, then exit. With no command, inspect settings without sending.\nAccepted means handed to the provider, not read.\nDefaults shown in help apply unless overridden by configuration or environment.",
-		Version:     fmt.Sprintf("%s (commit %s, built %s)", build.Version, build.Commit, build.BuildTime),
+		Version:     fmt.Sprintf("%s (%.7s, built %s)", build.Version, build.Commit, build.BuildTime),
 		Writer:      out, ErrWriter: errOut, EnableShellCompletion: true,
 		ExitErrHandler: func(context.Context, *urfave.Command, error) {},
 		Flags: []urfave.Flag{
@@ -49,6 +55,10 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
+			{Name: "version", Usage: "Print version and build information", Action: func(_ context.Context, cmd *urfave.Command) error {
+				urfave.ShowVersion(cmd.Root())
+				return nil
+			}},
 			{Name: "notify", Usage: "Send a notification to a person", ArgsUsage: "MESSAGE... | -",
 				Description: "Join message words with spaces, or use a lone - to read stdin.\n\nExamples:\n  tell notify Build finished\n  tell notify --via stderr --type success --title Tests All passed\n  printf 'Build finished' | tell notify -",
 				Flags: []urfave.Flag{
