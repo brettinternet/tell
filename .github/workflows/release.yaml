@@ -37,7 +37,7 @@ jobs:
             exit 1
           fi
           gh run watch "$run_id" --exit-status
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           cache: false
       - name: Build and verify release archives
@@ -70,7 +70,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           install: false
           cache: false
@@ -82,6 +82,8 @@ jobs:
           MISE_STATE_DIR: ${{ runner.temp }}/mise-state
           MISE_GITHUB_TOKEN: ${{ github.token }}
           MISE_MINIMUM_RELEASE_AGE: "0"
+          # Bypass mise's shared metadata cache immediately after publication.
+          MISE_USE_VERSIONS_HOST: "false"
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -eu

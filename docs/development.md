@@ -61,7 +61,8 @@ are never overwritten. There are no tap updates, changelog commits, or pushes.
 
 After publication, a four-runner matrix installs latest using the plain mise
 GitHub backend in fresh cache/config/data/state directories and checks the
-expected version. This live check necessarily follows publication and cannot
+expected version. It bypasses mise's shared versions host so newly published
+release metadata comes directly from GitHub rather than a stale shared cache. This live check necessarily follows publication and cannot
 roll it back. The first release, `v0.1.0`, passed this live check on all four
 runners. For subsequent releases, check the release run's matrix results;
 local packaging alone does not verify live mise installation.
