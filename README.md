@@ -156,6 +156,10 @@ tell init           # tell.yaml: shared, committed
 tell init --user    # ~/.config/tell/config.yaml: personal (mode 0600)
 ```
 
+After creating or keeping `tell.yaml`, commit it and run `tell init --user`
+to configure personal routing. In the user file, set `notify.via`, then run
+`tell doctor`. Templates list all notify routes and send transports.
+
 Shared `tell.yaml` holds shared settings only. Destinations are personal, so
 Tell rejects routing fields there. Personal settings belong in user config or
 an explicit `--config`/`TELL_CONFIG` file. Tell does not automatically load

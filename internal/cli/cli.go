@@ -385,7 +385,11 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	} else {
 		fmt.Fprintf(cmd.Writer, "Kept existing %q (not overwritten)\n", path)
 	}
-	fmt.Fprintln(cmd.Writer, "Next: tell config check")
+	if cmd.Bool("user") {
+		fmt.Fprintln(cmd.Writer, "Next: set notify.via in this file, then run tell doctor.")
+	} else {
+		fmt.Fprintln(cmd.Writer, "Next: commit tell.yaml. Run tell init --user to configure personal routing.")
+	}
 	return nil
 }
 

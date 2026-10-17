@@ -49,9 +49,10 @@ func createTemplate(path string, mode os.FileMode, content string) (string, bool
 	return path, true, errors.Join(writeErr, file.Close())
 }
 
-const sharedTemplate = `# Shared Tell settings. Inspection sends nothing; notify delivers via stderr or Apprise.
-# Apprise is optional and external. Provider acceptance is not human acknowledgment.
-# Personal routing belongs in user config, --config, environment, or flags.
+const sharedTemplate = `# Shared Tell settings. Commit this file to share project settings.
+# Inspection sends nothing. notify routes: stderr, desktop, apprise, herdr, command.
+# send transports: hcom, herdr. Acceptance is not acknowledgment.
+# Run tell init --user to configure personal routing; do not set routes here.
 # Keep credentials in your provider's configuration.
 version: 1
 # timeout: 10s
@@ -60,8 +61,9 @@ version: 1
 #   format: markdown
 `
 
-const personalTemplate = `# Personal Tell settings; inspection sends nothing. notify uses stderr or Apprise.
-# Apprise is optional and external. Provider acceptance is not human acknowledgment.
+const personalTemplate = `# Personal Tell settings. Set notify.via, then run tell doctor.
+# Inspection sends nothing. notify routes: stderr, desktop, apprise, herdr, command.
+# send transports: hcom, herdr. Acceptance is not acknowledgment.
 # This user config is personal; --config/TELL_CONFIG selects another trusted file.
 # Routing can also use TELL_* environment variables or flags where supported.
 # Keep credentials in your provider's configuration.

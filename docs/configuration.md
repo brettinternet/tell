@@ -303,12 +303,20 @@ or configuration failed before a route was resolved.
 ```console
 $ tell init
 Created "/Users/me/dev/app/tell.yaml"
-Next: tell config check
+Next: commit tell.yaml. Run tell init --user to configure personal routing.
 
 $ tell init
 Kept existing "/Users/me/dev/app/tell.yaml" (not overwritten)
-Next: tell config check
+Next: commit tell.yaml. Run tell init --user to configure personal routing.
+
+$ tell init --user
+Created "/Users/me/.config/tell/config.yaml"
+Next: set notify.via in this file, then run tell doctor.
 ```
+
+The user-file next step is the same when an existing file is kept. Templates
+list all notify routes (stderr, desktop, apprise, herdr, command) and send
+transports (hcom, herdr); only the personal template includes routing fields.
 
 Existing files are kept byte-for-byte, even malformed ones. Existing symlinks
 and directories are refused. Init does not edit `.gitignore`, copy inherited
