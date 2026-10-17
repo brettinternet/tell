@@ -44,7 +44,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		ExitErrHandler: func(context.Context, *urfave.Command, error) {},
 		Flags: []urfave.Flag{
 			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Use this project `directory` (default: discover from current directory) [$TELL_PROJECT]"},
-			&urfave.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Use only this config `file` (default: user config and tell.yaml) [$TELL_CONFIG]"},
+			&urfave.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Use only this config `file` (default: user config, tell.yaml, and .git/tell.yaml) [$TELL_CONFIG]"},
 			&urfave.BoolFlag{Name: "json", Aliases: []string{"j"}, Usage: "Print one structured JSON result"},
 		},
 		Action: showConfig,
@@ -68,8 +68,9 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 					{Name: "check", Usage: "Validate settings without invoking providers", Action: checkConfig},
 				}},
 			{Name: "init", Usage: "Create a starter config without overwriting files",
-				Description: "Create shared tell.yaml or personal user config. Never sends messages.\n\nExamples:\n  tell init\n  tell init --user", Flags: []urfave.Flag{
+				Description: "Create shared tell.yaml, personal user config, or repository-personal .git/tell.yaml. Never sends messages.\n\nExamples:\n  tell init\n  tell init --user\n  tell init --local", Flags: []urfave.Flag{
 					&urfave.BoolFlag{Name: "user", Aliases: []string{"u"}, Usage: "Create personal user config instead"},
+					&urfave.BoolFlag{Name: "local", Aliases: []string{"l"}, Usage: "Create personal .git/tell.yaml for this repository and its worktrees instead"},
 				}, Action: initialize},
 			{Name: "mcp", Usage: "Serve notify, send, and doctor as MCP tools over stdio", Action: mcpCommand(build.Version)},
 		},
@@ -361,17 +362,20 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	if slices.ContainsFunc(overrides, cmd.IsSet) {
 		return &failure{Code: "usage", Message: "init does not apply config or setting overrides; edit the generated file instead", usage: true}
 	}
-	if cmd.Bool("user") && cmd.IsSet("project") {
-		return &failure{Code: "usage", Message: "--user cannot be combined with --project", usage: true}
+	if cmd.Bool("user") && (cmd.Bool("local") || cmd.IsSet("project")) {
+		return &failure{Code: "usage", Message: "--user cannot be combined with --local or --project", usage: true}
 	}
 	var path string
 	var created bool
-	if cmd.Bool("user") {
+	switch {
+	case cmd.Bool("user"):
 		values.UserConfigDir, err = userConfigDir()
 		if err == nil {
 			path, created, err = config.InitUser(values)
 		}
-	} else {
+	case cmd.Bool("local"):
+		path, created, err = config.InitLocal(values)
+	default:
 		path, created, err = config.Init(values)
 	}
 	if err != nil {
@@ -385,7 +389,7 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	} else {
 		fmt.Fprintf(cmd.Writer, "Kept existing %q (not overwritten)\n", path)
 	}
-	if cmd.Bool("user") {
+	if cmd.Bool("user") || cmd.Bool("local") {
 		fmt.Fprintln(cmd.Writer, "Next: set notify.via in this file, then run tell doctor.")
 	} else {
 		fmt.Fprintln(cmd.Writer, "Next: commit tell.yaml. Run tell init --user to configure personal routing.")

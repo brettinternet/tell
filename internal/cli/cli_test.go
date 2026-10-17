@@ -428,8 +428,11 @@ func TestCLIInspectionAndInit(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("inspection created config")
 	}
-	if code, _, _ := run("init", "--local"); code != 2 {
-		t.Fatalf("accepted removed --local flag: %d", code)
+	if code, _, errOut := run("init", "--local"); code != 1 || !strings.Contains(errOut, "init --user") {
+		t.Fatalf("local init outside Git: %d %s", code, errOut)
+	}
+	if code, _, _ := run("init", "--local", "--user"); code != 2 {
+		t.Fatalf("accepted conflicting init targets: %d", code)
 	}
 	code, out, errOut = run("init", "--json")
 	if code != 0 || !strings.Contains(out, `"created":true`) {

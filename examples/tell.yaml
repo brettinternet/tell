@@ -1,4 +1,4 @@
-# Shared fields only; personal routing belongs in user config, --config, environment, or flags.
+# Shared fields only; personal routing belongs in user config, .git/tell.yaml, --config, environment, or flags.
 version: 1
 timeout: 10s
 apprise:

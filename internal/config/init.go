@@ -18,6 +18,23 @@ func Init(input Input) (path string, created bool, err error) {
 	return createTemplate(filepath.Join(project, "tell.yaml"), 0o644, sharedTemplate)
 }
 
+// InitLocal creates repository-personal configuration in the project's common
+// Git directory, which Git never commits and linked worktrees share.
+func InitLocal(input Input) (path string, created bool, err error) {
+	project, err := ProjectDir(input)
+	if err != nil {
+		return "", false, err
+	}
+	dir, err := gitCommonDir(project)
+	if err != nil {
+		return "", false, err
+	}
+	if dir == "" {
+		return "", false, fmt.Errorf("%s is not a Git checkout; use tell init --user for personal config", project)
+	}
+	return createTemplate(filepath.Join(dir, "tell.yaml"), 0o600, localHeader+personalBody)
+}
+
 // InitUser creates personal configuration without reading project settings.
 func InitUser(input Input) (path string, created bool, err error) {
 	if !filepath.IsAbs(input.UserConfigDir) {
@@ -27,7 +44,7 @@ func InitUser(input Input) (path string, created bool, err error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", false, err
 	}
-	return createTemplate(filepath.Join(dir, "config.yaml"), 0o600, personalTemplate)
+	return createTemplate(filepath.Join(dir, "config.yaml"), 0o600, userHeader+personalBody)
 }
 
 func createTemplate(path string, mode os.FileMode, content string) (string, bool, error) {
@@ -52,7 +69,7 @@ func createTemplate(path string, mode os.FileMode, content string) (string, bool
 const sharedTemplate = `# Shared Tell settings. Commit this file to share project settings.
 # Inspection sends nothing. notify routes: stderr, desktop, apprise, herdr, command.
 # send transports: hcom, herdr. Acceptance is not acknowledgment.
-# Run tell init --user to configure personal routing; do not set routes here.
+# Routes are personal, not set here: tell init --user (all projects) or --local (this repo).
 # Keep credentials in your provider's configuration.
 version: 1
 # timeout: 10s
@@ -61,10 +78,16 @@ version: 1
 #   format: markdown
 `
 
-const personalTemplate = `# Personal Tell settings. Set notify.via, then run tell doctor.
-# Inspection sends nothing. notify routes: stderr, desktop, apprise, herdr, command.
+const userHeader = `# Personal Tell settings for every project. Set notify.via, then run tell doctor.
+`
+
+const localHeader = `# Personal Tell settings for this repository and its worktrees; overrides user config.
+# Git never commits files inside .git. Set notify.via, then run tell doctor.
+`
+
+const personalBody = `# Inspection sends nothing. notify routes: stderr, desktop, apprise, herdr, command.
 # send transports: hcom, herdr. Acceptance is not acknowledgment.
-# This user config is personal; --config/TELL_CONFIG selects another trusted file.
+# --config/TELL_CONFIG selects another trusted file instead of automatic files.
 # Routing can also use TELL_* environment variables or flags where supported.
 # Keep credentials in your provider's configuration.
 version: 1

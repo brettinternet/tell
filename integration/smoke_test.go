@@ -98,8 +98,8 @@ func TestBinary(t *testing.T) {
 		t.Fatalf("explicit config without HOME: %d %s", code, output)
 	}
 	output, code = invoke("init", "--local", "--json")
-	if code != 2 || !json.Valid([]byte(output)) {
-		t.Fatalf("removed --local flag was accepted: %d %s", code, output)
+	if code != 1 || !json.Valid([]byte(output)) {
+		t.Fatalf("local init outside Git: %d %s", code, output)
 	}
 }
 
@@ -163,10 +163,10 @@ secrets:
 	git("add", "-f", ".tell.yaml")
 	git("commit", "-m", "add untrusted project Tell config")
 
-	invoke := func(args ...string) (string, int) {
+	invokeIn := func(dir string, args ...string) (string, int) {
 		t.Helper()
 		cmd := exec.Command(binary, args...)
-		cmd.Dir = repo
+		cmd.Dir = dir
 		cmd.Env = []string{
 			"HOME=" + home,
 			"XDG_CONFIG_HOME=" + filepath.Join(home, "config"),
@@ -183,6 +183,10 @@ secrets:
 		}
 		t.Fatal(err)
 		return "", -1
+	}
+	invoke := func(args ...string) (string, int) {
+		t.Helper()
+		return invokeIn(repo, args...)
 	}
 
 	output, code := invoke("--json", "config")
@@ -223,6 +227,33 @@ secrets:
 	}
 	if _, err := os.Stat(herdrMarker); !os.IsNotExist(err) {
 		t.Fatal("committed .tell.yaml routed send to Herdr")
+	}
+
+	// Personal config in the common Git directory is the supported per-repository
+	// layer: init from a real linked worktree must target it, and it must apply there.
+	git("worktree", "add", "-q", filepath.Join(repo, ".worktrees", "feature"))
+	worktree := filepath.Join(repo, ".worktrees", "feature")
+	local := filepath.Join(repo, ".git", "tell.yaml")
+	output, code = invokeIn(worktree, "--json", "init", "--local")
+	var created struct {
+		Path    string `json:"path"`
+		Created bool   `json:"created"`
+	}
+	if code != 0 || json.Unmarshal([]byte(output), &created) != nil || created.Path != local || !created.Created {
+		t.Fatalf("local init from worktree: %d %s", code, output)
+	}
+	if info, err := os.Stat(local); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("local config mode: %v %v", info, err)
+	}
+	if err := os.WriteFile(local, []byte(fmt.Sprintf("notify: {via: command, command: [%q]}\n", command)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, code = invokeIn(worktree, "--json", "notify", "personal body")
+	if code != 0 || !strings.Contains(output, `"route":"command"`) {
+		t.Fatalf("worktree ignored repository-personal config: %d %s", code, output)
+	}
+	if _, err := os.Stat(commandMarker); err != nil {
+		t.Fatal("repository-personal command did not run")
 	}
 }
 

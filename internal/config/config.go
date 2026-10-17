@@ -75,8 +75,8 @@ type Config struct {
 	Origins map[string]string `json:"origins"`
 }
 
-// Load merges user, shared-project, then invocation settings. File replaces
-// automatic file sources, not invocation overrides.
+// Load merges user, shared-project, repository-personal, then invocation
+// settings. File replaces automatic file sources, not invocation overrides.
 func Load(input Input) (Config, error) {
 	project, err := ProjectDir(input)
 	if err != nil {
@@ -107,6 +107,15 @@ func Load(input Input) (Config, error) {
 		}
 		if err := cfg.applyFile(filepath.Join(project, "tell.yaml"), true, true); err != nil {
 			return Config{}, err
+		}
+		gitDir, err := gitCommonDir(project)
+		if err != nil {
+			return Config{}, err
+		}
+		if gitDir != "" {
+			if err := cfg.applyFile(filepath.Join(gitDir, "tell.yaml"), true, false); err != nil {
+				return Config{}, err
+			}
 		}
 	}
 	for key, value := range input.Overrides {
@@ -242,9 +251,9 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 		if shared {
 			switch value.key {
 			case "secrets.policy", "notify.command":
-				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config or --config instead of shared tell.yaml", path, value.line, value.key)
+				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .git/tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
 			case "notify.via", "apprise.config", "herdr.session", "send.via", "send.to", "send.from", "mcp.agent_targets":
-				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
+				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .git/tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
 			}
 		}
 		if value.key == "notify.command" {
@@ -300,6 +309,68 @@ func ProjectDir(input Input) (string, error) {
 			return start, nil
 		}
 	}
+}
+
+// gitCommonDir returns the project's common Git directory, shared by linked
+// worktrees, or "" when the project has no .git. Git refuses to commit paths
+// inside it, so repository content cannot place personal config there. Only
+// .git and commondir are read; git never runs.
+func gitCommonDir(project string) (string, error) {
+	marker := filepath.Join(project, ".git")
+	info, err := os.Stat(marker)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("git directory %s: %w", marker, err)
+	}
+	gitDir := marker
+	if !info.IsDir() {
+		line, err := readGitPointer(marker)
+		target, ok := strings.CutPrefix(line, "gitdir: ")
+		if err == nil && (!ok || target == "") {
+			err = errors.New("want a gitdir: line")
+		}
+		if err != nil {
+			return "", fmt.Errorf("git directory %s: %w", marker, err)
+		}
+		gitDir = resolvePath(project, target)
+	}
+	// Linked worktrees name the shared directory in commondir; others are it.
+	common, err := readGitPointer(filepath.Join(gitDir, "commondir"))
+	if errors.Is(err, os.ErrNotExist) {
+		return gitDir, nil
+	}
+	if err == nil && common == "" {
+		err = errors.New("empty")
+	}
+	if err != nil {
+		return "", fmt.Errorf("git directory %s: commondir: %w", gitDir, err)
+	}
+	return resolvePath(gitDir, common), nil
+}
+
+func readGitPointer(path string) (string, error) {
+	// Opening a FIFO or device could block or read without bound.
+	if info, err := os.Stat(path); err != nil {
+		return "", err
+	} else if !info.Mode().IsRegular() {
+		return "", errors.New("must be a regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	const maxSize = 4096
+	data, err := io.ReadAll(io.LimitReader(file, maxSize+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxSize {
+		return "", errors.New("exceeds 4 KiB")
+	}
+	return strings.TrimRight(string(data), "\r\n"), nil
 }
 
 func resolvePath(base, path string) string {

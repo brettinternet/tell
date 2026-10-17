@@ -235,8 +235,9 @@ enters the launch path.
 
 ## Command delivery
 
-Runs one personal executable. Configure argv as a list in user config or an
-explicit `--config`/`TELL_CONFIG` file (never `tell.yaml`):
+Runs one personal executable. Configure argv as a list in user config,
+`.git/tell.yaml`, or an explicit `--config`/`TELL_CONFIG` file (never
+`tell.yaml`). Checkout content cannot supply any of these files:
 
 ```yaml
 notify:

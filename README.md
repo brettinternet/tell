@@ -153,17 +153,19 @@ Create starter files. `init` never overwrites.
 
 ```sh
 tell init           # tell.yaml: shared, committed
-tell init --user    # ~/.config/tell/config.yaml: personal (mode 0600)
+tell init --user    # ~/.config/tell/config.yaml: personal, every project (mode 0600)
+tell init --local   # .git/tell.yaml: personal, this repository and its worktrees (mode 0600)
 ```
 
 After creating or keeping `tell.yaml`, commit it and run `tell init --user`
-to configure personal routing. In the user file, set `notify.via`, then run
+to configure personal routing. In the personal file, set `notify.via`, then run
 `tell doctor`. Templates list all notify routes and send transports.
 
 Shared `tell.yaml` holds shared settings only. Destinations are personal, so
-Tell rejects routing fields there. Personal settings belong in user config or
-an explicit `--config`/`TELL_CONFIG` file. Tell does not automatically load
-`.tell.yaml`, even if a repository commits one:
+Tell rejects routing fields there. Personal settings belong in user config,
+the repository's `.git/tell.yaml`, or an explicit `--config`/`TELL_CONFIG`
+file. Git never commits files inside `.git`, so a checkout cannot supply
+personal settings, and linked worktrees share the same file:
 
 ```yaml
 # tell.yaml
@@ -181,13 +183,13 @@ notify:
 
 ```console
 $ tell config check   # with notify.via in tell.yaml
-tell: config /Users/me/dev/app/tell.yaml:3: notify.via is personal routing; set it in user config, --config, environment, or flags instead of shared tell.yaml
+tell: config /Users/me/dev/app/tell.yaml:3: notify.via is personal routing; set it in user config, .git/tell.yaml, --config, environment, or flags instead of shared tell.yaml
 ```
 
 Precedence, lowest to highest:
 
 ```text
-defaults → user config → tell.yaml → TELL_* env → flags
+defaults → user config → tell.yaml → .git/tell.yaml → TELL_* env → flags
 ```
 
 ```sh
@@ -285,8 +287,8 @@ A tool call performs at most one delivery and returns a body-free result.
 
 MCP agents cannot select routes or recipients by default. To let agents select
 among your already configured routes and one exact recipient, enable the
-personal-only setting `mcp.agent_targets: true` in user config, an explicit
-`--config` file, environment, or flags.
+personal-only setting `mcp.agent_targets: true` in user config,
+`.git/tell.yaml`, an explicit `--config` file, environment, or flags.
 This delegates destination choice, not executable paths, provider config,
 sender identity, timeouts, or secret policy. Do not enable it in shared
 `tell.yaml`.

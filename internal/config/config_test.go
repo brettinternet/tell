@@ -87,13 +87,10 @@ func TestPersonalRoutingSources(t *testing.T) {
 			if err == nil {
 				t.Fatal("accepted shared routing")
 			}
-			for _, want := range []string{shared + ":2:", tc.key, "user config", "--config", "environment", "flags"} {
+			for _, want := range []string{shared + ":2:", tc.key, "user config", ".git/tell.yaml", "--config", "environment", "flags"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Fatalf("missing %q in diagnostic: %v", want, err)
 				}
-			}
-			if strings.Contains(err.Error(), ".tell.yaml") {
-				t.Fatalf("diagnostic suggests unsupported source: %v", err)
 			}
 			writeFile(t, shared, "version: 1\n")
 			input.Overrides = nil
@@ -102,8 +99,7 @@ func TestPersonalRoutingSources(t *testing.T) {
 					personal := input
 					path := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
 					if layer == "explicit" {
-						// Explicit selection remains trusted, even for a .tell.yaml path.
-						path = filepath.Join(input.CWD, ".tell.yaml")
+						path = filepath.Join(input.CWD, "personal.yaml")
 						personal.File = &path
 					}
 					writeFile(t, path, tc.data)
@@ -139,7 +135,7 @@ func TestSecretPolicySources(t *testing.T) {
 		personal := input
 		path := user
 		if layer == "explicit" {
-			path = filepath.Join(input.CWD, ".tell.yaml")
+			path = filepath.Join(input.CWD, "personal.yaml")
 			personal.File = &path
 		}
 		writeFile(t, path, "secrets: {policy: reject}\n")
@@ -165,7 +161,7 @@ func TestCommandConfig(t *testing.T) {
 	input := fixture(t)
 	user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
 	shared := filepath.Join(input.CWD, "tell.yaml")
-	explicit := filepath.Join(input.CWD, ".tell.yaml")
+	explicit := filepath.Join(input.CWD, "personal.yaml")
 	writeFile(t, user, "notify: {command: [first, inherited]}\n")
 	writeFile(t, explicit, "notify: {via: command, command: [second, '', 'two words']}\n")
 	input.File = &explicit
@@ -187,6 +183,56 @@ func TestCommandConfig(t *testing.T) {
 	input.Overrides = map[string]config.Value{"notify.command": {Text: "override", Source: "flag"}}
 	if _, err := config.Load(input); err == nil {
 		t.Fatal("accepted string argv override")
+	}
+}
+
+// Repository-personal config lives where checkouts cannot write it and must be
+// found from every linked worktree, ranked above shared config and below
+// invocation overrides. A broken .git pointer must not silently drop routing.
+func TestRepositoryPersonalConfig(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(base, "repo")
+	user := filepath.Join(base, "user", "tell", "config.yaml")
+	shared := filepath.Join(main, "tell.yaml")
+	local := filepath.Join(main, ".git", "tell.yaml")
+	writeFile(t, user, "notify: {via: desktop}\nherdr: {session: user}\napprise: {tag: user}\n")
+	writeFile(t, shared, "apprise: {tag: shared}\n")
+	writeFile(t, local, "notify: {via: command, command: [notifier]}\nherdr: {session: repo}\nsend: {via: hcom, to: reviewer}\n")
+	worktree := filepath.Join(main, ".worktrees", "feature")
+	writeFile(t, filepath.Join(worktree, ".git"), "gitdir: ../../.git/worktrees/feature\n")
+	writeFile(t, filepath.Join(main, ".git", "worktrees", "feature", "commondir"), "../..\n")
+	for _, cwd := range []string{main, worktree} {
+		input := config.Input{CWD: cwd, UserConfigDir: filepath.Join(base, "user"), Overrides: map[string]config.Value{
+			"send.to": {Text: "flagged", Source: "flag:--to"},
+		}}
+		cfg, err := config.Load(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantSources := []string{user, local}
+		if cwd == main {
+			wantSources = []string{user, shared, local}
+		}
+		if !reflect.DeepEqual(cfg.Sources, wantSources) || cfg.Notify.Via != "command" || cfg.Origins["notify.command"] != local ||
+			cfg.Herdr.Session != "repo" || cfg.Send.To != "flagged" || cfg.Send.Via != "hcom" {
+			t.Fatalf("repository layer from %s: %+v", cwd, cfg)
+		}
+		if cwd == main && cfg.Apprise.Tag != "shared" {
+			t.Fatalf("lost shared setting: %+v", cfg)
+		}
+		explicit := filepath.Join(base, "explicit.yaml")
+		writeFile(t, explicit, "version: 1\n")
+		input.File = &explicit
+		if cfg, err := config.Load(input); err != nil || cfg.Notify.Via != "stderr" || len(cfg.Sources) != 1 {
+			t.Fatalf("--config inherited repository layer: %+v %v", cfg, err)
+		}
+	}
+	writeFile(t, filepath.Join(worktree, ".git"), "../../.git\n")
+	if _, err := config.Load(config.Input{CWD: worktree}); err == nil {
+		t.Fatal("accepted malformed .git file")
 	}
 }
 
@@ -346,24 +392,5 @@ func TestInitPreservesExistingFiles(t *testing.T) {
 	}
 	if _, _, err := config.Init(symlinkInput); err == nil {
 		t.Fatal("init accepted a symlink")
-	}
-}
-
-// A .tell.yaml alone is not a project marker for project discovery.
-func TestTellLocalFileDoesNotAffectProjectDiscovery(t *testing.T) {
-	base := t.TempDir()
-	project := filepath.Join(base, "repo")
-	nested := filepath.Join(project, "nested")
-	if err := os.MkdirAll(nested, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(project, ".tell.yaml"), "notify: {via: herdr}\n")
-	want, err := filepath.EvalSymlinks(nested)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := config.ProjectDir(config.Input{CWD: nested})
-	if err != nil || got != want {
-		t.Fatalf(".tell.yaml affected project discovery: got %q, want %q, err %v", got, want, err)
 	}
 }

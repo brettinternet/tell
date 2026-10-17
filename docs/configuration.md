@@ -27,13 +27,22 @@ Lowest to highest priority:
 | 1 | Built-in defaults | — |
 | 2 | `$XDG_CONFIG_HOME/tell/config.yaml`, else `~/.config/tell/config.yaml` | yes |
 | 3 | `tell.yaml` (shared, committed) | no |
-| 4 | `TELL_*` environment | yes |
-| 5 | Flags | yes |
+| 4 | `.git/tell.yaml` (personal, this repository) | yes |
+| 5 | `TELL_*` environment | yes |
+| 6 | Flags | yes |
 
 Settings merge by field. `notify.command` is replaced whole, never merged.
-Tell does not automatically load `.tell.yaml`, even if a repository commits one.
-Use user config or an explicit `--config`/`TELL_CONFIG` file for personal file
-settings. `tell config` and `tell config show` show aligned key, value, and
+
+The repository-personal file lives in the project's common Git directory:
+`.git/tell.yaml` in a normal checkout. Linked worktrees resolve their `.git`
+file and `commondir` to the same file, so one file covers the main checkout
+and every worktree. Git never commits paths inside `.git`, so clones and
+checkouts cannot supply it; an archive that ships its own `.git` directory
+can, as it can for Git's own `.git/config`. Tell reads only the pointer files;
+it never runs `git` or reads `GIT_DIR`. A malformed `.git` file is an error.
+Without `.git` in the project directory there is no repository-personal layer.
+
+`tell config` and `tell config show` show aligned key, value, and
 origin columns. Empty or whitespace-significant values are quoted; origins
 are `default`, a file path, `env NAME`, or `flag --name`. JSON output is unchanged.
 For example (selected rows):
@@ -71,7 +80,7 @@ These fields choose where messages go, so shared `tell.yaml` rejects them:
 
 MCP agents cannot choose routes or recipients by default. The personal-only
 `mcp.agent_targets` setting defaults to `false`; set it to `true` in user
-config, explicit `--config`/`TELL_CONFIG`, environment, or flags to permit
+config, `.git/tell.yaml`, explicit `--config`/`TELL_CONFIG`, environment, or flags to permit
 overrides for the notify route, Herdr session, Apprise tag, send route, and one
 exact recipient. This does not let agents choose `notify.command`, `apprise.config`,
 `send.from`, `timeout`, or `secrets.policy`. Shared `tell.yaml` cannot grant
@@ -82,7 +91,7 @@ The setting also accepts `TELL_MCP_AGENT_TARGETS` and
 
 ```console
 $ tell config check
-tell: config /Users/me/dev/app/tell.yaml:3: notify.via is personal routing; set it in user config, --config, environment, or flags instead of shared tell.yaml
+tell: config /Users/me/dev/app/tell.yaml:3: notify.via is personal routing; set it in user config, .git/tell.yaml, --config, environment, or flags instead of shared tell.yaml
 ```
 
 A higher layer cannot make them valid in `tell.yaml`. Repositories decide what
@@ -109,8 +118,7 @@ absolute when set.
 `-C DIR`, `--project DIR`, or `TELL_PROJECT` selects exactly that directory.
 Otherwise Tell walks up from the current directory to the nearest directory
 containing `tell.yaml` or `.git` (a worktree's `.git` file counts), and never
-reads config above it. A `.tell.yaml` alone is neither loaded nor a project
-marker. With no marker it uses the current directory.
+reads config above it. With no marker it uses the current directory.
 Symlinks are resolved. `--config` does not change project selection. No
 repository code runs during discovery.
 
@@ -131,7 +139,7 @@ repository code runs during discovery.
 | `send.from` | `tell-automation` | `TELL_SEND_FROM` | `--from` |
 | `mcp.agent_targets` | `false` | `TELL_MCP_AGENT_TARGETS` | `--mcp-agent-targets` |
 
-A full personal config (user config or explicitly selected `--config`/`TELL_CONFIG`, never `tell.yaml`):
+A full personal config (user config, `.git/tell.yaml`, or explicitly selected `--config`/`TELL_CONFIG`, never `tell.yaml`):
 
 ```yaml
 version: 1
@@ -156,8 +164,8 @@ Values:
 | --- | --- |
 | `timeout` | Positive Go duration. `0s` is refused. |
 | `notify.via` | `stderr`, `desktop`, `apprise`, `command`, `herdr` |
-| `notify.command` | Non-empty argv list; non-blank executable; no NUL. File-only (user config or `--config`). |
-| `secrets.policy` | `redact` (replace with `[REDACTED]`) or `reject` (exit 1, `secret_detected`). File-only (user config or `--config`). |
+| `notify.command` | Non-empty argv list; non-blank executable; no NUL. Personal files only. |
+| `secrets.policy` | `redact` (replace with `[REDACTED]`) or `reject` (exit 1, `secret_detected`). Personal files only. |
 | `apprise.config` | Local file path, not a URL. Tell never opens it. |
 | `apprise.tag` | One Apprise tag expression, passed through. |
 | `apprise.format` | `text`, `markdown`, `html` |
@@ -183,7 +191,7 @@ Removed bootstrap settings are rejected: `notify.via: stdout`, `hcom.to`, and
 
 Short forms: `-c`/`--config`, `-j`/`--json`, `-C`/`--project`,
 `-t`/`--title` and `-n`/`--type` for `notify`, `-i`/`--intent` for `send`,
-and `-u`/`--user` for `init`. `-h`/`--help` and `-v`/`--version` are unchanged.
+and `-u`/`--user` and `-l`/`--local` for `init`. `-h`/`--help` and `-v`/`--version` are unchanged.
 
 Global flags are `--project`, `--config`, `--json`, and `--timeout` (plus
 help/version). Put all other flags after the command:
@@ -193,7 +201,7 @@ help/version). Put all other flags after the command:
 - `send`: `--send-via`, `--to`, `--from`, `--herdr-session`, `--intent`.
 - `doctor`, `config` (including `show` and `check`), and `mcp`: every setting
   flag in the table above, including `--mcp-agent-targets`.
-- `init`: `--user`; no command-specific setting flags. Global `--config` and
+- `init`: `--user` or `--local`; no command-specific setting flags. Global `--config` and
   `--timeout` overrides are rejected because init does not apply settings.
 
 Environment variables and configuration precedence are unchanged. For example,
@@ -299,6 +307,7 @@ or configuration failed before a route was resolved.
 | --- | --- | --- | --- |
 | `tell init` | `tell.yaml` | default | commented shared fields |
 | `tell init -u` / `tell init --user` | user config (creates parent dirs) | 0600 | commented personal routing |
+| `tell init -l` / `tell init --local` | `tell.yaml` in the common Git directory | 0600 | commented personal routing |
 
 ```console
 $ tell init
@@ -314,11 +323,12 @@ Created "/Users/me/.config/tell/config.yaml"
 Next: set notify.via in this file, then run tell doctor.
 ```
 
-The user-file next step is the same when an existing file is kept. Templates
+`--local` prints the same next step. Outside a Git checkout it fails and
+points to `--user`. The personal next step is the same when an existing file is kept. Templates
 list all notify routes (stderr, desktop, apprise, herdr, command) and send
 transports (hcom, herdr); only the personal template includes routing fields.
 
 Existing files are kept byte-for-byte, even malformed ones. Existing symlinks
 and directories are refused. Init does not edit `.gitignore`, copy inherited
 values, or read provider config. It refuses `--config` and setting overrides
-instead of ignoring them. `--user` cannot combine with `--project`.
+instead of ignoring them. `--user` cannot combine with `--local` or `--project`.
