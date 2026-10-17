@@ -265,7 +265,8 @@ func TestSendOutcomes(t *testing.T) {
 					t.Setenv("FIXTURE_WAIT", "yes")
 					outcome, reason = "uncertain", mode
 					if mode == "timeout" {
-						args = append([]string{"--timeout", "150ms"}, args...)
+						// Leave room for Herdr's probes under -race so the deadline hits dispatch.
+						args = append([]string{"--timeout", "1s"}, args...)
 					} else {
 						var cancel context.CancelFunc
 						ctx, cancel = context.WithCancel(ctx)

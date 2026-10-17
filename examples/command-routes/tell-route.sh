@@ -17,5 +17,5 @@ fi
 
 # Explicit --via prevents recursion into this router. A shorter timeout keeps the
 # inner delivery inside the outer one; inner exit 3 maps to not_sent outside too.
-exec tell -C "${TELL_PROJECT:-.}" --via desktop --timeout 5s \
-    notify --title "${TELL_TITLE-}" --type "${TELL_TYPE-info}" -
+exec tell -C "${TELL_PROJECT:-.}" --timeout 5s \
+    notify --via desktop --title "${TELL_TITLE-}" --type "${TELL_TYPE-info}" -

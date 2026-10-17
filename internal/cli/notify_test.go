@@ -101,6 +101,7 @@ func TestNotifyInputIsolation(t *testing.T) {
 		{[]string{"-", "finished"}, "- finished"},
 		{[]string{"Build", "-", "finished"}, "Build - finished"},
 		{[]string{"--title", "-", "Build", "finished"}, "Build finished"},
+		{[]string{"Build", "-", "finished", "--title", "T"}, "Build - finished"},
 		{[]string{" - "}, " - "},
 	} {
 		code, out, errOut := run(append([]string{"notify"}, tc.args...)...)
@@ -119,7 +120,8 @@ func TestNotifyInputIsolation(t *testing.T) {
 	if pos, _ := in.Seek(0, io.SeekCurrent); pos != 0 {
 		t.Fatal("missing message consumed stdin")
 	}
-	code, out, errOut = run("--json", "notify", "-")
+	// A flag after the sole dash must not turn the dash into literal text.
+	code, out, errOut = run("--json", "notify", "-", "-t", "T")
 	assertResult(t, code, out, "", "stderr", "accepted", "")
 	if errOut != "hook summary\n\n" {
 		t.Fatalf("stdin body: %q", errOut)

@@ -398,29 +398,53 @@ func emit(cmd *urfave.Command, result map[string]any) error {
 	return json.NewEncoder(cmd.Writer).Encode(result)
 }
 
-// urfave v3.13 drops arguments after a bare dash. Protect a message dash
-// with the end-of-options marker, without changing dashes used as flag values.
+// urfave v3.13 drops arguments after a bare dash. When a message word is a
+// dash, move command flags ahead of an end-of-options marker so flags after
+// the dash still parse as flags, as they do for any other message word.
 func preserveMessageDash(root *urfave.Command, args []string) []string {
 	if !notifyRequested(root, args) && !commandRequested(root, args, "send") {
 		return args
 	}
 	valueFlags := commandValueFlags(root)
-	for i := 1; i < len(args); i++ {
+	// Skip root flags; commandRequested guarantees the command follows.
+	start := 1
+	for start < len(args) && strings.HasPrefix(args[start], "-") && args[start] != "--" {
+		name, _, hasValue := strings.Cut(strings.TrimLeft(args[start], "-"), "=")
+		if valueFlags[name] && !hasValue {
+			start++
+		}
+		start++
+	}
+	if start >= len(args) || args[start] == "--" {
+		return args
+	}
+	var flags, words []string
+	dash := false
+scan:
+	for i := start + 1; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--" {
-			return args
-		}
-		if strings.TrimSpace(arg) == "-" {
-			return slices.Insert(slices.Clone(args), i, "--")
-		}
-		if strings.HasPrefix(arg, "-") {
+		switch {
+		case arg == "--":
+			words = append(words, args[i+1:]...)
+			break scan
+		case strings.TrimSpace(arg) == "-":
+			dash = true
+			words = append(words, arg)
+		case strings.HasPrefix(arg, "-"):
+			flags = append(flags, arg)
 			name, _, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
-			if valueFlags[name] && !hasValue {
+			if valueFlags[name] && !hasValue && i+1 < len(args) {
 				i++
+				flags = append(flags, args[i])
 			}
+		default:
+			words = append(words, arg)
 		}
 	}
-	return args
+	if !dash {
+		return args
+	}
+	return slices.Concat(args[:start+1], flags, []string{"--"}, words)
 }
 
 func commandValueFlags(root *urfave.Command) map[string]bool {

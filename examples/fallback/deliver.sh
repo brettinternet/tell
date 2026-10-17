@@ -11,8 +11,8 @@ message=$1
 
 try_send() {
     route=$1 recipient=$2
-    result=$(tell --json --send-via "$route" --to "$recipient" \
-        send --intent request -- "$message" </dev/null 2>/dev/null)
+    result=$(tell --json send --send-via "$route" --to "$recipient" \
+        --intent request -- "$message" </dev/null 2>/dev/null)
     code=$?
     reason=$(printf '%s' "$result" | jq -r '.error.reason // .outcome' 2>/dev/null)
     printf '%s %s: %s\n' "$route" "$recipient" "${reason:-unknown}" >&2

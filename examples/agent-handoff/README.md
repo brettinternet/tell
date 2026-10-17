@@ -45,14 +45,14 @@ review:request:
 
 ```sh
 # Planner → implementer in an idle Herdr pane (types a new turn only if idle).
-tell --send-via herdr --herdr-session work --to implementer \
-  send --intent request "Implement backlog task API-42. Plan: backlog/tasks/api-42.md"
+tell send --send-via herdr --herdr-session work --to implementer \
+  --intent request "Implement backlog task API-42. Plan: backlog/tasks/api-42.md"
 
 # Status only, no reply expected.
-tell --to planner send "Rate-limit branch merged at 9b1d7aa; API-42 done."
+tell send --to planner "Rate-limit branch merged at 9b1d7aa; API-42 done."
 
 # Reviewer → implementer, with findings in a file, not the message.
-tell --to implementer send --intent request \
+tell send --to implementer --intent request \
   "Review of 3f9c2e1: 2 blockers in review/3f9c2e1.md. Fix and request review again."
 ```
 
