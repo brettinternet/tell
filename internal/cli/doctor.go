@@ -26,7 +26,7 @@ func doctor(ctx context.Context, cmd *urfave.Command) error {
 	}
 	cfg, err := loadSettings(cmd)
 	if err != nil {
-		return &failure{Code: "config", Message: "could not load configuration; run tell config check"}
+		return err
 	}
 	routes := delivery.Doctor(ctx, cfg)
 	ready := routes[0].Ready

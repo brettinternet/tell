@@ -14,7 +14,7 @@ func send(ctx context.Context, cmd *urfave.Command) error {
 	// Return even accepted results to Run so every send has exactly one receipt.
 	cfg, err := loadSettings(cmd)
 	if err != nil {
-		return delivery.NewResult("", "config", "invalid_config", "could not load send configuration; run tell config check")
+		return delivery.NewResult("", "config", "invalid_config", err.Error())
 	}
 	intent := cmd.String("intent")
 	var result *delivery.Result
@@ -22,7 +22,7 @@ func send(ctx context.Context, cmd *urfave.Command) error {
 	case cmd.NArg() != 1:
 		result = delivery.NewResult(cfg.Send.Via, "usage", "invalid_input", "send requires one message argument or - for stdin")
 	case intent != "inform" && intent != "request":
-		result = delivery.NewResult(cfg.Send.Via, "usage", "invalid_intent", "send intent must be inform or request")
+		result = delivery.NewResult(cfg.Send.Via, "usage", "invalid_intent", fmt.Sprintf("invalid --intent %q; must be inform or request", usageValue(cmd, intent)))
 	default:
 		body := cmd.Args().First()
 		if body == "-" {
@@ -53,6 +53,9 @@ func renderSend(result *delivery.Result, jsonOutput bool, out, errOut io.Writer)
 	reason := ""
 	if result.Failure != nil {
 		reason = " reason=" + result.Failure.Reason
+		if !jsonOutput && (result.Outcome == "usage" || result.Outcome == "config") {
+			reason += ": " + result.Failure.Message
+		}
 	}
 	fmt.Fprintf(errOut, "tell send: route=%q recipient=%q intent=%q outcome=%s%s\n", result.Route, result.Recipient, result.Intent, result.Outcome, reason)
 	if jsonOutput {

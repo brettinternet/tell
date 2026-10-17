@@ -238,7 +238,7 @@ $ tell --json config check
 {"config":{"project":"/Users/me/dev/app","timeout":"10s","notify":{"via":"stderr"},...,"origins":{...}},"schema_version":1,"valid":true}
 
 $ tell --json --timeout 0s config check; echo $?
-{"error":{"code":"config","message":"flag:--timeout: timeout must be a positive Go duration, such as 10s"},"schema_version":1}
+{"error":{"code":"config","message":"--timeout: timeout must be a positive Go duration, such as 10s"},"schema_version":1}
 1
 ```
 

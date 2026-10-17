@@ -157,6 +157,13 @@ tell -C ../other-repo config      # pick the project
 tell --config ./ci.yaml config    # use only this file (plus env and flags)
 ```
 
+Invalid settings name their source and the fix, without echoing the value:
+
+```console
+$ tell --timeout 5 notify "Build finished"
+tell: --timeout: timeout must be a positive Go duration, such as 10s
+```
+
 See [configuration](docs/configuration.md) for every key.
 
 ## Notification routes

@@ -114,7 +114,7 @@ func Load(input Input) (Config, error) {
 			return Config{}, fmt.Errorf("%s is settable only in personal config files", key)
 		}
 		if err := cfg.apply(key, value.Text, input.CWD, value.Source); err != nil {
-			return Config{}, fmt.Errorf("%s: %w", value.Source, err)
+			return Config{}, fmt.Errorf("%s: %w", strings.TrimPrefix(strings.TrimPrefix(value.Source, "flag:"), "env:"), err)
 		}
 	}
 	return cfg, nil

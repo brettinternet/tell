@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ import (
 func notify(ctx context.Context, cmd *urfave.Command) error {
 	cfg, err := loadSettings(cmd)
 	if err != nil {
-		return delivery.NewResult("", "config", "invalid_config", "could not load notification configuration; run tell config check")
+		return delivery.NewResult("", "config", "invalid_config", err.Error())
 	}
 	route := cfg.Notify.Via
 	if cmd.NArg() != 1 {
@@ -23,7 +24,7 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 	switch kind {
 	case "info", "success", "warning", "failure":
 	default:
-		return delivery.NewResult(route, "usage", "invalid_type", "notification type must be info, success, warning, or failure")
+		return delivery.NewResult(route, "usage", "invalid_type", fmt.Sprintf("invalid --type %q; must be info, success, warning, or failure", usageValue(cmd, kind)))
 	}
 	body := cmd.Args().First()
 	if body == "-" {

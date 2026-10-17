@@ -25,6 +25,16 @@ var secretRules = sync.OnceValues(func() (leaksconfig.Config, error) {
 	return cfg.Translate()
 })
 
+// RedactDiagnostic removes detected credentials from user input echoed in errors.
+// Unlike message preparation, it neither truncates nor changes diagnostic wording.
+func RedactDiagnostic(text string) string {
+	message, _, reason := scanSecrets(Message{Body: text}, "redact")
+	if reason != "" {
+		return "[omitted]"
+	}
+	return message.Body
+}
+
 func scanSecrets(message Message, policy string) (Message, int, string) {
 	cfg, err := secretRules()
 	if err != nil {

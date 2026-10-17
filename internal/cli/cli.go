@@ -74,7 +74,15 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 	_ = root.Walk(func(cmd *urfave.Command) error {
 		cmd.HideHelpCommand = len(cmd.Commands) == 0
 		cmd.OnUsageError = func(_ context.Context, _ *urfave.Command, err error, _ bool) error {
-			return &failure{Code: "usage", Message: err.Error(), usage: true}
+			message := err.Error()
+			// Parser values can be message text or credentials. Keep the flag
+			// and cause, but do not repeat arbitrary rejected boolean values.
+			if strings.HasPrefix(message, "invalid value ") {
+				if index := strings.LastIndex(message, " for flag "); index >= 0 {
+					message = "invalid value [omitted]" + message[index:]
+				}
+			}
+			return &failure{Code: "usage", Message: delivery.RedactDiagnostic(message) + "; run " + cmd.FullName() + " --help", usage: true}
 		}
 		return nil
 	})
@@ -108,13 +116,13 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 		var result *delivery.Result
 		if commandRequested(root, args, "send") {
 			if !errors.As(err, &result) {
-				result = delivery.NewResult("", "usage", "invalid_invocation", "invalid send invocation; run tell send --help")
+				result = delivery.NewResult("", "usage", "invalid_invocation", err.Error())
 			}
 			renderSend(result, jsonRequested(root, args), out, errOut)
 			return result.ExitCode()
 		}
 		if !errors.As(err, &result) && notifyRequested(root, args) {
-			result = delivery.NewResult("", "usage", "invalid_invocation", "invalid notify invocation; run tell notify --help")
+			result = delivery.NewResult("", "usage", "invalid_invocation", err.Error())
 		}
 		if result != nil {
 			if jsonRequested(root, args) {
@@ -191,9 +199,27 @@ func selector(cmd *urfave.Command, name, env string) *string {
 	return nil
 }
 
+// A mistyped option must not cause the message itself to enter diagnostics.
+func usageValue(cmd *urfave.Command, value string) string {
+	for _, body := range cmd.Args().Slice() {
+		if value == body {
+			return "[message omitted]"
+		}
+	}
+	return delivery.RedactDiagnostic(value)
+}
+
 func noArgs(cmd *urfave.Command) error {
 	if cmd.NArg() != 0 {
-		return &failure{Code: "usage", Message: fmt.Sprintf("unexpected argument %q; run tell --help", cmd.Args().First()), usage: true}
+		message := fmt.Sprintf("unexpected argument %q; run tell --help", cmd.Args().First())
+		if cmd.Name == "tell" {
+			message = fmt.Sprintf("unknown command %q", delivery.RedactDiagnostic(cmd.Args().First()))
+			if suggestion := urfave.SuggestCommand(cmd.Commands, cmd.Args().First()); suggestion != "" {
+				message += fmt.Sprintf("; did you mean %q?", suggestion)
+			}
+			message += "; run tell --help"
+		}
+		return &failure{Code: "usage", Message: message, usage: true}
 	}
 	return nil
 }
@@ -217,7 +243,7 @@ func loadSettings(cmd *urfave.Command) (config.Config, error) {
 			return cfg, nil
 		}
 	}
-	return config.Config{}, &failure{Code: "config", Message: err.Error()}
+	return config.Config{}, &failure{Code: "config", Message: delivery.RedactDiagnostic(err.Error())}
 }
 
 func showConfig(_ context.Context, cmd *urfave.Command) error {

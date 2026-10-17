@@ -234,6 +234,155 @@ func TestCLIErrorOutput(t *testing.T) {
 	}
 }
 
+// Detailed diagnostics must not regress to generic errors or change the JSON contract.
+func TestActionableErrors(t *testing.T) {
+	environment(t)
+	for _, tc := range []struct {
+		args                     []string
+		message, outcome, reason string
+		code                     int
+	}{
+		{[]string{"notify", "--tittle", "x", "body-sentinel"}, "flag provided but not defined: -tittle; run tell notify --help", "usage", "invalid_invocation", 2},
+		{[]string{"send", "--tittle", "x", "body-sentinel"}, "flag provided but not defined: -tittle; run tell send --help", "usage", "invalid_invocation", 2},
+		{[]string{"notify", "--title"}, "flag needs an argument: --title; run tell notify --help", "usage", "invalid_invocation", 2},
+		{[]string{"send", "--intent"}, "flag needs an argument: --intent; run tell send --help", "usage", "invalid_invocation", 2},
+		{[]string{"notify", "--type", "sucess", "body-sentinel"}, "invalid --type \"sucess\"; must be info, success, warning, or failure", "usage", "invalid_type", 2},
+		{[]string{"send", "--intent", "req", "body-sentinel"}, "invalid --intent \"req\"; must be inform or request", "usage", "invalid_intent", 2},
+		{[]string{"notfy", "body-sentinel"}, "unknown command \"notfy\"; did you mean \"notify\"?; run tell --help", "usage", "", 2},
+	} {
+		for _, structured := range []bool{false, true} {
+			args := append([]string{}, tc.args...)
+			if structured {
+				args = append([]string{"--json"}, args...)
+			}
+			code, out, diag := run(args...)
+			if code != tc.code || strings.Contains(out+diag, "body-sentinel") {
+				t.Fatalf("%v: %d %s %s", args, code, out, diag)
+			}
+			if !structured {
+				if out != "" || !strings.Contains(diag, tc.message) {
+					t.Fatalf("%v: %s %s", args, out, diag)
+				}
+				continue
+			}
+			var result struct {
+				SchemaVersion int                                    `json:"schema_version"`
+				Outcome       string                                 `json:"outcome"`
+				Error         struct{ Code, Message, Reason string } `json:"error"`
+			}
+			if err := json.Unmarshal([]byte(out), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.SchemaVersion != 1 || result.Error.Code != tc.outcome || result.Error.Reason != tc.reason || result.Error.Message != tc.message || (tc.reason != "" && result.Outcome != tc.outcome) {
+				t.Fatalf("%v: %s", args, out)
+			}
+		}
+	}
+}
+
+// All commands must expose the same safe validation error and source, not values.
+func TestConfigurationErrorConsistency(t *testing.T) {
+	for _, source := range []string{"flag", "env", "file"} {
+		t.Run(source, func(t *testing.T) {
+			environment(t)
+			prefix := []string{}
+			origin := "--timeout"
+			switch source {
+			case "flag":
+				prefix = []string{"--timeout", "invalid-secret-sentinel"}
+			case "env":
+				t.Setenv("TELL_TIMEOUT", "invalid-secret-sentinel")
+				origin = "TELL_TIMEOUT"
+			case "file":
+				origin = "config " + writeUserConfig(t, "timeout: invalid-secret-sentinel\n") + ":1"
+			}
+			want := origin + ": timeout must be a positive Go duration, such as 10s"
+			for _, command := range [][]string{{"config", "check"}, {"notify", "body-sentinel"}, {"send", "body-sentinel"}, {"doctor"}} {
+				for _, structured := range []bool{false, true} {
+					args := append(append([]string{}, prefix...), command...)
+					if structured {
+						args = append([]string{"--json"}, args...)
+					}
+					code, out, diag := run(args...)
+					if code != 1 || strings.Contains(out+diag, "sentinel") {
+						t.Fatalf("%v: %d %s %s", args, code, out, diag)
+					}
+					if !structured {
+						if out != "" || !strings.Contains(diag, want) {
+							t.Fatalf("%v: %s %s", args, out, diag)
+						}
+						continue
+					}
+					var result struct {
+						SchemaVersion int                                    `json:"schema_version"`
+						Outcome       string                                 `json:"outcome"`
+						Error         struct{ Code, Message, Reason string } `json:"error"`
+					}
+					if err := json.Unmarshal([]byte(out), &result); err != nil {
+						t.Fatal(err)
+					}
+					if result.SchemaVersion != 1 || result.Error.Code != "config" || result.Error.Message != want {
+						t.Fatalf("%v: %s", args, out)
+					}
+					if command[0] == "notify" || command[0] == "send" {
+						if result.Outcome != "config" || result.Error.Reason != "invalid_config" {
+							t.Fatalf("delivery shape: %s", out)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// Echoing rejected option values must not expose credentials to logs.
+func TestUsageErrorRedactsCredentials(t *testing.T) {
+	environment(t)
+	token := "ghp_" + "aB3dE6fG9hJ2kL5mN8pQ1rS4tU7vW0xY3zA6"
+	for _, args := range [][]string{
+		{"notify", "--type", token, "body-sentinel"},
+		{"send", "--intent", token, "body-sentinel"},
+		{"notify", "--unknown-" + token, "body-sentinel"},
+	} {
+		code, out, diag := run(append([]string{"--json"}, args...)...)
+		if code != 2 || strings.Contains(out+diag, token) || !strings.Contains(out, "[REDACTED]") {
+			t.Fatalf("unsafe diagnostic: %d %s %s", code, out, diag)
+		}
+	}
+}
+
+// Framework parse failures must not echo arbitrary values, even when they
+// overlap a positional message; unknown YAML keys must not disclose tokens.
+func TestForwardedErrorsPreservePrivacy(t *testing.T) {
+	environment(t)
+	for _, command := range []string{"notify", "send"} {
+		for _, structured := range []bool{false, true} {
+			args := []string{command, "--mcp-agent-targets=body-sentinel", "body-sentinel"}
+			if structured {
+				args = append([]string{"--json"}, args...)
+			}
+			code, out, diag := run(args...)
+			if code != 2 || strings.Contains(out+diag, "body-sentinel") || !strings.Contains(out+diag, "for flag -mcp-agent-targets: parse error") {
+				t.Fatalf("parser disclosure: %d %s %s", code, out, diag)
+			}
+		}
+	}
+	token := "ghp_" + "aB3dE6fG9hJ2kL5mN8pQ1rS4tU7vW0xY3zA6"
+	writeUserConfig(t, token+": x\n")
+	for _, command := range [][]string{{"notify", "body-sentinel"}, {"send", "body-sentinel"}, {"doctor"}, {"config", "check"}} {
+		for _, structured := range []bool{false, true} {
+			args := append([]string{}, command...)
+			if structured {
+				args = append([]string{"--json"}, args...)
+			}
+			code, out, diag := run(args...)
+			if code != 1 || strings.Contains(out+diag, token) || !strings.Contains(out+diag, "[REDACTED]") || !strings.Contains(out+diag, "unknown field") {
+				t.Fatalf("config disclosure: %d %s %s", code, out, diag)
+			}
+		}
+	}
+}
+
 // Inspecting a repo must not create its config, and init's CLI plumbing must
 // preserve an existing file rather than accepting overridden defaults as input.
 func TestCLIInspectionAndInit(t *testing.T) {
