@@ -23,48 +23,55 @@ import (
 type settingSpec struct{ key, flag, env, usage string }
 
 var settings = []settingSpec{
-	{"timeout", "timeout", "TELL_TIMEOUT", "Provider execution timeout (positive duration)"},
-	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification destination: stderr, desktop, apprise, command, herdr"},
-	{"apprise.config", "apprise-config", "TELL_APPRISE_CONFIG", "Local Apprise config path; Tell does not read its contents"},
-	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag expression"},
-	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body format: text, markdown, html"},
-	{"herdr.session", "herdr-session", "TELL_HERDR_SESSION", "Explicit Herdr session"},
-	{"send.via", "send-via", "TELL_SEND_VIA", "Agent transport: hcom or herdr"},
-	{"send.to", "to", "TELL_SEND_TO", "One exact agent recipient (no @ prefix)"},
-	{"send.from", "from", "TELL_SEND_FROM", "Automated sender identity (default: tell-automation)"},
+	{"timeout", "timeout", "TELL_TIMEOUT", "Wait up to a positive Go `duration`, such as 5s or 1m (default: 10s)"},
+	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification `route`: stderr, desktop, apprise, command, herdr (default: stderr)"},
+	{"apprise.config", "apprise-config", "TELL_APPRISE_CONFIG", "Local Apprise config `file`; Tell does not read it (default: Apprise discovery)"},
+	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag `expression` (default: no tag filter)"},
+	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body `format`: text, markdown, html (default: provider setting)"},
+	{"herdr.session", "herdr-session", "TELL_HERDR_SESSION", "Herdr `session` name or ID (default: unset; required for herdr)"},
+	{"send.via", "send-via", "TELL_SEND_VIA", "Agent `route`: hcom or herdr (default: unset)"},
+	{"send.to", "to", "TELL_SEND_TO", "One exact agent `recipient`, without @ (default: unset)"},
+	{"send.from", "from", "TELL_SEND_FROM", "Sender `name` (default: tell-automation)"},
 }
 
 // NewRootCommand constructs a fresh tree without reading files or executing tools.
 func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Command {
 	root := &urfave.Command{
-		Name: "tell", Usage: "Delivery plumbing for humans and agents",
-		Description: "Inspect settings safely, or notify via stderr, desktop, Apprise, Herdr, or a personal command. Provider acceptance is not human acknowledgment. With no command, inspect only.",
+		Name: "tell", Usage: "Send a notification to a person or a message to an agent",
+		Description: "Send one message, then exit. With no command, inspect settings without sending.\nAccepted means handed to the provider, not read.\nDefaults shown in help apply unless overridden by configuration or environment.",
 		Version:     fmt.Sprintf("%s (commit %s, built %s)", build.Version, build.Commit, build.BuildTime),
 		Writer:      out, ErrWriter: errOut, EnableShellCompletion: true,
 		ExitErrHandler: func(context.Context, *urfave.Command, error) {},
 		Flags: []urfave.Flag{
-			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Select exactly this project directory [$TELL_PROJECT]"},
-			&urfave.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Replace all automatic config files with FILE [$TELL_CONFIG]"},
+			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Use this project `directory` (default: discover from current directory) [$TELL_PROJECT]"},
+			&urfave.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Use only this config `file` (default: user config and tell.yaml) [$TELL_CONFIG]"},
 			&urfave.BoolFlag{Name: "json", Aliases: []string{"j"}, Usage: "Print one structured JSON result"},
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
-			{Name: "send", Usage: "Send to an existing agent; dispatch is not completion", ArgsUsage: "MESSAGE... | -", Flags: []urfave.Flag{
-				&urfave.StringFlag{Name: "intent", Aliases: []string{"i"}, Value: "inform", Usage: "Message intent: inform or request"},
-			}, Action: send},
-			{Name: "doctor", Usage: "Check configured routes without sending or starting services", Action: doctor},
+			{Name: "notify", Usage: "Send a notification to a person", ArgsUsage: "MESSAGE... | -",
+				Description: "Join message words with spaces, or use a lone - to read stdin.\n\nExamples:\n  tell notify Build finished\n  tell notify --via stderr --type success --title Tests All passed\n  printf 'Build finished' | tell notify -",
+				Flags: []urfave.Flag{
+					&urfave.StringFlag{Name: "title", Aliases: []string{"t"}, Usage: "Notification `title` (default: project directory name)"},
+					&urfave.StringFlag{Name: "type", Aliases: []string{"n"}, Value: "info", Usage: "Notification `type`: info, success, warning, failure"},
+				}, Action: notify},
+			{Name: "send", Usage: "Send a message to an existing agent", ArgsUsage: "MESSAGE... | -",
+				Description: "Use a configured recipient, or select one with --to. The recipient must already exist.\nJoin message words with spaces, or use a lone - to read stdin.\n\nExamples (with a participating hcom agent named reviewer):\n  tell send --send-via hcom --to reviewer Tests passed\n  tell send --send-via hcom --to reviewer --intent request Review the changes",
+				Flags: []urfave.Flag{
+					&urfave.StringFlag{Name: "intent", Aliases: []string{"i"}, Value: "inform", Usage: "Message `intent`: inform or request"},
+				}, Action: send},
+			{Name: "doctor", Usage: "Check route readiness without sending or starting services",
+				Description: "Only the selected routes decide the exit code.\n\nExamples:\n  tell doctor\n  tell doctor --via desktop\n  tell --json doctor --via stderr", Action: doctor},
+			{Name: "config", Usage: "Show settings and where they came from",
+				Description: "Inspect or validate configuration without sending or running providers.\n\nExamples:\n  tell config\n  tell config check\n  tell --json config show", Action: showConfig, Commands: []*urfave.Command{
+					{Name: "show", Usage: "Show effective settings and origins", Action: showConfig},
+					{Name: "check", Usage: "Validate settings without invoking providers", Action: checkConfig},
+				}},
+			{Name: "init", Usage: "Create a starter config without overwriting files",
+				Description: "Create shared tell.yaml or personal user config. Never sends messages.\n\nExamples:\n  tell init\n  tell init --user", Flags: []urfave.Flag{
+					&urfave.BoolFlag{Name: "user", Aliases: []string{"u"}, Usage: "Create personal user config instead"},
+				}, Action: initialize},
 			{Name: "mcp", Usage: "Serve notify, send, and doctor as MCP tools over stdio", Action: mcpCommand(build.Version)},
-			{Name: "notify", Usage: "Notify via the selected route; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE... | -", Flags: []urfave.Flag{
-				&urfave.StringFlag{Name: "title", Aliases: []string{"t"}, Usage: "Notification title (default: project directory name)"},
-				&urfave.StringFlag{Name: "type", Aliases: []string{"n"}, Value: "info", Usage: "Notification type: info, success, warning, failure"},
-			}, Action: notify},
-			{Name: "config", Usage: "Inspect effective settings and origins without sending anything", Action: showConfig, Commands: []*urfave.Command{
-				{Name: "show", Usage: "Show effective settings and origins", Action: showConfig},
-				{Name: "check", Usage: "Validate settings without invoking providers", Action: checkConfig},
-			}},
-			{Name: "init", Usage: "Create tell.yaml without overwriting; never sends messages", Flags: []urfave.Flag{
-				&urfave.BoolFlag{Name: "user", Aliases: []string{"u"}, Usage: "Create personal user config instead"},
-			}, Action: initialize},
 		},
 	}
 	_ = root.Walk(func(cmd *urfave.Command) error {

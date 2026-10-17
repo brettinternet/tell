@@ -119,6 +119,34 @@ desktop (selected): ready
 apprise: not ready: apprise was not found on PATH; install it or choose another route
 ```
 
+## Shell completion
+
+With `tell` on PATH, enable completion in your shell:
+
+```bash
+# Bash: add to ~/.bashrc
+source <(tell completion bash)
+```
+
+```zsh
+# Zsh: add to ~/.zshrc, after your existing compinit setup (if any)
+autoload -Uz compinit && compinit
+source <(tell completion zsh)
+```
+
+```fish
+# Fish: generate an automatically loaded completion file
+mkdir -p ~/.config/fish/completions
+tell completion fish > ~/.config/fish/completions/tell.fish
+# Load it in the current shell too
+source ~/.config/fish/completions/tell.fish
+```
+
+If Fish uses a custom configuration directory, use its `completions` directory
+instead. Regenerate the Fish file after upgrading Tell. Bash and Zsh generate
+fresh completions when a new shell starts. Completion generation never sends
+messages or runs providers.
+
 ## Configure
 
 Create starter files. `init` never overwrites.
