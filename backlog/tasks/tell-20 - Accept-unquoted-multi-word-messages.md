@@ -1,9 +1,11 @@
 ---
 id: TELL-20
 title: Accept unquoted multi-word messages
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@pi'
 created_date: '2026-10-16 23:24'
+updated_date: '2026-10-17 01:32'
 labels: []
 dependencies: []
 documentation:
@@ -31,7 +33,29 @@ Non-goals: reading stdin implicitly when no argument is given or stdin is not a 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `tell notify Build finished` and `tell send Tests failed` deliver the arguments joined by single spaces; a single quoted argument is unchanged.
-- [ ] #2 A lone `-` reads stdin; `-` among other words is literal text; no arguments is still a usage error with exit 2.
-- [ ] #3 Help usage shows `MESSAGE... | -`; README and docs/configuration.md describe the rule; task ci passes.
+- [x] #1 `tell notify Build finished` and `tell send Tests failed` deliver the arguments joined by single spaces; a single quoted argument is unchanged.
+- [x] #2 A lone `-` reads stdin; `-` among other words is literal text; no arguments is still a usage error with exit 2.
+- [x] #3 Help usage shows `MESSAGE... | -`; README and docs/configuration.md describe the rule; task ci passes.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Join notify/send positional arguments with single spaces; read stdin only for a sole dash and retain missing-message usage errors.
+2. Update usage and message-input documentation; extend existing input-isolation tests for multi-word and mixed-dash parsing.
+3. Run focused tests, direct help checks, and task ci; review the bounded diff, commit, merge main, record evidence, and remove the owned worktree.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented multi-word joining and sole-dash stdin handling. Regression tests exposed urfave v3.13 dropping arguments after a bare dash; Run now protects a message dash with an end-of-options marker, excluding flag values. Existing input-isolation tests cover joining, quoted spacing, leading/middle dash, sole-dash stdin, missing-input exit 2 and no dispatch; the obsolete extra-argument rejection is replaced by acceptance coverage. Validation: mise exec go -- go test ./internal/cli passed; mise exec -- task ci passed (security, formatting, vet, Staticcheck, tests, race, binary smoke); LSP diagnostics clean for all five Go files; git diff --check passed. Built bin/tell notify --help and send --help both show MESSAGE... | -. README and configuration docs updated. One bounded general diff review completed: no remaining item-scoped defects. Implementation changes also include the two existing input test files to verify the parser boundary. Next: commit implementation, fast-forward main, finalize task, remove owned checkout.
+
+Delivery: implementation commit 1ae6e53736658f0108bef40b1498b56bd054fb4c passed task check:staged and was fast-forward merged to main. Worktrunk removed the verified session-owned tell-20-multiword checkout and branch; Herdr workspace wF5 removal verified. No retained checkout, blocker, or remaining implementation step. No push performed.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+notify and send now join message words with single spaces while preserving quoted spacing and reading stdin only for a sole dash. Help and docs describe MESSAGE... | -. Verified by expanded input-isolation tests, full task ci, clean LSP diagnostics, built-binary help, and bounded diff review. Implementation 1ae6e53 merged to main; owned worktree, branch, and workspace removed.
+<!-- SECTION:FINAL_SUMMARY:END -->
