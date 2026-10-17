@@ -53,12 +53,12 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 				Description: "Join message words with spaces, or use a lone - to read stdin.\n\nExamples:\n  tell notify Build finished\n  tell notify --via stderr --type success --title Tests All passed\n  printf 'Build finished' | tell notify -",
 				Flags: []urfave.Flag{
 					&urfave.StringFlag{Name: "title", Aliases: []string{"t"}, Usage: "Notification `title` (default: project directory name)"},
-					&urfave.StringFlag{Name: "type", Aliases: []string{"n"}, Value: "info", Usage: "Notification `type`: info, success, warning, failure"},
+					&urfave.StringFlag{Name: "type", Aliases: []string{"n"}, Value: "info", DefaultText: "info", Usage: "Notification `type`: info, success, warning, failure"},
 				}, Action: notify},
 			{Name: "send", Usage: "Send a message to an existing agent", ArgsUsage: "MESSAGE... | -",
 				Description: "Use a configured recipient, or select one with --to. The recipient must already exist.\nJoin message words with spaces, or use a lone - to read stdin.\n\nExamples (with a participating hcom agent named reviewer):\n  tell send --send-via hcom --to reviewer Tests passed\n  tell send --send-via hcom --to reviewer --intent request Review the changes",
 				Flags: []urfave.Flag{
-					&urfave.StringFlag{Name: "intent", Aliases: []string{"i"}, Value: "inform", Usage: "Message `intent`: inform or request"},
+					&urfave.StringFlag{Name: "intent", Aliases: []string{"i"}, Value: "inform", DefaultText: "inform", Usage: "Message `intent`: inform or request"},
 				}, Action: send},
 			{Name: "doctor", Usage: "Check route readiness without sending or starting services",
 				Description: "Only the selected routes decide the exit code.\n\nExamples:\n  tell doctor\n  tell doctor --via desktop\n  tell --json doctor --via stderr", Action: doctor},

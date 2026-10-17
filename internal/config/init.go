@@ -72,6 +72,7 @@ version: 1
 # Personal routing examples:
 # notify:
 #   via: stderr
+#   command: [/absolute/path/to/notifier]   # required when via: command
 # apprise:
 #   config: /absolute/path/to/apprise.yaml
 #   tag: project-alerts
