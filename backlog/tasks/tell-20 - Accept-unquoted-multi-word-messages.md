@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 23:24'
-updated_date: '2026-10-17 01:32'
-labels: []
+updated_date: '2026-10-17 01:53'
+labels:
+  - reviewed
 dependencies: []
 documentation:
   - docs/design.md
@@ -53,6 +54,16 @@ Implemented multi-word joining and sole-dash stdin handling. Regression tests ex
 
 Delivery: implementation commit 1ae6e53736658f0108bef40b1498b56bd054fb4c passed task check:staged and was fast-forward merged to main. Worktrunk removed the verified session-owned tell-20-multiword checkout and branch; Herdr workspace wF5 removal verified. No retained checkout, blocker, or remaining implementation step. No push performed.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @pi
+created: 2026-10-17 01:53
+---
+Review: joining, quoted spacing, mid-dash literal, and missing-message exit 2 verified. Defect fixed in 2c81be0: preserveMessageDash inserted -- before the dash, so 'tell notify - --title X' sent the literal text '- --title X' and ignored stdin, unlike 'tell notify hi --title X'. Command flags are now moved ahead of the end-of-options marker; regression added to TestNotifyInputIsolation. Also widened the flaky herdr send timeout test (150ms to 1s) that failed under -race when probes exceeded the budget.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 

@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 23:24'
-updated_date: '2026-10-17 01:21'
-labels: []
+updated_date: '2026-10-17 01:53'
+labels:
+  - reviewed
 dependencies: []
 documentation:
   - docs/configuration.md
@@ -56,6 +57,16 @@ Implemented aliases c/j/t/n/i/u. TELL-15 removed local initialization, so no l a
 
 Committed implementation as 3dbaa53 and fast-forward merged into main. task check:staged passed before commit. Removed verified session-owned tell-18-short-flags worktree and branch via Worktrunk; its Herdr workspace wE0 was removed by the cleanup hook. No blockers or remaining work.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @pi
+created: 2026-10-17 01:53
+---
+Review: ACs verified against built binary (-c/-j/-t/-n/-i/-u work and show in --help; -j and -j=false select output mode on parse errors; -c FILE value is not taken as the command). Docs list short forms. No defects found.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 

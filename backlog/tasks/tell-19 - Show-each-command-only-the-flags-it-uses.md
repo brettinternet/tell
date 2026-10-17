@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 23:24'
-updated_date: '2026-10-17 01:29'
-labels: []
+updated_date: '2026-10-17 01:53'
+labels:
+  - reviewed
 dependencies:
   - TELL-14
 documentation:
@@ -55,6 +56,16 @@ Implemented in .worktrees/tell-19-command-flags. Validation: mise exec -- go tes
 
 Delivery complete: implementation commit a1c982348e33e5ca34fa7de6c76df350824a9c7c fast-forward merged into main. task check:staged passed before commit. Owned worktree and branch tell-19-command-flags removed using Worktrunk; corresponding Herdr workspace wF1 confirmed absent. No retained checkout/workspace, blockers, or next implementation step. Nothing pushed.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @pi
+created: 2026-10-17 01:53
+---
+Review: help scoping, cross-route acceptance, and precedence verified. Defect fixed in 2c81be0: examples added before this task (command-routes/tell-route.sh, fallback/deliver.sh, agent-handoff/README.md) still placed --via/--send-via/--to before the command, so they failed with exit 2; fallback/deliver.sh would stop its chain on that usage error. AC #3 named only examples/noon. Noted: init --help still lists global --timeout/--config (documented decision).
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 
