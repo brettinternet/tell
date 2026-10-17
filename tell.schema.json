@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/brettinternet/tell/main/tell.schema.json",
+  "title": "Tell personal configuration",
+  "description": "For user config, .git/tell.yaml, or an explicit --config file. Shared tell.yaml uses tell.shared.schema.json. Run tell config check for authoritative validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "const": 1, "default": 1 },
+    "timeout": {
+      "allOf": [{ "$ref": "#/definitions/nonBlankString" }],
+      "description": "Positive Go duration, such as 10s or 1m30s. Tell checks positivity and overflow.",
+      "pattern": "^\\+?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h)(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h))*$",
+      "default": "10s"
+    },
+    "notify": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "via": { "enum": ["stderr", "desktop", "apprise", "herdr", "command"], "default": "stderr" },
+        "command": {
+          "description": "Literal executable and arguments; body is sent on stdin. Personal files only.",
+          "type": "array",
+          "minItems": 1,
+          "items": [{ "type": "string", "pattern": "\\S", "not": { "pattern": "\u0000" } }],
+          "additionalItems": { "type": "string", "not": { "pattern": "\u0000" } }
+        }
+      }
+    },
+    "apprise": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "allOf": [{ "$ref": "#/definitions/nonBlankString" }],
+          "description": "Local provider config path, relative to this file. No shell expansion.",
+          "not": { "pattern": "://" }
+        },
+        "tag": { "$ref": "#/definitions/nonBlankString", "description": "Apprise tag expression." },
+        "format": { "enum": ["text", "markdown", "html"] }
+      }
+    },
+    "herdr": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session": { "$ref": "#/definitions/nonBlankString", "description": "Existing Herdr session name; default selects the default session." }
+      }
+    },
+    "send": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "via": { "enum": ["hcom", "herdr"] },
+        "to": { "$ref": "#/definitions/string", "description": "One exact recipient. Delivery checks recipient validity; no broadcast fallback." },
+        "from": { "allOf": [{ "$ref": "#/definitions/string" }], "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$", "default": "tell-automation" }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy": { "enum": ["redact", "reject"], "default": "redact" }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent_targets": { "type": "boolean", "default": false, "description": "Allow MCP agents to override routes and recipients, not executable paths or policy." }
+      }
+    }
+  },
+  "definitions": {
+    "string": { "type": "string", "not": { "pattern": "[\u0000\u001b\r\n]" } },
+    "nonBlankString": { "allOf": [{ "$ref": "#/definitions/string" }, { "pattern": "\\S" }] }
+  }
+}

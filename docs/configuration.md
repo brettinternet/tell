@@ -269,6 +269,34 @@ for Apprise when collected. Exit 0 means the selected notify route and any
 configured send route are ready, even if another route is not. Exit 1 means one
 is not ready, or configuration/output failed. Exit 2 is a usage error.
 
+## Editor schemas
+
+Tell publishes JSON Schemas for YAML completion and validation. `tell init`
+adds the appropriate YAML language server hint to new files. For existing
+shared `tell.yaml`, add:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/brettinternet/tell/main/tell.shared.schema.json
+```
+
+For user config, `.git/tell.yaml`, or an explicit `--config` file, use:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/brettinternet/tell/main/tell.schema.json
+```
+
+[Shared schema](../tell.shared.schema.json) rejects personal routing and policy;
+[personal schema](../tell.schema.json) accepts all supported settings.
+The URLs track main; replace `main` with a commit SHA to pin a schema.
+Use a comment, not a `$schema` YAML key (unknown keys are rejected).
+
+Schemas are editor assistance, not a replacement for `tell config check`.
+Tell additionally enforces YAML-specific rules (including duplicate keys,
+anchors, aliases, and document count), file size, duration positivity and
+overflow, and configuration source precedence. Route readiness and recipient
+checks still happen at runtime. Empty/comment-only files are valid empty
+layers even if an editor represents them as null.
+
 ## Strict YAML
 
 One document, one mapping. Rejected: unknown or duplicate keys, aliases,

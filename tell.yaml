@@ -1,2 +1,3 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/brettinternet/tell/main/tell.shared.schema.json
 # Development defaults; runtime providers are not invoked by this bootstrap.
 version: 1

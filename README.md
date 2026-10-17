@@ -214,7 +214,8 @@ Short forms: `-c`/`--config`, `-j`/`--json`, `-C`/`--project`, and
 Only `--project`, `--config`, `--json`, and `--timeout` are global.
 Put routing flags after the command: `tell doctor --via desktop`,
 `tell send --send-via hcom --to reviewer "Hello"`.
-See [configuration](docs/configuration.md) for every key and command's flags.
+See [configuration](docs/configuration.md) for every key and command's flags,
+and [editor schemas](docs/configuration.md#editor-schemas) for YAML completion and validation.
 
 ## Notification routes
 

@@ -66,7 +66,8 @@ func createTemplate(path string, mode os.FileMode, content string) (string, bool
 	return path, true, errors.Join(writeErr, file.Close())
 }
 
-const sharedTemplate = `# Shared Tell settings. Commit this file to share project settings.
+const sharedTemplate = `# yaml-language-server: $schema=https://raw.githubusercontent.com/brettinternet/tell/main/tell.shared.schema.json
+# Shared Tell settings. Commit this file to share project settings.
 # Inspection sends nothing. notify routes: stderr, desktop, apprise, herdr, command.
 # send transports: hcom, herdr. Acceptance is not acknowledgment.
 # Routes are personal, not set here: tell init --user (all projects) or --local (this repo).
@@ -78,10 +79,12 @@ version: 1
 #   format: markdown
 `
 
-const userHeader = `# Personal Tell settings for every project. Set notify.via, then run tell doctor.
+const userHeader = `# yaml-language-server: $schema=https://raw.githubusercontent.com/brettinternet/tell/main/tell.schema.json
+# Personal Tell settings for every project. Set notify.via, then run tell doctor.
 `
 
-const localHeader = `# Personal Tell settings for this repository and its worktrees; overrides user config.
+const localHeader = `# yaml-language-server: $schema=https://raw.githubusercontent.com/brettinternet/tell/main/tell.schema.json
+# Personal Tell settings for this repository and its worktrees; overrides user config.
 # Git never commits files inside .git. Set notify.via, then run tell doctor.
 `
 
