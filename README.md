@@ -119,8 +119,20 @@ Check routes without sending anything. Only the selected route decides the exit 
 ```console
 $ tell doctor
 desktop (selected): ready
-apprise: not ready: apprise was not found on PATH; install it or choose another route
+apprise: not ready
+  apprise was not found on PATH; install it or choose another route
 ```
+
+## Terminal output
+
+Human output uses bold headings and labels, with green ready/accepted statuses,
+yellow warnings/uncertain outcomes, and red errors. Optional unavailable routes
+stay neutral. Accepted still means dispatched, not read or completed.
+
+Styling is automatic for each terminal stream independently. Redirected output,
+JSON, MCP, shell completions, and delivered message bodies get no added styling.
+Use `tell --no-color ...` or set a nonempty `NO_COLOR` to disable both color and
+bold; `TERM=dumb` also disables styling. Text labels remain readable without color.
 
 ## Shell completion
 
@@ -212,7 +224,7 @@ tell: --timeout: timeout must be a positive Go duration, such as 10s
 Short forms: `-c`/`--config`, `-j`/`--json`, `-C`/`--project`, and
 `-u`/`--user` for `init`. Use `-i`/`--intent` for `send`.
 `-h`/`--help` and `-v`/`--version` remain available.
-Only `--project`, `--config`, `--json`, and `--timeout` are global.
+Only `--project`, `--config`, `--json`, `--no-color`, and `--timeout` are global.
 Put routing flags after the command: `tell doctor --via desktop`,
 `tell send --send-via hcom --to reviewer "Hello"`.
 See [configuration](docs/configuration.md) for every key and command's flags,

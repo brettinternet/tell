@@ -21,6 +21,7 @@ import (
 )
 
 func init() {
+	urfave.HelpPrinter = printHelp
 	urfave.VersionPrinter = func(cmd *urfave.Command) {
 		fmt.Fprintf(cmd.Writer, "%s %s\n", cmd.Name, cmd.Version)
 	}
@@ -52,6 +53,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Use this project `directory` (default: discover from current directory) [$TELL_PROJECT]"},
 			&urfave.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Use only this config `file` (default: user config, tell.yaml, and .git/tell.yaml) [$TELL_CONFIG]"},
 			&urfave.BoolFlag{Name: "json", Aliases: []string{"j"}, Usage: "Print one structured JSON result"},
+			&urfave.BoolFlag{Name: "no-color", Usage: "Disable color and bold styling [$NO_COLOR]"},
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
@@ -137,7 +139,12 @@ func (err *failure) Error() string { return err.Message }
 func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut io.Writer) int {
 	root := NewRootCommand(build, out, errOut)
 	args = preserveMessageDash(root, args)
+	// Help can render before parsing reaches a later opt-out (e.g. after an
+	// unknown flag). Make the invocation's plain-output intent available there.
+	root.Metadata = map[string]any{"plain-output": jsonRequested(root, args) || boolRequested(root, args, "no-color")}
 	if err := root.Run(ctx, args); err != nil {
+		plain := jsonRequested(root, args) || boolRequested(root, args, "no-color") || commandRequested(root, args, "mcp") || commandRequested(root, args, "completion")
+		style := newOutputStyle(errOut, plain)
 		var report *doctorReport
 		if errors.As(err, &report) {
 			return report.render(root, args, out, errOut)
@@ -146,7 +153,7 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 		if errors.As(err, &outputError) {
 			// Delivery was accepted. A broken result stream must not invite a resend
 			// by reporting usage/config (both promise nothing was sent).
-			fmt.Fprintf(errOut, "tell: %s\n", outputError.Error())
+			fmt.Fprintf(errOut, "%s %s\n", style.warning("tell:"), outputError.Error())
 			return 0
 		}
 		var result *delivery.Result
@@ -154,7 +161,7 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 			if !errors.As(err, &result) {
 				result = delivery.NewResult("", "usage", "invalid_invocation", err.Error())
 			}
-			renderSend(result, jsonRequested(root, args), out, errOut)
+			renderSend(result, jsonRequested(root, args), out, errOut, style)
 			return result.ExitCode()
 		}
 		if !errors.As(err, &result) && notifyRequested(root, args) {
@@ -164,7 +171,11 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 			if jsonRequested(root, args) {
 				_ = json.NewEncoder(out).Encode(result)
 			} else {
-				fmt.Fprintf(errOut, "tell: %s\n", humanReason(result.Route, result.Failure.Reason, result.Error()))
+				prefix := style.failure("tell:")
+				if result.Outcome == "uncertain" {
+					prefix = style.warning("tell:")
+				}
+				fmt.Fprintf(errOut, "%s %s\n", prefix, humanReason(result.Route, result.Failure.Reason, result.Error()))
 			}
 			return result.ExitCode()
 		}
@@ -175,7 +186,7 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 		if jsonRequested(root, args) {
 			_ = json.NewEncoder(out).Encode(map[string]any{"schema_version": 1, "error": issue})
 		} else {
-			fmt.Fprintf(errOut, "tell: %s\n", issue.Message)
+			fmt.Fprintf(errOut, "%s %s\n", style.failure("tell:"), issue.Message)
 		}
 		if issue.usage {
 			return 2
@@ -290,11 +301,12 @@ func showConfig(_ context.Context, cmd *urfave.Command) error {
 	if cmd.Bool("json") {
 		return emit(cmd, map[string]any{"config": cfg})
 	}
-	fmt.Fprintf(cmd.Writer, "Project: %s\n", displayValue(cfg.Project))
+	style := commandStyle(cmd, cmd.Writer)
+	fmt.Fprintf(cmd.Writer, "%s %s\n", style.bold("Project:"), displayValue(cfg.Project))
 	if cmd.Name == "tell" {
-		fmt.Fprintln(cmd.Writer, "Config files:")
+		fmt.Fprintln(cmd.Writer, style.bold("Config files:"))
 	} else {
-		fmt.Fprintln(cmd.Writer, "Files (low → high precedence):")
+		fmt.Fprintln(cmd.Writer, style.bold("Files (low → high precedence):"))
 	}
 	if len(cfg.Sources) == 0 {
 		fmt.Fprintln(cmd.Writer, "  none")
@@ -303,13 +315,13 @@ func showConfig(_ context.Context, cmd *urfave.Command) error {
 		fmt.Fprintf(cmd.Writer, "  %s\n", displayValue(source))
 	}
 	if cmd.Name == "tell" {
-		fmt.Fprintf(cmd.Writer, "Notify: %s (%s)\n", cfg.Notify.Via, displayOrigin(cfg.Origins["notify.via"]))
+		fmt.Fprintf(cmd.Writer, "%s %s (%s)\n", style.bold("Notify:"), cfg.Notify.Via, displayOrigin(cfg.Origins["notify.via"]))
 		if cfg.Send.Via == "" || cfg.Send.To == "" {
-			fmt.Fprintln(cmd.Writer, "Send: not configured")
+			fmt.Fprintf(cmd.Writer, "%s not configured\n", style.bold("Send:"))
 		} else {
-			fmt.Fprintf(cmd.Writer, "Send: %s → %s\n", cfg.Send.Via, displayValue(cfg.Send.To))
+			fmt.Fprintf(cmd.Writer, "%s %s → %s\n", style.bold("Send:"), cfg.Send.Via, displayValue(cfg.Send.To))
 		}
-		fmt.Fprintln(cmd.Writer, "\nNext: tell notify \"hello\" · tell doctor · tell init · tell --help")
+		fmt.Fprintf(cmd.Writer, "\n%s tell notify \"hello\" · tell doctor · tell init · tell --help\n", style.bold("Next:"))
 		return nil
 	}
 	values := cfg.Values()
@@ -318,12 +330,19 @@ func showConfig(_ context.Context, cmd *urfave.Command) error {
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
-	table := tabwriter.NewWriter(cmd.Writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "\nKEY\tVALUE\tORIGIN")
+	var rendered strings.Builder
+	table := tabwriter.NewWriter(&rendered, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(table, "KEY\tVALUE\tORIGIN")
 	for _, key := range keys {
 		fmt.Fprintf(table, "%s\t%s\t%s\n", key, displayValue(values[key]), displayOrigin(cfg.Origins[key]))
 	}
-	return table.Flush()
+	if err := table.Flush(); err != nil {
+		return err
+	}
+	// Style after alignment so escape sequences cannot widen the header cells.
+	header, rows, _ := strings.Cut(rendered.String(), "\n")
+	_, err = fmt.Fprintf(cmd.Writer, "\n%s\n%s", style.bold(header), rows)
+	return err
 }
 
 // Quote whitespace that would otherwise be invisible or disrupt the table.
@@ -351,7 +370,7 @@ func checkConfig(_ context.Context, cmd *urfave.Command) error {
 	if cmd.Bool("json") {
 		return emit(cmd, map[string]any{"valid": true, "config": cfg})
 	}
-	fmt.Fprintf(cmd.Writer, "Configuration valid · %q\n", cfg.Project)
+	fmt.Fprintf(cmd.Writer, "Configuration %s · %q\n", commandStyle(cmd, cmd.Writer).success("valid"), cfg.Project)
 	return nil
 }
 
@@ -394,15 +413,16 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	if cmd.Bool("json") {
 		return emit(cmd, map[string]any{"path": path, "created": created})
 	}
+	style := commandStyle(cmd, cmd.Writer)
 	if created {
-		fmt.Fprintf(cmd.Writer, "Created %q\n", path)
+		fmt.Fprintf(cmd.Writer, "%s %q\n", style.success("Created"), path)
 	} else {
-		fmt.Fprintf(cmd.Writer, "Kept existing %q (not overwritten)\n", path)
+		fmt.Fprintf(cmd.Writer, "%s %q (not overwritten)\n", style.bold("Kept existing"), path)
 	}
 	if cmd.Bool("user") || cmd.Bool("local") {
-		fmt.Fprintln(cmd.Writer, "Next: set notify.via in this file, then run tell doctor.")
+		fmt.Fprintf(cmd.Writer, "%s set notify.via in this file, then run tell doctor.\n", style.bold("Next:"))
 	} else {
-		fmt.Fprintln(cmd.Writer, "Next: commit tell.yaml. Run tell init --user to configure personal routing.")
+		fmt.Fprintf(cmd.Writer, "%s commit tell.yaml. Run tell init --user to configure personal routing.\n", style.bold("Next:"))
 	}
 	return nil
 }
@@ -479,14 +499,27 @@ func commandValueFlags(root *urfave.Command) map[string]bool {
 // Match Noon's output-mode handling on parse errors without treating a string
 // flag's value (for example --apprise-tag --json) as an output flag.
 func jsonRequested(root *urfave.Command, args []string) bool {
+	return boolRequested(root, args, "json", "j")
+}
+
+func boolRequested(root *urfave.Command, args []string, names ...string) bool {
 	valueFlags := commandValueFlags(root)
 	requested := false
+	scope := root
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
+			// urfave may still dispatch a child after its parent's terminator.
+			// A terminator within a leaf command protects message words instead.
+			if scope != nil && i+1 < len(args) && scope.Command(args[i+1]) != nil {
+				continue
+			}
 			break
 		}
 		if !strings.HasPrefix(arg, "-") {
+			if scope != nil {
+				scope = scope.Command(arg)
+			}
 			continue
 		}
 		name, value, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
@@ -494,11 +527,13 @@ func jsonRequested(root *urfave.Command, args []string) bool {
 			if !hasValue {
 				i++
 			}
-		} else if name == "json" || name == "j" {
-			requested = true
-			if hasValue {
-				requested, _ = strconv.ParseBool(value)
+		} else if slices.Contains(names, name) {
+			if !hasValue {
+				requested = true
+			} else if parsed, err := strconv.ParseBool(value); err == nil {
+				requested = parsed
 			}
+			// A rejected boolean must not undo an earlier valid output choice.
 		}
 	}
 	return requested

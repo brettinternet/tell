@@ -193,7 +193,7 @@ Short forms: `-c`/`--config`, `-j`/`--json`, `-C`/`--project`,
 `-t`/`--title` and `-n`/`--type` for `notify`, `-i`/`--intent` for `send`,
 and `-u`/`--user` and `-l`/`--local` for `init`. `-h`/`--help` and `-v`/`--version` are unchanged.
 
-Global flags are `--project`, `--config`, `--json`, and `--timeout` (plus
+Global flags are `--project`, `--config`, `--json`, `--no-color`, and `--timeout` (plus
 help/version). Put all other flags after the command:
 
 - `notify`: `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`,
@@ -325,9 +325,28 @@ $ tell --json --timeout 0s config check; echo $?
 
 `-j`/`--json` prints one stdout object with `schema_version: 1`. Human errors go to
 stderr. Exit 0 success, 1 configuration/I/O failure, 2 usage. Help, version,
-and completion stay plain text. Delivery uses its own
+and completion retain their text formats rather than JSON. Delivery uses its own
 [outcomes](design.md#outcomes). In notify JSON, `route` is empty when parsing
 or configuration failed before a route was resolved.
+
+### Terminal styling
+
+Human inspection and help use bold labels/headings. Status words are green for
+ready/accepted, yellow for warnings/uncertain outcomes, and red for errors or a
+selected route that is not ready. Unavailable optional routes stay neutral;
+`doctor` puts remediation on an indented next line. Status text always carries
+the meaning without color. Values, paths, origins, and explanations retain the
+terminal's default foreground; no faint text or background colors are used.
+
+Tell checks stdout and stderr separately for a terminal. A pipe or file receives
+no added ANSI, even when the other stream is a terminal. Nonempty `NO_COLOR`
+(including `NO_COLOR=0`), `TERM=dumb`, or `--no-color` disables all styling,
+including bold. `--no-color=false` restores automatic detection, but does not
+override environment opt-outs. This is presentation only, not a YAML setting.
+
+JSON mode (including its stderr receipts), MCP, shell completions, and delivered
+notification/agent message bodies receive no added styling. Styling never changes
+exit codes or outcome semantics: accepted means dispatched, not completed.
 
 ## Initialization
 

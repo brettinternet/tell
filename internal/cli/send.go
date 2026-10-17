@@ -50,15 +50,19 @@ func send(ctx context.Context, cmd *urfave.Command) error {
 	return result
 }
 
-func renderSend(result *delivery.Result, jsonOutput bool, out, errOut io.Writer) {
+func renderSend(result *delivery.Result, jsonOutput bool, out, errOut io.Writer, style outputStyle) {
 	reason := ""
 	if result.Failure != nil {
 		reason = " reason=" + result.Failure.Reason
 
 	}
-	fmt.Fprintf(errOut, "tell send: route=%q recipient=%q intent=%q outcome=%s%s\n", result.Route, result.Recipient, result.Intent, result.Outcome, reason)
+	fmt.Fprintf(errOut, "%s route=%q recipient=%q intent=%q outcome=%s%s\n", style.bold("tell send:"), result.Route, result.Recipient, result.Intent, style.outcome(result.Outcome), reason)
 	if !jsonOutput && result.Failure != nil {
-		fmt.Fprintf(errOut, "tell send: %s\n", humanReason("send/"+result.Route, result.Failure.Reason, result.Failure.Message))
+		prefix := style.failure("tell send:")
+		if result.Outcome == "uncertain" {
+			prefix = style.warning("tell send:")
+		}
+		fmt.Fprintf(errOut, "%s %s\n", prefix, humanReason("send/"+result.Route, result.Failure.Reason, result.Failure.Message))
 	}
 	if jsonOutput {
 		// A failed output stream cannot change the dispatch outcome or invite retry.

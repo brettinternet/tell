@@ -108,6 +108,7 @@ func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut i
 	if jsonRequested(root, args) {
 		err = json.NewEncoder(out).Encode(r)
 	} else {
+		style := newOutputStyle(out, boolRequested(root, args, "no-color"))
 		for _, route := range r.Routes {
 			selected := ""
 			if route.Route == r.Selected || route.Route == r.SelectedSend {
@@ -117,17 +118,30 @@ func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut i
 			if route.Services != nil {
 				count = fmt.Sprintf("; services: %d", *route.Services)
 			}
-			status := "ready"
-			if !route.Ready {
-				status = "not ready: " + humanReason(route.Route, route.Reason, "")
+			label := route.Route + selected + ":"
+			if selected != "" {
+				label = style.bold(label)
 			}
-			if _, err = fmt.Fprintf(out, "%s%s: %s%s\n", route.Route, selected, status, count); err != nil {
+			status := style.success("ready")
+			if !route.Ready {
+				status = "not ready"
+				if selected != "" {
+					status = style.failure(status)
+				}
+			}
+			if _, err = fmt.Fprintf(out, "%s %s%s\n", label, status, count); err != nil {
 				break
+			}
+			if !route.Ready {
+				if _, err = fmt.Fprintf(out, "  %s\n", humanReason(route.Route, route.Reason, "")); err != nil {
+					break
+				}
 			}
 		}
 	}
 	if err != nil {
-		fmt.Fprintln(errOut, "tell: could not write readiness report")
+		style := newOutputStyle(errOut, jsonRequested(root, args) || boolRequested(root, args, "no-color"))
+		fmt.Fprintf(errOut, "%s could not write readiness report\n", style.failure("tell:"))
 		return 1
 	}
 	if !r.Ready {

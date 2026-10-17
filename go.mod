@@ -3,6 +3,7 @@ module github.com/brettinternet/tell
 go 1.27
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/mattn/go-isatty v0.0.24
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/spf13/viper v1.21.0

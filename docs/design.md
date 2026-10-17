@@ -349,7 +349,8 @@ fix, without printing provider configuration or output:
 
 ```text
 stderr (selected): ready
-apprise: not ready: apprise was not found on PATH; install it or choose another route
+apprise: not ready
+  apprise was not found on PATH; install it or choose another route
 ```
 
 ### hcom

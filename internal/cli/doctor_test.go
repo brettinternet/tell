@@ -15,7 +15,7 @@ func TestDoctorHumanMissingExecutable(t *testing.T) {
 	environment(t)
 	t.Setenv("PATH", t.TempDir())
 	code, out, diag := run("doctor", "--apprise-tag", "private-tag")
-	if code != 0 || diag != "" || out != "stderr (selected): ready\napprise: not ready: apprise was not found on PATH; install it or choose another route\n" {
+	if code != 0 || diag != "" || out != "stderr (selected): ready\napprise: not ready\n  apprise was not found on PATH; install it or choose another route\n" {
 		t.Fatalf("%d %q %q", code, out, diag)
 	}
 	code, out, diag = run("--json", "doctor", "--apprise-tag", "private-tag")
