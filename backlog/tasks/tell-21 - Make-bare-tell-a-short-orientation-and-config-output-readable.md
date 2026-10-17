@@ -1,9 +1,11 @@
 ---
 id: TELL-21
 title: Make bare tell a short orientation and config output readable
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@pi'
 created_date: '2026-10-16 23:24'
+updated_date: '2026-10-17 01:35'
 labels: []
 dependencies: []
 documentation:
@@ -31,7 +33,27 @@ Non-goals: --json output changes (schema_version 1), colors or TTY detection, ne
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Bare `tell` prints a short summary: project, config files in use (or none), notify route with origin, send transport and recipient or "not configured", and next commands (`tell notify "hello"`, `tell doctor`, `tell init`, `tell --help`); it runs no subprocesses and exits 0, or exits 1 with the validation message on invalid config.
-- [ ] #2 `tell config` and `tell config show` print aligned key, value, and origin columns; values are unquoted unless empty or whitespace-significant; origins read as default, file path, env NAME, or flag --name.
-- [ ] #3 README quick tour and docs/configuration.md show the new output; task ci passes.
+- [x] #1 Bare `tell` prints a short summary: project, config files in use (or none), notify route with origin, send transport and recipient or "not configured", and next commands (`tell notify "hello"`, `tell doctor`, `tell init`, `tell --help`); it runs no subprocesses and exits 0, or exits 1 with the validation message on invalid config.
+- [x] #2 `tell config` and `tell config show` print aligned key, value, and origin columns; values are unquoted unless empty or whitespace-significant; origins read as default, file path, env NAME, or flag --name.
+- [x] #3 README quick tour and docs/configuration.md show the new output; task ci passes.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Separate safe bare-command orientation from aligned detailed config output, preserving JSON. 2. Update README and configuration examples; verify formatting and no-delivery behavior. 3. Run task ci, review once, commit, merge locally, finalize task, and clean owned worktree.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Verification: mise exec -- go test ./internal/cli and mise exec -- task ci passed (format, vet, Staticcheck, unit, race, smoke, Gitleaks, govulncheck). LSP diagnostics clean. Direct built-binary checks in an isolated temporary HOME/PATH verified default and configured summaries, no invocation of marker-writing command/hcom fixtures, config/show equivalence, empty/padded quoting and default/file/env/flag origins, unchanged schema_version 1 JSON, and invalid-config exit 1 with validation message. git diff --check passed. One scoped general review found no concrete defects. Implementation stays within the three specified files; no new tests needed for presentation-only changes.
+
+Delivery: ca3c899 (feat(cli): simplify orientation and config output) committed after task check:staged and fast-forward merged into main. Owned tell-21 worktree and branch removed using Worktrunk; matching Herdr workspace wF6 disappearance verified. No remaining blocker or resumable implementation step; no push performed.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Bare tell now offers a safe short orientation and next commands; config/show display aligned values and readable origins. README and configuration examples updated. Verified task ci, direct isolated binary checks, clean LSP diagnostics, and scoped review. Implemented and merged locally as ca3c899; worktree/workspace cleaned.
+<!-- SECTION:FINAL_SUMMARY:END -->
