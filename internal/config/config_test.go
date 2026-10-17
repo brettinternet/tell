@@ -39,23 +39,21 @@ func TestLoadLayersAndPaths(t *testing.T) {
 	writeFile(t, user, "timeout: 3s\nnotify: {via: desktop}\napprise:\n  config: ../apprise/notifications.yaml\n  tag: personal\n  format: markdown\n")
 	shared := filepath.Join(input.CWD, "tell.yaml")
 	writeFile(t, shared, "apprise: {tag: team}\n")
-	private := filepath.Join(input.CWD, ".tell.yaml")
-	writeFile(t, private, "notify: {via: apprise}\napprise: {tag: local}\n")
 	cfg, err := config.Load(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Timeout != "3s" || cfg.Notify.Via != "apprise" || cfg.Apprise.Tag != "local" || cfg.Apprise.Format != "markdown" {
+	if cfg.Timeout != "3s" || cfg.Notify.Via != "desktop" || cfg.Apprise.Tag != "team" || cfg.Apprise.Format != "markdown" {
 		t.Fatalf("incorrect precedence: %+v", cfg)
 	}
 	if cfg.MCP.AgentTargets || cfg.Values()["mcp.agent_targets"] != "false" || cfg.Origins["mcp.agent_targets"] != "default" {
 		t.Fatalf("MCP target override is not default-deny: %+v", cfg)
 	}
 	wantPath := filepath.Join(input.UserConfigDir, "apprise", "notifications.yaml")
-	if cfg.Apprise.Config != wantPath || cfg.Origins["apprise.config"] != user || cfg.Origins["apprise.tag"] != private {
+	if cfg.Apprise.Config != wantPath || cfg.Origins["apprise.config"] != user || cfg.Origins["apprise.tag"] != shared {
 		t.Fatalf("lost path provenance: %+v", cfg)
 	}
-	if strings.Join(cfg.Sources, "|") != strings.Join([]string{user, shared, private}, "|") {
+	if strings.Join(cfg.Sources, "|") != strings.Join([]string{user, shared}, "|") {
 		t.Fatalf("wrong sources: %v", cfg.Sources)
 	}
 	input.Overrides = map[string]config.Value{"apprise.config": {Text: "provider.yaml", Source: "flag:--apprise-config"}}
@@ -69,7 +67,7 @@ func TestLoadLayersAndPaths(t *testing.T) {
 }
 
 // A PR-controlled shared file must never redirect delivery, even if a later
-// trusted source overrides it. The same fields remain usable in personal layers.
+// trusted source overrides it. The same fields remain usable in supported personal sources.
 func TestPersonalRoutingSources(t *testing.T) {
 	for _, tc := range []struct{ key, data, value string }{
 		{"notify.via", "notify:\n  via: apprise\n", "apprise"},
@@ -89,23 +87,23 @@ func TestPersonalRoutingSources(t *testing.T) {
 			if err == nil {
 				t.Fatal("accepted shared routing")
 			}
-			for _, want := range []string{shared + ":2:", tc.key, "user config", ".tell.yaml", "--config", "environment", "flags"} {
+			for _, want := range []string{shared + ":2:", tc.key, "user config", "--config", "environment", "flags"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Fatalf("missing %q in diagnostic: %v", want, err)
 				}
 			}
+			if strings.Contains(err.Error(), ".tell.yaml") {
+				t.Fatalf("diagnostic suggests unsupported source: %v", err)
+			}
 			writeFile(t, shared, "version: 1\n")
 			input.Overrides = nil
-			for _, layer := range []string{"user", "private", "explicit"} {
+			for _, layer := range []string{"user", "explicit"} {
 				t.Run(layer, func(t *testing.T) {
 					personal := input
 					path := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
-					switch layer {
-					case "private":
+					if layer == "explicit" {
+						// Explicit selection remains trusted, even for a .tell.yaml path.
 						path = filepath.Join(input.CWD, ".tell.yaml")
-					case "explicit":
-						// Explicit selection is trusted even when named tell.yaml.
-						path = shared
 						personal.File = &path
 					}
 					writeFile(t, path, tc.data)
@@ -137,13 +135,11 @@ func TestSecretPolicySources(t *testing.T) {
 		t.Fatalf("accepted shared secret policy: %v", err)
 	}
 	writeFile(t, shared, "version: 1\n")
-	for _, layer := range []string{"user", "private", "explicit"} {
+	for _, layer := range []string{"user", "explicit"} {
 		personal := input
 		path := user
-		if layer == "private" {
+		if layer == "explicit" {
 			path = filepath.Join(input.CWD, ".tell.yaml")
-		} else if layer == "explicit" {
-			path = shared
 			personal.File = &path
 		}
 		writeFile(t, path, "secrets: {policy: reject}\n")
@@ -163,19 +159,22 @@ func TestSecretPolicySources(t *testing.T) {
 	}
 }
 
-// Shared config cannot introduce executable policy; higher layers replace argv.
+// Shared config cannot introduce executable policy; explicitly selected
+// personal files can, and command argv is preserved as a complete list.
 func TestCommandConfig(t *testing.T) {
 	input := fixture(t)
 	user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
 	shared := filepath.Join(input.CWD, "tell.yaml")
-	private := filepath.Join(input.CWD, ".tell.yaml")
+	explicit := filepath.Join(input.CWD, ".tell.yaml")
 	writeFile(t, user, "notify: {command: [first, inherited]}\n")
-	writeFile(t, private, "notify: {via: command, command: [second, '', 'two words']}\n")
+	writeFile(t, explicit, "notify: {via: command, command: [second, '', 'two words']}\n")
+	input.File = &explicit
 	cfg, err := config.Load(input)
 	want := []string{"second", "", "two words"}
-	if err != nil || !reflect.DeepEqual(cfg.Notify.Command, want) || cfg.Origins["notify.command"] != private {
-		t.Fatalf("argv replacement: %+v %v", cfg, err)
+	if err != nil || !reflect.DeepEqual(cfg.Notify.Command, want) || cfg.Origins["notify.command"] != explicit {
+		t.Fatalf("explicit argv: %+v %v", cfg, err)
 	}
+	input.File = nil
 	writeFile(t, shared, "notify: {command: [untrusted]}\n")
 	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal policy") {
 		t.Fatalf("accepted shared executable policy: %v", err)
@@ -183,7 +182,7 @@ func TestCommandConfig(t *testing.T) {
 	input.File = &shared
 	cfg, err = config.Load(input)
 	if err != nil || !reflect.DeepEqual(cfg.Notify.Command, []string{"untrusted"}) {
-		t.Fatalf("explicit config: %+v %v", cfg, err)
+		t.Fatalf("explicit shared-named config: %+v %v", cfg, err)
 	}
 	input.Overrides = map[string]config.Value{"notify.command": {Text: "override", Source: "flag"}}
 	if _, err := config.Load(input); err == nil {
@@ -250,7 +249,7 @@ func TestRejectAmbiguousOrInvalidConfiguration(t *testing.T) {
 			input := fixture(t)
 			user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
 			writeFile(t, user, tc.data)
-			writeFile(t, filepath.Join(input.CWD, ".tell.yaml"), "timeout: 2s\nnotify: {via: stderr}\napprise: {tag: valid}\n")
+			writeFile(t, filepath.Join(input.CWD, "tell.yaml"), "timeout: 2s\napprise: {tag: valid}\n")
 			_, err := config.Load(input)
 			if err == nil || !strings.Contains(err.Error(), user) {
 				t.Fatalf("expected source diagnostic, got %v", err)
@@ -289,16 +288,16 @@ func TestProjectBoundaries(t *testing.T) {
 	}
 }
 
-// A dangling private-config symlink is a broken override, not permission to
-// silently fall back to a shared destination. Non-files must not be consumed.
+// A dangling shared-config symlink is broken configuration, not permission to
+// silently fall back. Non-files must not be consumed.
 func TestBrokenConfigPathsFail(t *testing.T) {
 	input := fixture(t)
-	private := filepath.Join(input.CWD, ".tell.yaml")
-	if err := os.Symlink(filepath.Join(input.CWD, "missing.yaml"), private); err != nil {
+	shared := filepath.Join(input.CWD, "tell.yaml")
+	if err := os.Symlink(filepath.Join(input.CWD, "missing.yaml"), shared); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := config.Load(input); err == nil {
-		t.Fatal("ignored dangling private config")
+		t.Fatal("ignored dangling shared config")
 	}
 	directory := input.CWD
 	input.File = &directory
@@ -307,10 +306,10 @@ func TestBrokenConfigPathsFail(t *testing.T) {
 	}
 }
 
-// Init must not destroy local routing/credentials or follow a planted symlink.
+// Init creates only shared tell.yaml and preserves it on later calls.
 func TestInitPreservesExistingFiles(t *testing.T) {
 	input := fixture(t)
-	path, created, err := config.Init(input, true)
+	path, created, err := config.Init(input)
 	if err != nil || !created {
 		t.Fatalf("init: %t %v", created, err)
 	}
@@ -318,23 +317,53 @@ func TestInitPreservesExistingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("private mode: %o", info.Mode().Perm())
+	// Compare against a normal shared file so a restrictive caller umask is
+	// honored without changing the process-wide umask in the test.
+	reference := filepath.Join(input.CWD, "reference.yaml")
+	if err := os.WriteFile(reference, nil, 0o644); err != nil {
+		t.Fatal(err)
 	}
-	writeFile(t, path, "private-sentinel\n")
-	_, created, err = config.Init(input, true)
+	referenceInfo, err := os.Stat(reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != referenceInfo.Mode().Perm() {
+		t.Fatalf("shared mode: %o, want %o", info.Mode().Perm(), referenceInfo.Mode().Perm())
+	}
+	writeFile(t, path, "sentinel\n")
+	_, created, err = config.Init(input)
 	if err != nil || created {
 		t.Fatalf("repeat init: %t %v", created, err)
 	}
 	data, err := os.ReadFile(path)
-	if err != nil || string(data) != "private-sentinel\n" {
+	if err != nil || string(data) != "sentinel\n" {
 		t.Fatal("init changed the existing file")
 	}
-	shared := filepath.Join(input.CWD, "tell.yaml")
+	symlinkInput := fixture(t)
+	shared := filepath.Join(symlinkInput.CWD, "tell.yaml")
 	if err := os.Symlink(path, shared); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := config.Init(input, false); err == nil {
+	if _, _, err := config.Init(symlinkInput); err == nil {
 		t.Fatal("init accepted a symlink")
+	}
+}
+
+// A .tell.yaml alone is not a project marker for project discovery.
+func TestTellLocalFileDoesNotAffectProjectDiscovery(t *testing.T) {
+	base := t.TempDir()
+	project := filepath.Join(base, "repo")
+	nested := filepath.Join(project, "nested")
+	if err := os.MkdirAll(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(project, ".tell.yaml"), "notify: {via: herdr}\n")
+	want, err := filepath.EvalSymlinks(nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := config.ProjectDir(config.Input{CWD: nested})
+	if err != nil || got != want {
+		t.Fatalf(".tell.yaml affected project discovery: got %q, want %q, err %v", got, want, err)
 	}
 }

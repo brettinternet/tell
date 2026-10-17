@@ -75,8 +75,8 @@ type Config struct {
 	Origins map[string]string `json:"origins"`
 }
 
-// Load merges user, shared-project, private-project, then invocation
-// settings. File replaces automatic file sources, not invocation overrides.
+// Load merges user, shared-project, then invocation settings. File replaces
+// automatic file sources, not invocation overrides.
 func Load(input Input) (Config, error) {
 	project, err := ProjectDir(input)
 	if err != nil {
@@ -105,10 +105,8 @@ func Load(input Input) (Config, error) {
 				return Config{}, err
 			}
 		}
-		for _, name := range []string{"tell.yaml", ".tell.yaml"} {
-			if err := cfg.applyFile(filepath.Join(project, name), true, name == "tell.yaml"); err != nil {
-				return Config{}, err
-			}
+		if err := cfg.applyFile(filepath.Join(project, "tell.yaml"), true, true); err != nil {
+			return Config{}, err
 		}
 	}
 	for key, value := range input.Overrides {
@@ -244,9 +242,9 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 		if shared {
 			switch value.key {
 			case "secrets.policy", "notify.command":
-				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
+				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config or --config instead of shared tell.yaml", path, value.line, value.key)
 			case "notify.via", "apprise.config", "herdr.session", "send.via", "send.to", "send.from", "mcp.agent_targets":
-				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
+				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
 			}
 		}
 		if value.key == "notify.command" {
@@ -291,7 +289,7 @@ func ProjectDir(input Input) (string, error) {
 		return start, nil
 	}
 	for dir := start; ; dir = filepath.Dir(dir) {
-		for _, name := range []string{"tell.yaml", ".tell.yaml", ".git"} {
+		for _, name := range []string{"tell.yaml", ".git"} {
 			if _, err := os.Lstat(filepath.Join(dir, name)); err == nil {
 				return dir, nil
 			} else if !errors.Is(err, os.ErrNotExist) {

@@ -13,11 +13,7 @@ import (
 // A readiness probe must not turn into delivery, leak provider secrets, or fail
 // the selected route just because another configured route is unavailable.
 func TestDoctorReadOnly(t *testing.T) {
-	base := environment(t)
-	base, err := filepath.EvalSymlinks(base)
-	if err != nil {
-		t.Fatal(err)
-	}
+	environment(t)
 	record := provider(t, "herdr", "osascript", "notify-send", "personal")
 	dir := filepath.Dir(record)
 	apprise := `#!/bin/sh
@@ -43,9 +39,7 @@ printf '%s' "$FIXTURE_SESSIONS"
 	t.Setenv("HERDR_SOCKET_PATH", "private-socket")
 	t.Setenv("FIXTURE_SESSIONS", `{"sessions":[{"name":"private-session","running":true,"socket_path":"private-path"}]}`)
 	cfg := "notify: {via: apprise, command: [" + filepath.Join(dir, "personal") + ", private-argument]}\napprise: {config: private-config, tag: private-tag, format: markdown}\nherdr: {session: private-session}\n"
-	if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte(cfg), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeUserConfig(t, cfg)
 	for _, route := range []string{"apprise", "herdr", "command", "desktop", "stderr"} {
 		code, out, diagnostics := run("--json", "doctor", "--via", route)
 		var report struct {
@@ -80,7 +74,7 @@ printf '%s' "$FIXTURE_SESSIONS"
 		t.Fatal("executed desktop or personal command")
 	}
 	got, err := os.ReadFile(record + ".apprise")
-	want := strings.Join([]string{"--dry-run", "--config", filepath.Join(base, "private-config"), "--tag", "private-tag", "--input-format", "markdown", ""}, "\x00")
+	want := strings.Join([]string{"--dry-run", "--config", filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tell", "private-config"), "--tag", "private-tag", "--input-format", "markdown", ""}, "\x00")
 	if err != nil || string(got) != want {
 		t.Fatalf("dry run argv: %q %v", got, err)
 	}
@@ -172,9 +166,7 @@ func TestDoctorUnavailableAndTimeout(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte("notify: {via: command, command: ["+path+"]}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeUserConfig(t, "notify: {via: command, command: ["+path+"]}\n")
 	code, out, diagnostics := run("--json", "doctor")
 	if code != 1 || !strings.Contains(out, "command_not_executable") || strings.Contains(out+diagnostics, path) {
 		t.Fatalf("%d %s %s", code, out, diagnostics)

@@ -235,8 +235,8 @@ enters the launch path.
 
 ## Command delivery
 
-Runs one personal executable. Configure argv as a list in user config,
-`.tell.yaml`, or `--config` (never `tell.yaml`):
+Runs one personal executable. Configure argv as a list in user config or an
+explicit `--config`/`TELL_CONFIG` file (never `tell.yaml`):
 
 ```yaml
 notify:

@@ -8,7 +8,7 @@ import (
 )
 
 func TestHerdrNotify(t *testing.T) {
-	base := environment(t)
+	environment(t)
 	record := provider(t, "herdr")
 	// Refuse inherited context rather than merely recording the explicit flag.
 	path := filepath.Join(filepath.Dir(record), "herdr")
@@ -32,9 +32,7 @@ fi
 	if _, err := os.Stat(record); !os.IsNotExist(err) {
 		t.Fatal("missing session launched provider")
 	}
-	if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte("notify: {via: herdr}\nherdr: {session: selected}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeUserConfig(t, "notify: {via: herdr}\nherdr: {session: selected}\n")
 	for _, args := range [][]string{{}, {"--json", "config"}, {"--json", "config", "check"}} {
 		code, out, errOut = run(args...)
 		if code != 0 {

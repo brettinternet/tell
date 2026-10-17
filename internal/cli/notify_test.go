@@ -325,12 +325,10 @@ func TestNotifySecrets(t *testing.T) {
 	for _, policy := range []string{"redact", "reject"} {
 		for _, field := range []string{"title", "body"} {
 			t.Run(policy+"/"+field, func(t *testing.T) {
-				base := environment(t)
+				environment(t)
 				record := provider(t)
 				if policy == "reject" {
-					if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte("secrets: {policy: reject}\n"), 0o600); err != nil {
-						t.Fatal(err)
-					}
+					writeUserConfig(t, "secrets: {policy: reject}\n")
 				}
 				// Construct a synthetic GitHub token, not a usable credential.
 				token := "ghp_" + "aB3dE6fG9hJ2kL5mN8pQ1rS4tU7vW0xY3zA6"
@@ -394,12 +392,10 @@ func TestNotifyInterruption(t *testing.T) {
 	for _, route := range []string{"apprise", "desktop", "command", "herdr"} {
 		for _, cancelAfterStart := range []bool{false, true} {
 			t.Run(map[bool]string{false: "timeout", true: "cancellation"}[cancelAfterStart], func(t *testing.T) {
-				base := environment(t)
+				environment(t)
 				record := provider(t, "osascript", "notify-send", "herdr")
 				t.Setenv("TELL_HERDR_SESSION", "selected")
-				if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte("notify: {command: [apprise]}\n"), 0o600); err != nil {
-					t.Fatal(err)
-				}
+				writeUserConfig(t, "notify: {command: [apprise]}\n")
 				t.Setenv("FIXTURE_WAIT", "yes")
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()

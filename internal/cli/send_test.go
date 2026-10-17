@@ -256,12 +256,10 @@ func TestSendOutcomes(t *testing.T) {
 func TestSendReadinessAndPreparation(t *testing.T) {
 	for _, route := range []string{"hcom", "herdr"} {
 		t.Run(route, func(t *testing.T) {
-			base := environment(t)
+			environment(t)
 			record := sendProvider(t)
 			cfg := "send: {via: " + route + ", to: reviewer, from: nightly}\nherdr: {session: work}\n"
-			if err := os.WriteFile(filepath.Join(base, ".tell.yaml"), []byte(cfg), 0o600); err != nil {
-				t.Fatal(err)
-			}
+			writeUserConfig(t, cfg)
 			code, out, diag := run("--json", "doctor")
 			var report struct {
 				Ready  bool

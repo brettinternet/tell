@@ -62,7 +62,6 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 				{Name: "check", Usage: "Validate settings without invoking providers", Action: checkConfig},
 			}},
 			{Name: "init", Usage: "Create tell.yaml without overwriting; never sends messages", Flags: []urfave.Flag{
-				&urfave.BoolFlag{Name: "local", Usage: "Create private .tell.yaml instead; add it to .gitignore"},
 				&urfave.BoolFlag{Name: "user", Usage: "Create personal user config instead"},
 			}, Action: initialize},
 		},
@@ -279,8 +278,8 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	if slices.ContainsFunc(overrides, cmd.IsSet) {
 		return &failure{Code: "usage", Message: "init does not apply config or setting overrides; edit the generated file instead", usage: true}
 	}
-	if cmd.Bool("user") && (cmd.Bool("local") || cmd.IsSet("project")) {
-		return &failure{Code: "usage", Message: "--user cannot be combined with --local or --project", usage: true}
+	if cmd.Bool("user") && cmd.IsSet("project") {
+		return &failure{Code: "usage", Message: "--user cannot be combined with --project", usage: true}
 	}
 	var path string
 	var created bool
@@ -290,7 +289,7 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 			path, created, err = config.InitUser(values)
 		}
 	} else {
-		path, created, err = config.Init(values, cmd.Bool("local"))
+		path, created, err = config.Init(values)
 	}
 	if err != nil {
 		return err
@@ -303,7 +302,7 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	} else {
 		fmt.Fprintf(cmd.Writer, "Kept existing %q (not overwritten)\n", path)
 	}
-	fmt.Fprintln(cmd.Writer, "Ignore .tell.yaml in Git. Next: tell config check")
+	fmt.Fprintln(cmd.Writer, "Next: tell config check")
 	return nil
 }
 

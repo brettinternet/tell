@@ -14,9 +14,6 @@ CLAUDE.local.md
 GEMINI.local.md
 AGENTS.local.md
 
-# Tell machine-local configuration
-/.tell.yaml
-
 # Go outputs
 /bin/
 /dist/

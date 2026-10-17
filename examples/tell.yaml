@@ -1,4 +1,4 @@
-# Shared fields only; select delivery routes in user config or private .tell.yaml.
+# Shared fields only; personal routing belongs in user config, --config, environment, or flags.
 version: 1
 timeout: 10s
 apprise:

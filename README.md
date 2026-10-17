@@ -117,12 +117,13 @@ Create starter files. `init` never overwrites.
 
 ```sh
 tell init           # tell.yaml: shared, committed
-tell init --local   # .tell.yaml: private (mode 0600); add it to .gitignore
 tell init --user    # ~/.config/tell/config.yaml: personal (mode 0600)
 ```
 
 Shared `tell.yaml` holds shared settings only. Destinations are personal, so
-Tell rejects routing fields there:
+Tell rejects routing fields there. Personal settings belong in user config or
+an explicit `--config`/`TELL_CONFIG` file. Tell does not automatically load
+`.tell.yaml`, even if a repository commits one:
 
 ```yaml
 # tell.yaml
@@ -140,13 +141,13 @@ notify:
 
 ```console
 $ tell config check   # with notify.via in tell.yaml
-tell: config /Users/me/dev/app/tell.yaml:3: notify.via is personal routing; set it in user config, .tell.yaml, --config, environment, or flags instead of shared tell.yaml
+tell: config /Users/me/dev/app/tell.yaml:3: notify.via is personal routing; set it in user config, --config, environment, or flags instead of shared tell.yaml
 ```
 
 Precedence, lowest to highest:
 
 ```text
-defaults → user config → tell.yaml → .tell.yaml → TELL_* env → flags
+defaults → user config → tell.yaml → TELL_* env → flags
 ```
 
 ```sh
@@ -228,7 +229,8 @@ A tool call performs at most one delivery and returns a body-free result.
 
 MCP agents cannot select routes or recipients by default. To let agents select
 among your already configured routes and one exact recipient, enable the
-personal-only setting `mcp.agent_targets: true` in user config or `.tell.yaml`.
+personal-only setting `mcp.agent_targets: true` in user config, an explicit
+`--config` file, environment, or flags.
 This delegates destination choice, not executable paths, provider config,
 sender identity, timeouts, or secret policy. Do not enable it in shared
 `tell.yaml`.

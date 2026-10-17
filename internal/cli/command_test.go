@@ -27,11 +27,7 @@ exit "${FIXTURE_EXIT:-0}"
 	if err := os.WriteFile(filepath.Join(filepath.Dir(record), "tell-fixture"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	private := filepath.Join(base, ".tell.yaml")
-	data := "notify:\n  command: [tell-fixture, 'two words', '', '$(no-shell); *', 'credential://private@example.invalid']\n"
-	if err := os.WriteFile(private, []byte(data), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	userConfig := writeUserConfig(t, "notify:\n  command: [tell-fixture, 'two words', '', '$(no-shell); *', 'credential://private@example.invalid']\n")
 	in := stdin(t, "hook summary\n")
 	t.Setenv("TELL_TITLE", "wrong title")
 	t.Setenv("TELL_TYPE", "wrong type")
@@ -69,7 +65,7 @@ exit "${FIXTURE_EXIT:-0}"
 	t.Setenv("PATH", t.TempDir())
 	code, out, errOut = run("--json", "--via", "command", "notify", "body-sentinel")
 	assertResult(t, code, out, errOut, "command", "not_sent", "missing_executable")
-	if err := os.WriteFile(private, []byte("version: 1\n"), 0o600); err != nil {
+	if err := os.WriteFile(userConfig, []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	code, out, errOut = run("--json", "--via", "command", "notify", "body-sentinel")

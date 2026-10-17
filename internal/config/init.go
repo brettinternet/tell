@@ -8,22 +8,14 @@ import (
 	"path/filepath"
 )
 
-// Init creates only the selected project's template. Existing files are never
+// Init creates the selected project's shared template. Existing files are never
 // rewritten, and symlinks/directories are refused rather than followed.
-func Init(input Input, local bool) (path string, created bool, err error) {
+func Init(input Input) (path string, created bool, err error) {
 	project, err := ProjectDir(input)
 	if err != nil {
 		return "", false, err
 	}
-	name, mode := "tell.yaml", os.FileMode(0o644)
-	if local {
-		name, mode = ".tell.yaml", 0o600
-	}
-	content := sharedTemplate
-	if local {
-		content = personalTemplate
-	}
-	return createTemplate(filepath.Join(project, name), mode, content)
+	return createTemplate(filepath.Join(project, "tell.yaml"), 0o644, sharedTemplate)
 }
 
 // InitUser creates personal configuration without reading project settings.
@@ -57,10 +49,10 @@ func createTemplate(path string, mode os.FileMode, content string) (string, bool
 	return path, true, errors.Join(writeErr, file.Close())
 }
 
-const sharedTemplate = `# Tell settings. Inspection sends nothing; notify delivers via stderr or Apprise.
+const sharedTemplate = `# Shared Tell settings. Inspection sends nothing; notify delivers via stderr or Apprise.
 # Apprise is optional and external. Provider acceptance is not human acknowledgment.
-# Routing belongs in user config or private .tell.yaml, never shared tell.yaml.
-# Ignore .tell.yaml in Git. Keep credentials in your provider's configuration.
+# Personal routing belongs in user config, --config, environment, or flags.
+# Keep credentials in your provider's configuration.
 version: 1
 # timeout: 10s
 # apprise:
@@ -70,7 +62,9 @@ version: 1
 
 const personalTemplate = `# Personal Tell settings; inspection sends nothing. notify uses stderr or Apprise.
 # Apprise is optional and external. Provider acceptance is not human acknowledgment.
-# Keep credentials in your provider's configuration. Ignore .tell.yaml in Git.
+# This user config is personal; --config/TELL_CONFIG selects another trusted file.
+# Routing can also use TELL_* environment variables or flags where supported.
+# Keep credentials in your provider's configuration.
 version: 1
 # timeout: 10s
 # Personal routing examples:

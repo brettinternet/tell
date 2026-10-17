@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tellconfig "github.com/brettinternet/tell/internal/config"
 )
 
 // Exercise the actual binary and process exit codes with no inherited user,
@@ -56,7 +58,7 @@ func TestBinary(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, "tell.yaml")); !os.IsNotExist(err) {
 		t.Fatal("inspection wrote config")
 	}
-	for _, args := range [][]string{{"init", "--json"}, {"init", "--local", "--json"}, {"init", "--user", "--json"}, {"--json", "config", "check"}} {
+	for _, args := range [][]string{{"init", "--json"}, {"init", "--user", "--json"}, {"--json", "config", "check"}} {
 		output, code := invoke(args...)
 		if code != 0 || !json.Valid([]byte(output)) {
 			t.Fatalf("%v: %d %s", args, code, output)
@@ -94,6 +96,133 @@ func TestBinary(t *testing.T) {
 	output, code = run([]string{}, "--config", explicit, "config", "check")
 	if code != 0 {
 		t.Fatalf("explicit config without HOME: %d %s", code, output)
+	}
+	output, code = invoke("init", "--local", "--json")
+	if code != 2 || !json.Valid([]byte(output)) {
+		t.Fatalf("removed --local flag was accepted: %d %s", code, output)
+	}
+}
+
+// A committed .tell.yaml could otherwise run a repository-selected command,
+// change secret handling, or route messages to an attacker-selected agent.
+func TestCommittedTellFileCannotRunOrRedirectMessages(t *testing.T) {
+	binary, err := filepath.Abs("../bin/tell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(home, "repo")
+	bin := filepath.Join(home, "bin")
+	for _, dir := range []string{repo, bin} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commandMarker := filepath.Join(home, "repository-command-ran")
+	command := filepath.Join(bin, "repository-command")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nprintf ran > \"$COMMAND_MARKER\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	herdrMarker := filepath.Join(home, "repository-send-ran")
+	herdr := filepath.Join(bin, "herdr")
+	if err := os.WriteFile(herdr, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$SEND_CAPTURE\"\nprintf '{}'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectConfig := fmt.Sprintf(`version: 1
+notify:
+  via: command
+  command: [%q]
+apprise:
+  config: %q
+herdr:
+  session: repository-session
+send:
+  via: herdr
+  to: repository-agent
+  from: repository-sender
+secrets:
+  policy: reject
+`, command, filepath.Join(home, "repository-apprise.yaml"))
+	if err := os.WriteFile(filepath.Join(repo, ".tell.yaml"), []byte(projectConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+	}
+	git("init")
+	git("config", "user.name", "Tell smoke test")
+	git("config", "user.email", "tell-smoke@example.invalid")
+	git("add", "-f", ".tell.yaml")
+	git("commit", "-m", "add untrusted project Tell config")
+
+	invoke := func(args ...string) (string, int) {
+		t.Helper()
+		cmd := exec.Command(binary, args...)
+		cmd.Dir = repo
+		cmd.Env = []string{
+			"HOME=" + home,
+			"XDG_CONFIG_HOME=" + filepath.Join(home, "config"),
+			"PATH=" + bin,
+			"COMMAND_MARKER=" + commandMarker,
+			"SEND_CAPTURE=" + herdrMarker,
+		}
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			return string(output), 0
+		}
+		if exit, ok := err.(*exec.ExitError); ok {
+			return string(output), exit.ExitCode()
+		}
+		t.Fatal(err)
+		return "", -1
+	}
+
+	output, code := invoke("--json", "config")
+	var snapshot struct {
+		Config tellconfig.Config `json:"config"`
+	}
+	if code != 0 || json.Unmarshal([]byte(output), &snapshot) != nil || snapshot.Config.Project != repo {
+		t.Fatalf("config inspection in committed checkout: %d %s", code, output)
+	}
+	for key, want := range map[string]string{
+		"notify.via": "stderr", "notify.command": "", "apprise.config": "",
+		"herdr.session": "", "send.via": "", "send.to": "",
+		"send.from": "tell-automation", "secrets.policy": "redact",
+	} {
+		if got := snapshot.Config.Values()[key]; got != want {
+			t.Errorf("committed .tell.yaml set %s=%q, want %q", key, got, want)
+		}
+	}
+	if len(snapshot.Config.Sources) != 0 {
+		t.Fatalf("implicit config sources included committed .tell.yaml: %v", snapshot.Config.Sources)
+	}
+
+	output, code = invoke("--json", "notify", "safe body")
+	if code != 0 || !strings.Contains(output, `"route":"stderr"`) || !strings.Contains(output, "safe body") {
+		t.Fatalf("notify followed committed routing: %d %s", code, output)
+	}
+	if _, err := os.Stat(commandMarker); !os.IsNotExist(err) {
+		t.Fatal("committed .tell.yaml executed its command")
+	}
+	token := "ghp_" + "aB3dE6fG9hJ2kL5mN8pQ1rS4tU7vW0xY3zA6"
+	output, code = invoke("--json", "notify", token)
+	if code != 0 || strings.Contains(output, token) || !strings.Contains(output, "[REDACTED]") {
+		t.Fatalf("committed .tell.yaml changed secret policy: %d %s", code, output)
+	}
+	output, code = invoke("--json", "send", "request body")
+	if code != 3 || !strings.Contains(output, `"reason":"missing_route"`) {
+		t.Fatalf("send followed committed routing: %d %s", code, output)
+	}
+	if _, err := os.Stat(herdrMarker); !os.IsNotExist(err) {
+		t.Fatal("committed .tell.yaml routed send to Herdr")
 	}
 }
 

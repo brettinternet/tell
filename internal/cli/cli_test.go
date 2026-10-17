@@ -37,6 +37,18 @@ func run(args ...string) (int, string, string) {
 	return code, out.String(), errOut.String()
 }
 
+func writeUserConfig(t *testing.T, data string) string {
+	t.Helper()
+	path := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tell", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // Invocation precedence must not send a scheduled message to the wrong tag;
 // flags override env even if the overridden env value is invalid.
 func TestCLIFlagEnvironmentPrecedence(t *testing.T) {
@@ -184,7 +196,7 @@ func TestCLIUserInit(t *testing.T) {
 			if code, _, _ := run("init", "--user"); code != 1 {
 				t.Fatalf("accepted symlink: %d", code)
 			}
-			for _, args := range [][]string{{"init", "--user", "--local"}, {"-C", base, "init", "--user"}, {"init", "--user", "--via", "stderr"}} {
+			for _, args := range [][]string{{"-C", base, "init", "--user"}, {"init", "--user", "--via", "stderr"}} {
 				if code, _, _ := run(args...); code != 2 {
 					t.Fatalf("accepted conflicting target: %v", args)
 				}
@@ -230,18 +242,21 @@ func TestCLIInspectionAndInit(t *testing.T) {
 	if code != 0 || errOut != "" || !json.Valid([]byte(out)) {
 		t.Fatalf("inspect: %d %s %s", code, out, errOut)
 	}
-	path := filepath.Join(base, ".tell.yaml")
+	path := filepath.Join(base, "tell.yaml")
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("inspection created config")
 	}
-	code, out, errOut = run("init", "--local", "--json")
+	if code, _, _ := run("init", "--local"); code != 2 {
+		t.Fatalf("accepted removed --local flag: %d", code)
+	}
+	code, out, errOut = run("init", "--json")
 	if code != 0 || !strings.Contains(out, `"created":true`) {
 		t.Fatalf("init: %d %s %s", code, out, errOut)
 	}
 	if err := os.WriteFile(path, []byte("sentinel\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	code, out, errOut = run("init", "--local", "--json")
+	code, out, errOut = run("init", "--json")
 	if code != 0 || !strings.Contains(out, `"created":false`) {
 		t.Fatalf("repeat init: %d %s %s", code, out, errOut)
 	}
