@@ -1,0 +1,7 @@
+# Merge into noon.yaml and approve. Replace the absolute path.
+jobs:
+  review-queue:
+    run: [/bin/sh, /absolute/path/to/repo/scripts/dispatch-reviews.sh]
+    schedule: every 15m
+    overlap: skip
+    timeout: 2m

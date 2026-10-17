@@ -260,8 +260,12 @@ Each `notify` or `send` exits with one outcome. It tells you whether resending i
 
 See [outcomes](docs/design.md#outcomes) and [message preparation](docs/design.md#message-preparation).
 
-## Scheduler hooks
+## Examples
 
+[examples/](examples/README.md) has copyable recipes: notify when slow
+commands finish, Claude Code and Codex hooks, MCP agents, CI and test
+watchers that hand failures to agents, transition-only scheduled checks,
+phone push via ntfy or Apprise, and safe fallback chains.
 [examples/noon](examples/noon/README.md) has a Noon hook that notifies only on
 failure and recovery, plus a [scheduled agent instruction](examples/noon/README.md#scheduled-instructions).
 

@@ -1,0 +1,3 @@
+#!/bin/sh
+# .git/hooks/post-merge: runs after `git pull` or `git merge`.
+exec "$(git rev-parse --show-toplevel)/scripts/deps-changed.sh" ORIG_HEAD HEAD

@@ -1,0 +1,11 @@
+# ~/.config/systemd/user/check-staging.timer
+# Enable: systemctl --user enable --now check-staging.timer
+[Unit]
+Description=Check staging every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=false
+
+[Install]
+WantedBy=timers.target

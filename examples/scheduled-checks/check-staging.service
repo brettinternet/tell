@@ -1,0 +1,10 @@
+# ~/.config/systemd/user/check-staging.service
+# A user unit runs in your session manager, which usually carries
+# DBUS_SESSION_BUS_ADDRESS, so notify-send banners work.
+[Unit]
+Description=Notify when staging goes down or recovers
+
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/check-transition.sh staging curl -fsS --max-time 10 -o /dev/null https://staging.example.com/healthz

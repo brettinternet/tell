@@ -1,0 +1,16 @@
+# ~/.config/tell/config.yaml: defaults for MCP agents, plus an opt-in that lets
+# them pick among routes you already configured (never new executables,
+# Apprise config files, sender identity, or timeouts).
+version: 1
+notify:
+  via: desktop          # default: banner on this machine
+apprise:
+  config: ../apprise/apprise.yaml   # an agent may choose via: apprise, apprise_tag: phone
+herdr:
+  session: main
+send:
+  via: hcom
+  to: reviewer
+  from: claude-impl
+mcp:
+  agent_targets: true   # omit to keep agents on the defaults above

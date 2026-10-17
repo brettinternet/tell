@@ -1,0 +1,40 @@
+# .github/workflows/nightly.yaml: notify a team channel when the nightly build fails.
+# Pin actions to commit SHAs in real workflows.
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test # your checks
+
+      - uses: jdx/mise-action@v2 # installs mise, used below to fetch tell
+        if: failure()
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          # Apprise reads destination URLs from this secret, e.g. a Slack or
+          # Discord webhook URL; Tell never sees them.
+          APPRISE_URLS: ${{ secrets.APPRISE_URLS }}
+          TELL_NOTIFY_VIA: apprise
+          GITHUB_TOKEN: ${{ github.token }}
+          # Pass context through env, never ${{ }} inside run:, to avoid injection.
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          pipx install apprise
+          mise exec github:brettinternet/tell@latest -- \
+            tell notify --type failure --title "$GITHUB_REPOSITORY nightly failed" -- \
+            "Branch: $REF_NAME
+          Commit: ${GITHUB_SHA:0:7}
+          Run: $RUN_URL" || echo "::warning::notification not delivered (exit $?)"

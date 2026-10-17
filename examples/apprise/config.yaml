@@ -1,0 +1,10 @@
+# ~/.config/tell/config.yaml: send notifications through Apprise.
+# Relative paths resolve from this file: ../apprise/apprise.yaml is
+# ~/.config/apprise/apprise.yaml.
+version: 1
+notify:
+  via: apprise
+apprise:
+  config: ../apprise/apprise.yaml
+  tag: phone
+  format: markdown

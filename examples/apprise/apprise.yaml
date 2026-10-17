@@ -1,0 +1,15 @@
+# ~/.config/apprise/apprise.yaml: Apprise's own config. Tell never reads it.
+# Replace the placeholders; keep this file private (chmod 600).
+version: 1
+urls:
+  # Your phone. Also tagged "urgent", so --apprise-tag urgent reaches it.
+  - ntfys://ntfy.sh/CHANGE-ME-long-random-topic:
+      - tag: phone, urgent
+
+  # Team channel for shared project alerts.
+  - slack://T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX/#dev-alerts:
+      - tag: team, urgent
+
+  # Personal Discord channel for low-priority reports you read later.
+  - discord://000000000000000000/CHANGE-ME-webhook-token:
+      - tag: digest

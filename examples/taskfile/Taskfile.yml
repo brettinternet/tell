@@ -1,0 +1,24 @@
+# Merge these tasks into your Taskfile. `defer` runs after the task's commands,
+# even when one fails. EXIT_CODE is empty on success and set on failure.
+version: "3"
+
+tasks:
+  build:release:
+    desc: Slow release build; notifies when it finishes or fails
+    cmds:
+      - defer: >-
+          tell notify
+          --type {{if .EXIT_CODE}}failure{{else}}success{{end}}
+          --title "task {{.TASK}}"
+          -- "{{if .EXIT_CODE}}Failed with exit {{.EXIT_CODE}}{{else}}Finished{{end}}"
+          || true
+      - go build -trimpath -o dist/app ./cmd/app
+
+  e2e:
+    desc: Browser tests; notifies only on failure
+    cmds:
+      - defer: >-
+          {{if .EXIT_CODE}}tell notify --type failure --title "task {{.TASK}}"
+          -- "End-to-end tests failed (exit {{.EXIT_CODE}}). Report: playwright-report/index.html"
+          || true{{end}}
+      - bunx playwright test

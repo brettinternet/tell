@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ~/Library/LaunchAgents/com.example.check-staging.plist
+  A LaunchAgent runs in your login session, so desktop banners work.
+  Load:   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.check-staging.plist
+  Unload: launchctl bootout gui/$(id -u)/com.example.check-staging
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.check-staging</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/me/.local/bin/check-transition.sh</string>
+    <string>staging</string>
+    <string>curl</string>
+    <string>-fsS</string>
+    <string>--max-time</string>
+    <string>10</string>
+    <string>-o</string>
+    <string>/dev/null</string>
+    <string>https://staging.example.com/healthz</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/me/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StandardErrorPath</key>
+  <string>/Users/me/Library/Logs/check-staging.log</string>
+</dict>
+</plist>

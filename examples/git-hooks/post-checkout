@@ -1,0 +1,4 @@
+#!/bin/sh
+# .git/hooks/post-checkout: $1 previous HEAD, $2 new HEAD, $3 1 for a branch switch.
+[ "${3-}" = 1 ] || exit 0
+exec "$(git rev-parse --show-toplevel)/scripts/deps-changed.sh" "$1" "$2"

@@ -1,0 +1,6 @@
+# ~/.config/tell/config.yaml: route every notification through your own executable.
+# The argv is passed literally: use an absolute path, no ~ or variables.
+version: 1
+notify:
+  via: command
+  command: [/Users/me/.local/bin/tell-route.sh]

@@ -1,0 +1,15 @@
+# crontab -e (Linux; macOS desktop banners need launchd instead, see README).
+# cron has a minimal environment: set PATH so tell, curl, and your provider resolve.
+PATH=/home/me/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+# Staging health every 5 minutes; notify only when it goes down or comes back.
+*/5 * * * * check-transition.sh staging curl -fsS --max-time 10 -o /dev/null https://staging.example.com/healthz
+
+# Disk usage hourly.
+0 * * * * check-transition.sh disk disk-below.sh 90 /
+
+# Nightly backup should have written something in the last 26 hours.
+30 8 * * * check-transition.sh backup fresher-than.sh 1560 /srv/backups/restic
+
+# Certificate reminder: repeats every morning until renewed (not transition-only).
+0 9 * * * cert-valid-for.sh 14 example.com || tell notify --type warning "example.com certificate expires within 14 days"
