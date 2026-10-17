@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/brettinternet/tell/main/tell.shared.schema.json
 # Shared fields only; personal routing belongs in user config, .git/tell.yaml, --config, environment, or flags.
 version: 1
 timeout: 10s
