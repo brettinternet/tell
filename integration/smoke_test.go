@@ -4,19 +4,115 @@ package integration_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	tellconfig "github.com/brettinternet/tell/internal/config"
 )
 
 // Exercise the actual binary and process exit codes with no inherited user,
 // provider, or terminal-session environment. No notification service is invoked.
+// A local rejecting proxy confines the production setup attempt to localhost.
+// This exercises real process signals during connection recovery, with no Slack IO.
+func TestListenerSignals(t *testing.T) {
+	binary, err := filepath.Abs("../bin/tell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, signal := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
+		t.Run(signal.String(), func(t *testing.T) {
+			contacted := make(chan struct{}, 1)
+			proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "CONNECT" || r.Host != "slack.com:443" {
+					t.Errorf("unexpected setup %s %s", r.Method, r.Host)
+				}
+				if r.Header.Get("Authorization") != "" {
+					t.Error("credential sent to proxy")
+				}
+				select {
+				case contacted <- struct{}{}:
+				default:
+				}
+				w.WriteHeader(502)
+			}))
+			defer proxy.Close()
+			home := t.TempDir()
+			file := filepath.Join(home, "config.yaml")
+			if err := os.WriteFile(file, []byte("listen: {slack: {app_token_env: FIXTURE_APP_TOKEN}}\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, binary, "--config", file, "listen", "--print", "slack")
+			cmd.Dir = home
+			cmd.Env = []string{"HOME=" + home, "HTTPS_PROXY=" + proxy.URL, "FIXTURE_APP_TOKEN=private-app-sentinel"}
+			var output bytes.Buffer
+			cmd.Stdout = &output
+			cmd.Stderr = &output
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-contacted:
+			case <-ctx.Done():
+				t.Fatal("setup did not use local proxy")
+			}
+			if err := cmd.Process.Signal(signal); err != nil {
+				t.Fatal(err)
+			}
+			if err := cmd.Wait(); err != nil {
+				t.Fatalf("signal exit: %v %s", err, output.String())
+			}
+			if strings.Contains(output.String(), "private-app-sentinel") {
+				t.Fatal("credential leaked")
+			}
+		})
+	}
+}
+
+// A closed diagnostic pipe must produce exit 1, not SIGPIPE or a blocked retry
+// by the generic error renderer after the listener writer has already failed.
+func TestListenerBrokenPipe(t *testing.T) {
+	binary, err := filepath.Abs("../bin/tell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(502) }))
+	defer proxy.Close()
+	home := t.TempDir()
+	file := filepath.Join(home, "config.yaml")
+	if err := os.WriteFile(file, []byte("listen: {slack: {app_token_env: FIXTURE_APP_TOKEN}}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader.Close()
+	defer writer.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, "--config", file, "listen", "--print", "slack")
+	cmd.Dir = home
+	cmd.Env = []string{"HOME=" + home, "HTTPS_PROXY=" + proxy.URL, "FIXTURE_APP_TOKEN=private-app-sentinel"}
+	cmd.Stderr = writer
+	err = cmd.Run()
+	exit, ok := err.(*exec.ExitError)
+	if !ok || exit.ExitCode() != 1 {
+		t.Fatalf("broken-pipe exit: %v", err)
+	}
+}
+
 func TestBinary(t *testing.T) {
 	binary, err := filepath.Abs("../bin/tell")
 	if err != nil {
@@ -46,7 +142,7 @@ func TestBinary(t *testing.T) {
 		t.Helper()
 		return run([]string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "XDG_CONFIG_HOME=" + filepath.Join(home, "config")}, args...)
 	}
-	for _, args := range [][]string{{"--help"}, {"--version"}, {"--json"}, {"--json", "config", "check"}} {
+	for _, args := range [][]string{{"--help"}, {"--version"}, {"--json"}, {"--json", "config", "check"}, {"listen"}, {"--json", "listen"}, {"listen", "--help"}} {
 		output, code := invoke(args...)
 		if code != 0 {
 			t.Fatalf("%v: %d %s", args, code, output)

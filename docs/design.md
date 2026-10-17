@@ -1,19 +1,19 @@
 # Design
 
-This page describes implemented behavior. The [planned inbound contract](listening.md)
-refines decision-1: Tell becomes a local integrations layer with explicit foreground
-listeners, personal event routes, and bounded in-memory state. TELL-26 through
-TELL-29 track delivery; the current one-shot/no-state statements below are not
-constraints against that work. Scheduling and durable execution remain outside Tell.
+This page describes implemented behavior. Tell supports explicit foreground
+Slack capture, with bounded transient state; personal routes/actions and GitHub
+webhooks remain planned in TELL-27–29. See the [integration contract](listening.md).
+Scheduling and durable execution remain outside Tell.
 
 ## Boundary
 
 ```text
 person / script / scheduler hook / MCP client
           │
-         tell  (CLI one-shot; MCP client-owned session)
+         tell  (outbound one-shot; explicit foreground capture; MCP client-owned session)
           ├── notify → stderr | desktop | Herdr | Apprise → services | your command
           ├── send   → hcom mailbox | idle Herdr agent pane
+          ├── listen --print slack → sensitive NDJSON (no actions)
           └── mcp    → client-owned stdio process: notify | send | doctor
 ```
 
@@ -24,15 +24,15 @@ person / script / scheduler hook / MCP client
 | Tell | routing, safe argv, bounded subprocesses, honest results; MCP stdio adapter |
 | Provider | destinations, credentials, native config |
 
-Tell keeps no state. It never reads scheduler-specific environment or payloads;
+Tell keeps no durable state. It never reads scheduler-specific environment or payloads;
 callers pass arguments or explicit stdin.
 
-Tell does not throttle, deduplicate, or rate-limit. That needs state across
+Outbound delivery does not throttle, deduplicate, or rate-limit. That needs state across
 invocations, only the caller knows whether a message repeats, and a dropped
 alert costs more than a duplicate. A hook that notifies only on status change
 is the caller's job (see [examples/noon](../examples/noon/README.md)).
 
-There are no retries, fallback routes, fan-out, agent spawning, or plugin
+There are no action retries, fallback routes, fan-out, agent spawning, or plugin
 registry. `tell mcp` is a client-owned stdio process, not a daemon; each tool call
 uses the same one-shot delivery and readiness operations as the CLI. It exposes
 only `notify`, `send`, and read-only `doctor`, with no resources, prompts, HTTP,
@@ -51,6 +51,30 @@ their scheduled job wrote them. Send pointers (run IDs, paths, URLs), not raw
 job output, so agents read untrusted data through their own tools. Tell never
 waits for a reply or for the work to finish. Tracked agent work belongs to the
 scheduler's agent jobs (such as Noon's); ask-and-wait belongs to Unharness.
+
+## Slack capture
+
+Bare `listen` and `--json listen` inspect only. Explicit `--print slack` or
+`--print --all` starts the foreground connection. Dispatch is rejected until
+routes ship. Setup uses fixed HTTPS and returned WSS URLs, never forwards the
+app Authorization header to WebSockets or redirects, and retries transient
+setup/connection failures with cancellable 1–60s jittered backoff and Retry-After.
+Selected credentials are checked only at startup. Their configured variable
+names are removed from every outbound provider and doctor child environment.
+
+Acks precede payload validation/admission and never wait for stdout. A 64-event
+buffer atomically reserves source/ID only on admission; dedup lasts 10 minutes,
+bounded to 10,000 oldest-first entries. Frames/envelopes are limited to
+1 MiB/256 KiB; duplicate JSON keys and invalid metadata fail closed.
+Print removes the legacy payload token, but is otherwise sensitive data export,
+not arbitrary secret redaction. Diagnostic buffering is capped at 64 receipts;
+each output write has a 5-second stall budget. Failed/stalled output stops the
+listener, never accumulates unbounded writers or retries an action.
+
+Run one listener per Slack app. Acknowledgments are transient receipt, not
+durability; restart, buffer overflow, and sleep can lose events. SIGINT/SIGTERM
+exit 0, fatal source/output errors exit 1. Setup and limits are also in
+[the README](../README.md#slack-event-capture).
 
 ## MCP
 

@@ -2,11 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/brettinternet/tell/main/tell.shared.schema.json",
   "title": "Tell shared project configuration",
-  "description": "Shared tell.yaml cannot choose destinations or personal policy. Use personal configuration for routing.",
+  "description": "Shared tell.yaml cannot choose destinations or personal policy. Use personal configuration for routing and all listen settings.",
   "allOf": [
     { "$ref": "tell.schema.json" },
     {
       "properties": {
+        "listen": false,
         "notify": { "properties": { "via": false, "command": false } },
         "apprise": { "properties": { "config": false } },
         "herdr": { "properties": { "session": false } },

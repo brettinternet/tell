@@ -19,6 +19,7 @@ func TestCommandNotify(t *testing.T) {
 	script := `#!/bin/sh
 printf '%s\000' "$@" > "$FIXTURE_RECORD"
 printf '%s\000' "$TELL_TITLE" "$TELL_TYPE" "$TELL_PROJECT" > "$FIXTURE_RECORD.env"
+if [ -n "${LISTENER_SECRET+x}" ]; then exit 97; fi
 /bin/cat > "$FIXTURE_RECORD.body"
 printf 'raw-provider-output credential://private@example.invalid\n'
 printf 'raw-provider-output credential://private@example.invalid\n' >&2
@@ -27,7 +28,8 @@ exit "${FIXTURE_EXIT:-0}"
 	if err := os.WriteFile(filepath.Join(filepath.Dir(record), "tell-fixture"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	userConfig := writeUserConfig(t, "notify:\n  command: [tell-fixture, 'two words', '', '$(no-shell); *', 'credential://private@example.invalid']\n")
+	t.Setenv("LISTENER_SECRET", "private-listener-credential")
+	userConfig := writeUserConfig(t, "listen:\n  slack:\n    app_token_env: LISTENER_SECRET\nnotify:\n  command: [tell-fixture, 'two words', '', '$(no-shell); *', 'credential://private@example.invalid']\n")
 	in := stdin(t, "hook summary\n")
 	t.Setenv("TELL_TITLE", "wrong title")
 	t.Setenv("TELL_TYPE", "wrong type")

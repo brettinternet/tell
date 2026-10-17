@@ -57,6 +57,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
+			listenCommand(),
 			{Name: "version", Usage: "Print version and build information", Action: func(_ context.Context, cmd *urfave.Command) error {
 				urfave.ShowVersion(cmd.Root())
 				return nil
@@ -143,6 +144,10 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 	// unknown flag). Make the invocation's plain-output intent available there.
 	root.Metadata = map[string]any{"plain-output": jsonRequested(root, args) || boolRequested(root, args, "no-color")}
 	if err := root.Run(ctx, args); err != nil {
+		var listenerError *listenerFailure
+		if errors.As(err, &listenerError) {
+			return 1
+		}
 		plain := jsonRequested(root, args) || boolRequested(root, args, "no-color") || commandRequested(root, args, "mcp") || commandRequested(root, args, "completion")
 		style := newOutputStyle(errOut, plain)
 		var report *doctorReport
@@ -320,6 +325,9 @@ func showConfig(_ context.Context, cmd *urfave.Command) error {
 			fmt.Fprintf(cmd.Writer, "%s not configured\n", style.bold("Send:"))
 		} else {
 			fmt.Fprintf(cmd.Writer, "%s %s → %s\n", style.bold("Send:"), cfg.Send.Via, displayValue(cfg.Send.To))
+		}
+		if cfg.Listen.Slack != nil {
+			fmt.Fprintf(cmd.Writer, "Listen: slack (inspect with tell listen)\n")
 		}
 		fmt.Fprintf(cmd.Writer, "\n%s tell notify \"hello\" · tell doctor · tell init · tell --help\n", style.bold("Next:"))
 		return nil

@@ -31,6 +31,43 @@ func fixture(t *testing.T) config.Input {
 	return config.Input{CWD: project, UserConfigDir: filepath.Join(base, "user")}
 }
 
+// Shared files and literal credentials cannot cross the inbound trust boundary.
+func TestListenPersonalConfig(t *testing.T) {
+	for _, data := range []string{"listen: {}\n", "listen:\n  slack:\n    app_token_env: TEST_SLACK_TOKEN\n"} {
+		input := fixture(t)
+		writeFile(t, filepath.Join(input.CWD, "tell.yaml"), data)
+		if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal") {
+			t.Fatalf("shared listen accepted: %v", err)
+		}
+	}
+	for _, data := range []string{
+		"listen: {slack: {}}\n",
+		"listen: {slack: {app_token_env: 'private-token-value'}}\n",
+		"listen: {slack: {app_token_env: TOKEN, api_url: 'http://private'}}\n",
+		"listen: {routes: []}\n",
+	} {
+		input := fixture(t)
+		file := filepath.Join(input.CWD, "personal.yaml")
+		input.File = &file
+		writeFile(t, file, data)
+		if _, err := config.Load(input); err == nil || strings.Contains(err.Error(), "private-token-value") {
+			t.Fatalf("invalid config or leakage: %v", err)
+		}
+	}
+	input := fixture(t)
+	user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
+	writeFile(t, user, "listen: {slack: {app_token_env: FIRST_TOKEN}}\n")
+	// A higher layer merges the source by field, retaining only the winning name.
+	writeFile(t, filepath.Join(input.CWD, "..", "worktree-metadata", "tell.yaml"), "listen: {slack: {app_token_env: SECOND_TOKEN}}\n")
+	cfg, err := config.Load(input)
+	if err != nil || cfg.SlackTokenEnv() != "SECOND_TOKEN" {
+		t.Fatalf("%+v %v", cfg, err)
+	}
+	if got := cfg.ChildEnv([]string{"SECOND_TOKEN=secret", "KEEP=value", "SECOND_TOKEN=again"}); !reflect.DeepEqual(got, []string{"KEEP=value"}) {
+		t.Fatalf("credential leak: %q", got)
+	}
+}
+
 // A higher-priority destination must win without rebasing inherited provider
 // paths against the checkout or discarding other fields from the same section.
 func TestLoadLayersAndPaths(t *testing.T) {

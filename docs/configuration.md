@@ -74,7 +74,7 @@ HOME and XDG_CONFIG_HOME are not read, so it works for services without HOME.
 
 These fields choose where messages go, so shared `tell.yaml` rejects them:
 `notify.via`, `notify.command`, `apprise.config`, `herdr.session`, `send.via`,
-`send.to`, `send.from`, `secrets.policy`, and `mcp.agent_targets`.
+`send.to`, `send.from`, `secrets.policy`, `mcp.agent_targets`, and the entire `listen` block (even empty).
 
 #### MCP agent target overrides
 
@@ -113,6 +113,33 @@ apprise:
 [command delivery](design.md#command-delivery). `XDG_CONFIG_HOME` must be
 absolute when set.
 
+### Slack listener
+
+`listen.slack.app_token_env` is a required nonempty environment variable name
+(`[A-Za-z_][A-Za-z0-9_]*`) when the Slack block exists. It is set only in personal
+files, merges by field, and has no flag or environment override for the name.
+The credential value stays in that variable, never in config or snapshots.
+Unknown listener fields, including routes and API URL overrides, are rejected.
+
+```yaml
+listen:
+  slack:
+    app_token_env: TELL_SLACK_APP_TOKEN
+```
+
+`tell listen`, `tell --json listen`, `config`, and `config check` inspect/validate
+without inbound IO or requiring the variable to be set. Bare `tell` names
+configured sources. CLI `doctor` adds informational local credential readiness,
+not provider authentication; its existing outbound-selected exit rule is
+unchanged. All child processes lose the named credential variable.
+
+Only explicit `tell listen --print slack` or `--print --all` connects.
+`--all` with names, repeated/unknown names, `--print` without selection, and
+live `--json` exit 2. Missing selected config/credentials or dispatch without
+routes exit 1 before IO. `--timeout` bounds setup requests, not listener lifetime.
+`--dry-run`, routes/actions, and GitHub are not shipped.
+See [Slack setup, privacy and loss limits](../README.md#slack-event-capture).
+
 ## Project discovery
 
 `-C DIR`, `--project DIR`, or `TELL_PROJECT` selects exactly that directory.
@@ -137,6 +164,7 @@ repository code runs during discovery.
 | `send.via` | — | `TELL_SEND_VIA` | `--send-via` |
 | `send.to` | — | `TELL_SEND_TO` | `--to` |
 | `send.from` | `tell-automation` | `TELL_SEND_FROM` | `--from` |
+| `listen.slack.app_token_env` | — | — | — |
 | `mcp.agent_targets` | `false` | `TELL_MCP_AGENT_TARGETS` | `--mcp-agent-targets` |
 
 A full personal config (user config, `.git/tell.yaml`, or explicitly selected `--config`/`TELL_CONFIG`, never `tell.yaml`):
@@ -196,6 +224,7 @@ and `-u`/`--user` and `-l`/`--local` for `init`. `-h`/`--help` and `-v`/`--versi
 Global flags are `--project`, `--config`, `--json`, `--no-color`, and `--timeout` (plus
 help/version). Put all other flags after the command:
 
+- `listen`: `--all`, `--print` (no short aliases); source `slack` only.
 - `notify`: `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`,
   `--herdr-session`, `--title`, `--type`.
 - `send`: `--send-via`, `--to`, `--from`, `--herdr-session`, `--intent`.

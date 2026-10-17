@@ -1,9 +1,11 @@
-# Planned: local event integrations
+# Local event integrations
 
-**Not implemented.** This is the agreed contract for TELL-26, TELL-27,
-TELL-28 (native actions, formerly draft 3), and TELL-29 (GitHub webhooks,
-formerly draft 4). The backlog remains
-the work queue. This refines decision-1; current commands retain their behavior.
+**Implemented:** Slack inspection and explicit `--print` capture (TELL-26),
+personal credential references, bounded admission/dedup/output, and connection
+recovery. **Planned:** routing/dry-run (TELL-27), native actions (TELL-28), and
+GitHub webhooks (TELL-29). The sections below retain their agreed future contract;
+planned examples are not accepted by the current binary. The backlog remains
+the work queue. This refines decision-1; outbound commands retain their behavior.
 
 Tell is a local integrations layer: receive external events, match personal
 rules, and notify a person, inform an agent, or invoke a bounded local command.
@@ -18,12 +20,12 @@ Connection recovery is allowed; action retries and durable replay are not.
 | --- | --- |
 | `tell listen` | Inspect configured sources and route names; exit without network, binding sockets, reading stdin, or running actions |
 | `tell --json listen` | The same inspection as one body-free JSON object with `schema_version: 1` |
-| `tell listen slack` | Start only Slack in the foreground and dispatch matching routes |
-| `tell listen github` | Start only GitHub's loopback HTTP source |
-| `tell listen slack github` | Start those sources in one foreground process |
-| `tell listen --all` | Explicitly start every configured source |
+| `tell listen slack` | Exit 1 with a print-mode hint; dispatch is planned in TELL-27 |
+| `tell listen github` (planned) | Start only GitHub's loopback HTTP source |
+| `tell listen slack github` (planned) | Start those sources in one foreground process |
+| `tell listen --print --all` | Explicitly capture every configured source (currently Slack only) |
 | `tell listen --print slack` | Receive and acknowledge events; print NDJSON envelopes, but never run actions |
-| `tell listen --dry-run slack` | Receive and acknowledge events; report matching routes without actions or payload output |
+| `tell listen --dry-run slack` (planned) | Receive and acknowledge events; report matching routes without actions or payload output |
 
 `--all`, `--print`, and `--dry-run` are listen-only flags, with no short aliases.
 `--dry-run` arrives with TELL-27. Require source names or `--all` for either live
@@ -56,7 +58,8 @@ exit codes and MCP tools are unchanged. No new MCP listener tool.
 
 ## Configuration and inspection
 
-All `listen` keys are personal-only, including routes and transport settings:
+All `listen` keys are personal-only. Currently only `listen.slack.app_token_env`
+is supported; routes and other transport settings below are planned. Use
 user config, `.git/tell.yaml`, or an explicit `--config` file. Shared `tell.yaml`
 rejects them even if overridden. Keep the existing strict YAML rules and source
 origins. Source fields merge by field; `listen.routes` and other lists replace
@@ -100,7 +103,7 @@ safe transport settings, credential variable names, and origins, not credential
 values, action argv, templates, or rendered text. JSON has the same privacy
 boundary. Never resolve credential values into a printable config object.
 
-`doctor` adds local inbound readiness (selected variable set/nonempty, valid
+CLI `doctor` adds local inbound readiness (selected variable set/nonempty, valid
 settings), with no inbound network requests, port binds, tunnel probes, or
 actions. These informational rows do not change its existing outbound-selected
 exit rule and do not claim provider authentication or tunnel reachability.
@@ -134,7 +137,8 @@ redelivery could otherwise repeat an already successful sibling action.
 GitHub also uses a body digest as described below. No state survives restart.
 
 The provider reader/ack path never waits for a command, rendering, or stdout.
-Bound output buffering too; a broken or persistently stalled output stream
+Output has a 64-event ingress queue and a separate 64-receipt diagnostic queue;
+each write has a 5-second stall budget. A broken or persistently stalled output stream
 stops the listener with exit 1 rather than growing memory or blocking acks.
 `--print` emits one complete envelope per stdout line. This is an explicit data
 export, **not diagnostics**: payloads may contain private text and secrets.
@@ -176,7 +180,7 @@ events/scopes (for example `channel_created`/`channels:read`), and app installat
 Run one listener per Slack app: Slack distributes deliveries among connections,
 not a copy to every listener. Sleep/disconnection can lose events.
 
-## Matching and command actions — TELL-27
+## Planned: matching and command actions — TELL-27
 
 Each route has a unique `name` matching `[a-z0-9][a-z0-9_-]*`, one configured
 `source`, exact `type`, optional `match`, and exactly one action. Initially the
@@ -222,7 +226,7 @@ and a job configured with `requests: each`. Noon wraps this envelope as its own
 Document Noon's payload/key limits; the wrapper validates/maps oversized keys
 or payloads and must not claim success if handoff fails.
 
-## Native notification and agent actions — TELL-28
+## Planned: native notification and agent actions — TELL-28
 
 Promote: direct cross-tool communication is core product scope, not contingent
 on repeated wrapper scripts. Reuse the in-process delivery/preparation APIs;
@@ -260,7 +264,7 @@ sandbox. Dry-run validates rendering/policy without dispatch and reports only
 validation results/errors, never rendered previews. All action kinds share capacity,
 shutdown, credential stripping, and no-retry behavior.
 
-## GitHub webhooks through cloudflared — TELL-29
+## Planned: GitHub webhooks through cloudflared — TELL-29
 
 Promote with the user's concrete scope: GitHub **repository** webhooks through a
 separately managed Cloudflare Tunnel. One `listen.http.addr` (default

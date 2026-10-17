@@ -12,12 +12,48 @@ tell send --intent request "Triage PRs; report blockers"   # agent: hcom mailbox
 Tell is a CLI for terminals, scripts, and scheduler hooks. Your scheduler
 (cron, launchd, CI, Noon) owns schedules, retries, and history. Your scripts
 decide what is worth saying. Tell routes one message and reports what happened.
-It has no daemon, queue, database, or retries.
+Outbound delivery has no retries. Tell has no installed daemon, durable queue,
+or database. Explicit foreground Slack capture owns bounded in-memory buffers,
+duplicate suppression, and connection recovery.
 
-**Planned direction:** Tell is growing into a local integrations layer: receive
-Slack events or signed GitHub webhooks through a user-managed cloudflared tunnel,
-then run a short local command, notify a person, or inform an agent. These inbound
-features are not implemented yet. See the [planned CLI and event contract](docs/listening.md).
+## Slack event capture
+
+Enable Socket Mode for a Slack app, generate an app-level token with
+`connections:write`, subscribe to bot events and their scopes (for example
+`channel_created` with `channels:read`), then install the app in the workspace.
+Put only the credential's environment variable **name** in personal config:
+
+```yaml
+# ~/.config/tell/config.yaml (never shared tell.yaml)
+listen:
+  slack:
+    app_token_env: TELL_SLACK_APP_TOKEN
+```
+
+Set that variable securely in your shell, then:
+
+```sh
+tell listen                    # inspect only; no connections
+tell --json listen             # one safe snapshot
+tell listen --print slack      # foreground sensitive NDJSON export
+tell listen --print --all      # every configured source (currently Slack only)
+```
+
+Print mode acknowledges events but runs no actions. Payloads may contain private
+text and secrets; only Slack's legacy top-level token is removed. Never pipe
+capture into an untrusted log. Run **one listener per Slack app**: Slack distributes
+deliveries among connections, not a copy to each listener.
+
+Frames are capped at 1 MiB, envelopes at 256 KiB, ingress at 64 events. Duplicate
+IDs are suppressed per source for 10 minutes, up to 10,000 oldest-first entries.
+Full ingress drops without reserving the ID; restart, sleep, or disconnection
+can lose events. Output is bounded too; a write stalled for 5 seconds or a broken
+stream stops capture. SIGINT/SIGTERM exit 0; fatal source/output errors exit 1.
+Bare commands, config checks, and inbound doctor readiness never connect.
+
+Routes/actions, dry-run, and GitHub webhooks remain **planned** in TELL-27–29.
+Dispatch without routes fails with a print-mode hint. See the
+[implemented capture and planned integration contract](docs/listening.md).
 
 ## Installation
 

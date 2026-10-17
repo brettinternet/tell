@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +57,15 @@ type Send struct {
 	From string `json:"from"`
 }
 
+type Listen struct {
+	Slack *Slack `json:"slack,omitempty"`
+}
+type Slack struct {
+	AppTokenEnv string `json:"app_token_env"`
+}
+
+var environmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
 type MCP struct {
 	AgentTargets bool `json:"agent_targets"`
 }
@@ -71,6 +81,7 @@ type Config struct {
 	Herdr   Herdr             `json:"herdr"`
 	Send    Send              `json:"send"`
 	MCP     MCP               `json:"mcp"`
+	Listen  Listen            `json:"listen"`
 	Sources []string          `json:"sources"`
 	Origins map[string]string `json:"origins"`
 }
@@ -119,12 +130,15 @@ func Load(input Input) (Config, error) {
 		}
 	}
 	for key, value := range input.Overrides {
-		if key == "secrets.policy" || key == "notify.command" {
+		if key == "secrets.policy" || key == "notify.command" || key == "listen" || strings.HasPrefix(key, "listen.") {
 			return Config{}, fmt.Errorf("%s is settable only in personal config files", key)
 		}
 		if err := cfg.apply(key, value.Text, input.CWD, value.Source); err != nil {
 			return Config{}, fmt.Errorf("%s: %w", strings.TrimPrefix(strings.TrimPrefix(value.Source, "flag:"), "env:"), err)
 		}
+	}
+	if cfg.Listen.Slack != nil && cfg.Listen.Slack.AppTokenEnv == "" {
+		return Config{}, errors.New("listen.slack.app_token_env is required")
 	}
 	return cfg, nil
 }
@@ -140,7 +154,8 @@ func (cfg Config) Values() map[string]string {
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
 		"send.via": cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
-		"mcp.agent_targets": fmt.Sprint(cfg.MCP.AgentTargets),
+		"mcp.agent_targets":          fmt.Sprint(cfg.MCP.AgentTargets),
+		"listen.slack.app_token_env": cfg.SlackTokenEnv(),
 	}
 }
 
@@ -153,6 +168,20 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		return fmt.Errorf("%s contains control characters", key)
 	}
 	switch key {
+	case "listen":
+	// Presence marker ensures even an empty shared block is rejected.
+	case "listen.slack":
+		if cfg.Listen.Slack == nil {
+			cfg.Listen.Slack = &Slack{}
+		}
+	case "listen.slack.app_token_env":
+		if !environmentName.MatchString(value) {
+			return errors.New("listen.slack.app_token_env must be an environment variable name")
+		}
+		if cfg.Listen.Slack == nil {
+			cfg.Listen.Slack = &Slack{}
+		}
+		cfg.Listen.Slack.AppTokenEnv = value
 	case "secrets.policy":
 		if value != "redact" && value != "reject" {
 			return errors.New("secrets.policy must be redact or reject")
@@ -249,6 +278,9 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 	}
 	for _, value := range values {
 		if shared {
+			if strings.HasPrefix(value.key, "listen") {
+				return fmt.Errorf("config %s:%d: listen is personal configuration; use user config, .git/tell.yaml, or --config", path, value.line)
+			}
 			switch value.key {
 			case "secrets.policy", "notify.command":
 				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .git/tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)

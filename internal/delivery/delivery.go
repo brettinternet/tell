@@ -66,6 +66,7 @@ func (r *Result) ExitCode() int {
 type Message struct{ Title, Body, Type string }
 
 func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.Writer) (result *Result) {
+	ctx = childContext(ctx, cfg)
 	route := cfg.Notify.Via
 	var reason string
 	var redactions int
@@ -161,7 +162,7 @@ func process(ctx context.Context, timeout time.Duration, route, name string, arg
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	cmd.Stdin, cmd.Env = stdin, env
+	cmd.Stdin, cmd.Env = stdin, childEnv(ctx, env)
 	// Bound stdin copying even if a descendant retains the pipe after exit.
 	cmd.WaitDelay = 100 * time.Millisecond
 	// Nil output streams use the null device; captured provider text is never printed.

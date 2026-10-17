@@ -41,6 +41,7 @@ func sendTarget(cfg config.Config) *Result {
 
 // Send executes once. The caller owns schedules, retries and completion tracking.
 func Send(ctx context.Context, cfg config.Config, body, intent string) (result *Result) {
+	ctx = childContext(ctx, cfg)
 	route := cfg.Send.Via
 	redactions := 0
 	defer func() { result.Redactions = redactions }()

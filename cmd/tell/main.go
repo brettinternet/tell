@@ -21,6 +21,9 @@ func main() {
 }
 
 func run() int {
+	// Let bounded output handling report EPIPE as an honest failure, rather
+	// than the runtime terminating stdout/stderr writers with SIGPIPE.
+	signal.Ignore(syscall.SIGPIPE)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	return cli.Run(ctx, os.Args, config.BuildOpts{

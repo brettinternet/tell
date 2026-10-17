@@ -37,6 +37,7 @@ func TestDoctorReadOnly(t *testing.T) {
 	apprise := `#!/bin/sh
 printf '%s\000' "$@" > "$FIXTURE_RECORD.apprise"
 [ "$1" = --dry-run ] || exit 91
+if [ -n "${LISTENER_SECRET+x}" ]; then exit 97; fi
 if read -r input; then exit 92; fi
 printf '   1. credential://private@example.invalid\n       uid: private-id\n   2. credential://second@example.invalid\n'
 printf 'private-provider-error' >&2
@@ -45,6 +46,7 @@ exit "${FIXTURE_EXIT:-0}"
 	herdr := `#!/bin/sh
 printf '%s\000' "$@" > "$FIXTURE_RECORD.herdr"
 [ "$*" = 'session list --json' ] || exit 91
+if [ -n "${LISTENER_SECRET+x}" ]; then exit 97; fi
 if /usr/bin/env | /usr/bin/grep '^HERDR_' >/dev/null; then exit 92; fi
 printf '%s' "$FIXTURE_SESSIONS"
 `
@@ -56,7 +58,8 @@ printf '%s' "$FIXTURE_SESSIONS"
 	t.Setenv("HERDR_SESSION", "wrong-session")
 	t.Setenv("HERDR_SOCKET_PATH", "private-socket")
 	t.Setenv("FIXTURE_SESSIONS", `{"sessions":[{"name":"private-session","running":true,"socket_path":"private-path"}]}`)
-	cfg := "notify: {via: apprise, command: [" + filepath.Join(dir, "personal") + ", private-argument]}\napprise: {config: private-config, tag: private-tag, format: markdown}\nherdr: {session: private-session}\n"
+	t.Setenv("LISTENER_SECRET", "private-app-credential")
+	cfg := "listen: {slack: {app_token_env: LISTENER_SECRET}}\nnotify: {via: apprise, command: [" + filepath.Join(dir, "personal") + ", private-argument]}\napprise: {config: private-config, tag: private-tag, format: markdown}\nherdr: {session: private-session}\n"
 	writeUserConfig(t, cfg)
 	for _, route := range []string{"apprise", "herdr", "command", "desktop", "stderr"} {
 		code, out, diagnostics := run("--json", "doctor", "--via", route)

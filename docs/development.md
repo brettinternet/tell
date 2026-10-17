@@ -93,6 +93,7 @@ every six hours. Install with `brew install brettinternet/tap/tell` (see the
 | `internal/cli` | urfave commands, flags/env, human and JSON output |
 | `internal/config` | strict YAML, sources, precedence, validation; no CLI dependency |
 | `internal/delivery` | routes, message preparation, outcomes, subprocesses |
+| `internal/listen` | bounded Slack Socket Mode capture, admission/dedup, output, recovery |
 | `internal/mcp` | MCP stdio tools over the shared config and delivery operations |
 | `integration/` | built-binary smoke tests (`smoke` build tag) |
 | `scripts/` | development checks |
@@ -103,9 +104,11 @@ stdio only. It must call the existing config and delivery operations; do not
 copy Noon's scheduler, store, or HTTP layers. The MCP process is owned by its
 client and exposes only notify, send, and read-only doctor. Route and recipient
 overrides remain default-deny through personal `mcp.agent_targets` configuration.
-Current outbound providers are subprocess adapters, not SDKs or plugins. Planned
-inbound sources own their network transports and verification; follow the
-[planned integration contract](listening.md), without adding listener lifecycle
+Current outbound providers are subprocess adapters, not SDKs or plugins. Slack
+capture uses coder/websocket with internal local fixture injection, never a public
+API URL option or live credentials in tests. Inbound sources own their network
+transports and verification; follow the implemented/planned sections of the
+[integration contract](listening.md), without adding listener lifecycle
 tools to MCP. See the [README client setup](../README.md#mcp-server) and
 [MCP trust boundary](design.md#mcp).
 
@@ -120,6 +123,13 @@ Tests must never read real user settings or contact real services. Set HOME
 and XDG_CONFIG_HOME, and pass config explicitly. Exercise MCP over the public
 protocol with local fixture providers; verify default-deny/opt-in routing,
 body-free structured results, and stderr/stdout isolation.
+
+Listener checks: `go test -race ./internal/listen ./internal/config ./internal/cli ./internal/delivery`
+covers local HTTP/WebSocket authentication/acknowledgments, malformed input,
+bounded admission/dedup/output, recovery, selectors and child credential isolation.
+`task smoke` exercises real SIGINT/SIGTERM against a rejecting localhost proxy,
+without contacting Slack. Print is sensitive export; fixture diagnostics must
+never contain body/token/ticket sentinels.
 
 ## Backlog and worktrees
 

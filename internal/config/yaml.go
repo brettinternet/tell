@@ -67,6 +67,11 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!int" || value.Value != "1" {
 				return fmt.Errorf("line %d: version must be 1", value.Line)
 			}
+		case "listen", "listen.slack":
+			*values = append(*values, fileValue{key: name, text: "configured", line: value.Line})
+			if err := parseMapping(value, name+".", values); err != nil {
+				return err
+			}
 		case "notify", "apprise", "herdr", "send", "secrets", "mcp":
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
@@ -86,7 +91,7 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return fmt.Errorf("line %d: notify.command executable must not be empty", value.Line)
 			}
 			*values = append(*values, fileValue{key: name, argv: argv, line: value.Line})
-		case "secrets.policy", "timeout", "notify.via", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "send.via", "send.to", "send.from":
+		case "listen.slack.app_token_env", "secrets.policy", "timeout", "notify.via", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "send.via", "send.to", "send.from":
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 				return fmt.Errorf("line %d: %s must be a string", value.Line, name)
 			}

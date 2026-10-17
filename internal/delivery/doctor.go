@@ -26,6 +26,7 @@ type Readiness struct {
 // Doctor checks the selected route and routes with explicit configuration.
 // It never delivers, starts services, or executes a personal command.
 func Doctor(ctx context.Context, cfg config.Config) []Readiness {
+	ctx = childContext(ctx, cfg)
 	routes := []string{cfg.Notify.Via}
 	for _, entry := range []struct {
 		route      string
@@ -115,6 +116,7 @@ func checkRoute(ctx context.Context, cfg config.Config, route, platform string) 
 	if route == "herdr" {
 		cmd.Env = herdrEnv()
 	}
+	cmd.Env = childEnv(ctx, cmd.Env)
 	cmd.WaitDelay = 100 * time.Millisecond
 	output := &probeOutput{}
 	cmd.Stdout = output // stderr is discarded; stdin receives EOF.
