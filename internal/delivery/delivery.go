@@ -1,4 +1,4 @@
-// Package delivery executes one notification without retries or provider diagnostics.
+// Package delivery executes one notification without retries or raw provider diagnostics.
 package delivery
 
 import (
@@ -117,10 +117,16 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 			}
 		}
 		timeout, _ := time.ParseDuration(cfg.Timeout) // validated configuration
-		code, failure := RunProcess(ctx, timeout, route, "apprise", args)
+		output := &probeOutput{}
+		code, failure := process(ctx, timeout, route, "apprise", args, nil, nil, output, output)
 		if failure != nil {
 			return failure
 		}
+		defer func() {
+			if result.Failure != nil {
+				result.Failure.Message += appriseDiagnostic(code, output)
+			}
+		}()
 		// AppriseResultStatus (apprise/result.py): 0 success, 3 no match,
 		// 4 partial, 5 timeout. CLI usage and unknown exits are failures.
 		switch code {
@@ -147,18 +153,18 @@ func RunProcess(ctx context.Context, timeout time.Duration, route, name string, 
 }
 
 func runProcess(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string) (int, *Result) {
-	return process(ctx, timeout, route, name, args, stdin, env, nil)
+	return process(ctx, timeout, route, name, args, stdin, env, nil, nil)
 }
 
-func process(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string, stdout io.Writer) (int, *Result) {
+func process(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string, stdout, stderr io.Writer) (int, *Result) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdout = stdout
+	cmd.Stdout, cmd.Stderr = stdout, stderr
 	cmd.Stdin, cmd.Env = stdin, env
 	// Bound stdin copying even if a descendant retains the pipe after exit.
 	cmd.WaitDelay = 100 * time.Millisecond
-	// Nil output streams use the null device; provider text is never captured.
+	// Nil output streams use the null device; captured provider text is never printed.
 	if err := cmd.Start(); err != nil {
 		if ctx.Err() != nil {
 			return 0, NewResult(route, "config", "cancelled", "notification cancelled before provider start")
@@ -169,7 +175,9 @@ func process(ctx context.Context, timeout time.Duration, route, name string, arg
 		return 0, NewResult(route, "not_sent", "start_failed", "provider executable could not start")
 	}
 	err := cmd.Wait()
-	if ctx.Err() != nil {
+	// A descendant can retain captured output pipes after the provider exits.
+	// A deadline during pipe cleanup must not replace a known normal exit.
+	if ctx.Err() != nil && (cmd.ProcessState == nil || !cmd.ProcessState.Exited()) {
 		reason := "cancelled"
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			reason = "timeout"

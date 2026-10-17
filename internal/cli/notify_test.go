@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -32,6 +34,11 @@ if read -r input; then
 fi
 printf 'raw-provider-output credential://private@example.invalid\n'
 printf 'raw-provider-output credential://private@example.invalid\n' >&2
+printf '%s\n' "$FIXTURE_STDOUT"
+printf '%s\n' "$FIXTURE_STDERR" >&2
+if [ -n "$FIXTURE_LOG" ]; then
+  /bin/cat "$FIXTURE_LOG" >&2
+fi
 if [ "$FIXTURE_WAIT" = yes ]; then
   exec /bin/sleep 30
 fi
@@ -47,6 +54,9 @@ exit "${FIXTURE_EXIT:-0}"
 	t.Setenv("FIXTURE_RECORD", record)
 	t.Setenv("FIXTURE_EXIT", "0")
 	t.Setenv("FIXTURE_WAIT", "")
+	t.Setenv("FIXTURE_STDOUT", "")
+	t.Setenv("FIXTURE_STDERR", "")
+	t.Setenv("FIXTURE_LOG", "")
 	t.Setenv("APPRISE_URLS", "credential://private@example.invalid")
 	return record
 }
@@ -193,6 +203,9 @@ func TestNotifyOutcomes(t *testing.T) {
 			t.Fatalf("exit %s: %d %s", tc.exit, code, errOut)
 		}
 		assertResult(t, code, out, errOut, "apprise", tc.outcome, tc.reason)
+		if !strings.Contains(out, "Apprise exit "+tc.exit) || !strings.Contains(out, "tell doctor --via apprise") {
+			t.Fatalf("missing troubleshooting details: %s", out)
+		}
 		code, out, errOut = run("notify", "--via", "apprise", "body-sentinel")
 		if code != tc.code || out != "" || strings.Contains(errOut, "credential://") || strings.Contains(errOut, "body-sentinel") || strings.Contains(errOut, "raw-provider-output") {
 			t.Fatalf("unsafe human error: %d %s %s", code, out, errOut)
@@ -217,6 +230,104 @@ func TestNotifyOutcomes(t *testing.T) {
 	assertResult(t, code, out, errOut, "", "usage", "invalid_invocation")
 	code, out, errOut = run("--json", "--timeout", "body-sentinel", "notify", "body-sentinel")
 	assertResult(t, code, out, errOut, "", "config", "invalid_config")
+}
+
+// Capture both streams without exposing provider text, even for oversized logs.
+func TestAppriseDiagnostics(t *testing.T) {
+	environment(t)
+	provider(t)
+	t.Setenv("FIXTURE_EXIT", "1")
+	for _, tc := range []struct{ log, hint string }{
+		{"401 Unauthorized", "authentication or permission error"},
+		{"Too Many Requests", "rate limiting"},
+		{"Failed to establish a new connection", "connection error"},
+		{"CERTIFICATE_VERIFY_FAILED", "TLS certificate error"},
+		{"Request timed out", "timeout; check provider availability"},
+		{"No service(s) to notify", "no services found"},
+		{"unrecognized failure", "For details, run apprise -vv"},
+	} {
+		for _, stream := range []string{"FIXTURE_STDOUT", "FIXTURE_STDERR"} {
+			t.Setenv(stream, tc.log+" credential://private@example.invalid body-sentinel")
+			for _, jsonOutput := range []bool{false, true} {
+				args := []string{"notify", "--via", "apprise", "body-sentinel"}
+				if jsonOutput {
+					args = append([]string{"--json"}, args...)
+				}
+				code, out, diag := run(args...)
+				if code != 4 || !strings.Contains(out+diag, tc.hint) || !strings.Contains(out+diag, "Apprise exit 1") {
+					t.Fatalf("missing diagnostic: %d %s %s", code, out, diag)
+				}
+				for _, secret := range []string{"credential://", "body-sentinel", "raw-provider-output"} {
+					if strings.Contains(out+diag, secret) {
+						t.Fatalf("provider text leaked: %s", secret)
+					}
+				}
+			}
+			t.Setenv(stream, "")
+		}
+	}
+	log := filepath.Join(t.TempDir(), "provider.log")
+	if err := os.WriteFile(log, []byte(strings.Repeat("body-sentinel", 200000)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FIXTURE_LOG", log)
+	code, out, diag := run("--json", "notify", "--via", "apprise", "body-sentinel")
+	assertResult(t, code, out, diag, "apprise", "failed", "provider_failure")
+	if !strings.Contains(out, "diagnostic capture truncated") || len(out) > 2048 {
+		t.Fatalf("unbounded or unmarked diagnostic: %d bytes", len(out))
+	}
+	t.Setenv("FIXTURE_EXIT", "0")
+	code, out, diag = run("--json", "notify", "--via", "apprise", "body-sentinel")
+	assertResult(t, code, out, diag, "apprise", "accepted", "")
+}
+
+// A descendant holding log pipes open must not turn a known exit into timeout.
+func TestAppriseExitBeforeLogCleanup(t *testing.T) {
+	environment(t)
+	record := provider(t)
+	script := "#!/bin/sh\nprintf '%s' \"$$\" > \"$FIXTURE_RECORD\"\n/bin/sleep 1 &\nexit \"$FIXTURE_EXIT\"\n"
+	if err := os.WriteFile(filepath.Join(filepath.Dir(record), "apprise"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ exit, outcome, reason string }{
+		{"0", "accepted", ""},
+		{"3", "not_sent", "no_match"},
+	} {
+		t.Setenv("FIXTURE_EXIT", tc.exit)
+		if err := os.WriteFile(record, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		var out, diag bytes.Buffer
+		done := make(chan int, 1)
+		go func() {
+			done <- cli.Run(ctx, []string{"tell", "--json", "notify", "--via", "apprise", "body-sentinel"}, config.BuildOpts{}, &out, &diag)
+		}()
+		// Cancel only after the provider is reaped, while its descendant still
+		// holds the log pipe. Avoid a short deadline racing process startup.
+		ticker := time.NewTicker(time.Millisecond)
+		deadline := time.After(3 * time.Second)
+	waitExit:
+		for {
+			select {
+			case <-ticker.C:
+				data, _ := os.ReadFile(record)
+				pid, err := strconv.Atoi(string(data))
+				if err == nil && syscall.Kill(pid, 0) == syscall.ESRCH {
+					break waitExit
+				}
+			case <-deadline:
+				ticker.Stop()
+				cancel()
+				<-done
+				t.Fatal("provider did not exit")
+			}
+		}
+		ticker.Stop()
+		cancel()
+		code := <-done
+		assertResult(t, code, out.String(), diag.String(), "apprise", tc.outcome, tc.reason)
+	}
 }
 
 // Cancelling an idle input pipe must exit before EOF, without dispatching.

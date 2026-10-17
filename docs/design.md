@@ -189,7 +189,18 @@ apprise --title TITLE --body BODY --notification-type TYPE [--config FILE] [--ta
 
 Unset options are omitted so Apprise defaults apply (without `--tag`, only
 untagged services are notified). No URL arguments. Native `APPRISE_*`
-variables pass through uninterpreted. Stdin is closed and output discarded.
+variables pass through uninterpreted. Stdin is closed. Tell captures at most
+1 MiB of combined stdout/stderr in memory, draining and discarding any excess.
+Failures include the Apprise exit code, fixed diagnostic hints for recognized
+errors, and troubleshooting steps. Raw output is never printed or persisted:
+it can contain credentials, destinations, and message text. Hints are not
+proof of a cause and never change the exit-based delivery outcome.
+
+Start with `tell doctor --via apprise`, using the same Tell config and Apprise
+tag/config overrides as the failed invocation. This checks readiness without
+sending, not delivery. For unrecognized failures, run `apprise -vv` directly
+with the same Apprise config/tag and a harmless test message. This sends again;
+check delivery before retrying and treat verbose logs as sensitive.
 
 | Apprise exit | Tell outcome |
 | --- | --- |

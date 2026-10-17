@@ -134,7 +134,7 @@ func probeTarget(ctx context.Context, cfg config.Config) (string, *Result) {
 	}
 	timeout, _ := time.ParseDuration(cfg.Timeout)
 	output := &probeOutput{}
-	code, failure := process(ctx, timeout, route, "hcom", []string{"list", "--json"}, nil, nil, output)
+	code, failure := process(ctx, timeout, route, "hcom", []string{"list", "--json"}, nil, nil, output, nil)
 	if failure != nil {
 		return "", failure
 	}
@@ -178,7 +178,7 @@ func herdrAgent(ctx context.Context, cfg config.Config, args []string) (herdrRes
 	const route = "herdr"
 	timeout, _ := time.ParseDuration(cfg.Timeout)
 	output := &probeOutput{}
-	code, failure := process(ctx, timeout, route, "herdr", append([]string{"--session", cfg.Herdr.Session}, args...), nil, herdrEnv(), output)
+	code, failure := process(ctx, timeout, route, "herdr", append([]string{"--session", cfg.Herdr.Session}, args...), nil, herdrEnv(), output, nil)
 	var response herdrResponse
 	if failure != nil {
 		return response, failure
