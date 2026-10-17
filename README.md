@@ -1,5 +1,7 @@
 # Tell
 
+[![CI](https://github.com/brettinternet/tell/actions/workflows/ci.yaml/badge.svg)](https://github.com/brettinternet/tell/actions/workflows/ci.yaml)
+
 Send one notification to a person, or one message to an agent, then exit.
 
 ```sh
