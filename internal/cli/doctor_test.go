@@ -10,6 +10,24 @@ import (
 	"github.com/brettinternet/tell/internal/delivery"
 )
 
+// Missing tools must be actionable in human output, without changing JSON reasons.
+func TestDoctorHumanMissingExecutable(t *testing.T) {
+	environment(t)
+	t.Setenv("PATH", t.TempDir())
+	code, out, diag := run("doctor", "--apprise-tag", "private-tag")
+	if code != 0 || diag != "" || out != "stderr (selected): ready\napprise: not ready: apprise was not found on PATH; install it or choose another route\n" {
+		t.Fatalf("%d %q %q", code, out, diag)
+	}
+	code, out, diag = run("--json", "doctor", "--apprise-tag", "private-tag")
+	if code != 0 || diag != "" || !strings.Contains(out, `"reason":"missing_executable"`) || strings.Contains(out, "private-tag") {
+		t.Fatalf("%d %q %q", code, out, diag)
+	}
+	code, out, diag = run("notify", "--via", "apprise", "body-sentinel")
+	if code != 3 || out != "" || diag != "tell: apprise was not found on PATH; install it or choose another route\n" {
+		t.Fatalf("%d %q %q", code, out, diag)
+	}
+}
+
 // A readiness probe must not turn into delivery, leak provider secrets, or fail
 // the selected route just because another configured route is unavailable.
 func TestDoctorReadOnly(t *testing.T) {

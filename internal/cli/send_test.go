@@ -17,6 +17,36 @@ import (
 	"github.com/brettinternet/tell/internal/delivery"
 )
 
+// Human failures must explain the fix without losing the receipt or leaking the body.
+func TestSendHumanFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"input", []string{"send"}, "send requires one message argument or - for stdin"},
+		{"route", []string{"send", "body-sentinel"}, "send.via in personal config, --send-via, or TELL_SEND_VIA"},
+		{"target", []string{"send", "--send-via", "hcom", "body-sentinel"}, "send.to in personal config, --to, or TELL_SEND_TO"},
+		{"session", []string{"send", "--send-via", "herdr", "--to", "reviewer", "body-sentinel"}, "herdr.session in personal config, --herdr-session, or TELL_HERDR_SESSION"},
+		{"executable", []string{"send", "--send-via", "hcom", "--to", "reviewer", "body-sentinel"}, "hcom was not found on PATH"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			environment(t)
+			t.Setenv("PATH", t.TempDir())
+			code, out, diag := run(tc.args...)
+			lines := strings.Split(strings.TrimSuffix(diag, "\n"), "\n")
+			if code == 0 || out != "" || len(lines) != 2 || !strings.Contains(lines[0], "outcome=") || !strings.Contains(lines[1], tc.want) || strings.Contains(diag, "body-sentinel") {
+				t.Fatalf("%d %q %q", code, out, diag)
+			}
+			code, out, diag = run(append([]string{"--json"}, tc.args...)...)
+			var result delivery.Result
+			if code == 0 || json.Unmarshal([]byte(out), &result) != nil || result.Failure == nil || strings.Count(diag, "\n") != 1 || strings.Contains(out+diag, "body-sentinel") {
+				t.Fatalf("JSON: %d %q %q", code, out, diag)
+			}
+		})
+	}
+}
+
 func sendProvider(t *testing.T) string {
 	t.Helper()
 	record := provider(t, "hcom", "herdr")

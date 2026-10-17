@@ -53,11 +53,12 @@ func renderSend(result *delivery.Result, jsonOutput bool, out, errOut io.Writer)
 	reason := ""
 	if result.Failure != nil {
 		reason = " reason=" + result.Failure.Reason
-		if !jsonOutput && (result.Outcome == "usage" || result.Outcome == "config") {
-			reason += ": " + result.Failure.Message
-		}
+
 	}
 	fmt.Fprintf(errOut, "tell send: route=%q recipient=%q intent=%q outcome=%s%s\n", result.Route, result.Recipient, result.Intent, result.Outcome, reason)
+	if !jsonOutput && result.Failure != nil {
+		fmt.Fprintf(errOut, "tell send: %s\n", humanReason("send/"+result.Route, result.Failure.Reason, result.Failure.Message))
+	}
 	if jsonOutput {
 		// A failed output stream cannot change the dispatch outcome or invite retry.
 		_ = json.NewEncoder(out).Encode(result)

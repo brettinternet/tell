@@ -108,7 +108,7 @@ Check routes without sending anything. Only the selected route decides the exit 
 ```console
 $ tell doctor
 desktop (selected): ready
-apprise: missing_executable
+apprise: not ready: apprise was not found on PATH; install it or choose another route
 ```
 
 ## Configure
@@ -218,6 +218,9 @@ $ tell send --intent request "Triage new PRs and report blockers"
 hcom queues the message for the agent's next hook without interrupting it.
 Herdr types a new turn only when the agent is idle, but the agent can start
 working between the check and the prompt. Use hcom when interruption matters.
+Human failures add an explanation after the receipt, including the setting, flag,
+and environment variable for missing routing configuration. JSON keeps its existing
+reason codes and messages.
 Accepted means dispatched, not done. See [agent delivery](docs/design.md#agent-delivery).
 
 ## MCP server

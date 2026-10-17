@@ -321,7 +321,24 @@ tell send: route="hcom" recipient="reviewer" intent="inform" outcome=not_sent re
 
 Unresolved fields are empty in the receipt and may be omitted from JSON. No
 subprocess inherits Tell's stdin. A broken output stream cannot undo dispatch.
-Bare `tell send` sends nothing.
+Bare `tell send` sends nothing and explains that a message argument or `-` is required.
+Human failures keep the receipt and add a plain explanation on the next line;
+`--json` keeps just the receipt on stderr and the unchanged result on stdout.
+For example, with no send route configured:
+
+```console
+$ tell send hi
+tell send: route="" recipient="" intent="inform" outcome=not_sent reason=missing_route
+tell send: choose send.via in personal config, --send-via, or TELL_SEND_VIA (hcom or herdr)
+```
+
+Human `doctor` output labels routes `ready` or `not ready` and explains what to
+fix, without printing provider configuration or output:
+
+```text
+stderr (selected): ready
+apprise: not ready: apprise was not found on PATH; install it or choose another route
+```
 
 ### hcom
 

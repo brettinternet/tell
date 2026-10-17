@@ -128,7 +128,7 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 			if jsonRequested(root, args) {
 				_ = json.NewEncoder(out).Encode(result)
 			} else {
-				fmt.Fprintf(errOut, "tell: %s\n", result.Error())
+				fmt.Fprintf(errOut, "tell: %s\n", humanReason(result.Route, result.Failure.Reason, result.Error()))
 			}
 			return result.ExitCode()
 		}
