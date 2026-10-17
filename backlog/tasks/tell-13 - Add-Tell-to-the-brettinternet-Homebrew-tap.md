@@ -4,8 +4,9 @@ title: Add Tell to the brettinternet Homebrew tap
 status: Done
 assignee: []
 created_date: '2026-10-16 22:25'
-updated_date: '2026-10-16 23:50'
-labels: []
+updated_date: '2026-10-17 00:00'
+labels:
+  - reviewed
 dependencies:
   - TELL-6
 references:
