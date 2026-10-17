@@ -42,27 +42,27 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		ExitErrHandler: func(context.Context, *urfave.Command, error) {},
 		Flags: []urfave.Flag{
 			&urfave.StringFlag{Name: "project", Aliases: []string{"C"}, Usage: "Select exactly this project directory [$TELL_PROJECT]"},
-			&urfave.StringFlag{Name: "config", Usage: "Replace all automatic config files with FILE [$TELL_CONFIG]"},
-			&urfave.BoolFlag{Name: "json", Usage: "Print one structured JSON result"},
+			&urfave.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Replace all automatic config files with FILE [$TELL_CONFIG]"},
+			&urfave.BoolFlag{Name: "json", Aliases: []string{"j"}, Usage: "Print one structured JSON result"},
 			&urfave.BoolFlag{Name: "mcp-agent-targets", Usage: "Allow MCP agents to override route and recipient selectors [$TELL_MCP_AGENT_TARGETS]"},
 		},
 		Action: showConfig,
 		Commands: []*urfave.Command{
 			{Name: "send", Usage: "Send to an existing agent; dispatch is not completion", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
-				&urfave.StringFlag{Name: "intent", Value: "inform", Usage: "Message intent: inform or request"},
+				&urfave.StringFlag{Name: "intent", Aliases: []string{"i"}, Value: "inform", Usage: "Message intent: inform or request"},
 			}, Action: send},
 			{Name: "doctor", Usage: "Check configured routes without sending or starting services", Action: doctor},
 			{Name: "mcp", Usage: "Serve notify, send, and doctor as MCP tools over stdio", Action: mcpCommand(build.Version)},
 			{Name: "notify", Usage: "Notify via the selected route; acceptance is not human acknowledgment", ArgsUsage: "MESSAGE | -", Flags: []urfave.Flag{
-				&urfave.StringFlag{Name: "title", Usage: "Notification title (default: project directory name)"},
-				&urfave.StringFlag{Name: "type", Value: "info", Usage: "Notification type: info, success, warning, failure"},
+				&urfave.StringFlag{Name: "title", Aliases: []string{"t"}, Usage: "Notification title (default: project directory name)"},
+				&urfave.StringFlag{Name: "type", Aliases: []string{"n"}, Value: "info", Usage: "Notification type: info, success, warning, failure"},
 			}, Action: notify},
 			{Name: "config", Usage: "Inspect effective settings and origins without sending anything", Action: showConfig, Commands: []*urfave.Command{
 				{Name: "show", Usage: "Show effective settings and origins", Action: showConfig},
 				{Name: "check", Usage: "Validate settings without invoking providers", Action: checkConfig},
 			}},
 			{Name: "init", Usage: "Create tell.yaml without overwriting; never sends messages", Flags: []urfave.Flag{
-				&urfave.BoolFlag{Name: "user", Usage: "Create personal user config instead"},
+				&urfave.BoolFlag{Name: "user", Aliases: []string{"u"}, Usage: "Create personal user config instead"},
 			}, Action: initialize},
 		},
 	}
@@ -365,7 +365,7 @@ func jsonRequested(root *urfave.Command, args []string) bool {
 			if !hasValue {
 				i++
 			}
-		} else if name == "json" {
+		} else if name == "json" || name == "j" {
 			requested = true
 			if hasValue {
 				requested, _ = strconv.ParseBool(value)

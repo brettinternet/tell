@@ -37,7 +37,7 @@ Missing files are skipped. Unreadable files, directories, dangling symlinks, and
 malformed files are errors, even when a higher layer overrides their values.
 There is no system config layer.
 
-`--config FILE` (or `TELL_CONFIG`) replaces every automatic file. The file must
+`-c FILE` / `--config FILE` (or `TELL_CONFIG`) replaces every automatic file. The file must
 exist and is trusted as personal. Defaults, environment, and flags still apply.
 HOME and XDG_CONFIG_HOME are not read, so it works for services without HOME.
 
@@ -161,6 +161,10 @@ Removed bootstrap settings are rejected: `notify.via: stdout`, `hcom.to`, and
 
 ## Invocation flags
 
+Short forms: `-c`/`--config`, `-j`/`--json`, `-C`/`--project`,
+`-t`/`--title` and `-n`/`--type` for `notify`, `-i`/`--intent` for `send`,
+and `-u`/`--user` for `init`. `-h`/`--help` and `-v`/`--version` are unchanged.
+
 Message flags are per invocation, not settings:
 
 ```sh
@@ -170,7 +174,7 @@ tell send --intent request "Triage PRs"                  # --intent: inform|requ
 tell --send-via herdr --to reviewer send "..."           # --via is notify-only
 ```
 
-`--title` defaults to the project directory name. Empty messages are refused.
+`-t`/`--title` defaults to the project directory name. Empty messages are refused.
 Text is normalized and scanned before delivery; see
 [message preparation](design.md#message-preparation). Scanning is best-effort,
 and desktop, Herdr, and Apprise receive the body in argv, which local process
@@ -242,7 +246,7 @@ $ tell --json --timeout 0s config check; echo $?
 1
 ```
 
-`--json` prints one stdout object with `schema_version: 1`. Human errors go to
+`-j`/`--json` prints one stdout object with `schema_version: 1`. Human errors go to
 stderr. Exit 0 success, 1 configuration/I/O failure, 2 usage. Help, version,
 and completion stay plain text. Delivery uses its own
 [outcomes](design.md#outcomes). In notify JSON, `route` is empty when parsing
@@ -253,7 +257,7 @@ or configuration failed before a route was resolved.
 | Command | Creates | Mode | Contents |
 | --- | --- | --- | --- |
 | `tell init` | `tell.yaml` | default | commented shared fields |
-| `tell init --user` | user config (creates parent dirs) | 0600 | commented personal routing |
+| `tell init -u` / `tell init --user` | user config (creates parent dirs) | 0600 | commented personal routing |
 
 ```console
 $ tell init

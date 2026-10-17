@@ -164,6 +164,9 @@ $ tell --timeout 5 notify "Build finished"
 tell: --timeout: timeout must be a positive Go duration, such as 10s
 ```
 
+Short forms: `-c`/`--config`, `-j`/`--json`, `-C`/`--project`, and
+`-u`/`--user` for `init`. Use `-i`/`--intent` for `send`.
+`-h`/`--help` and `-v`/`--version` remain available.
 See [configuration](docs/configuration.md) for every key.
 
 ## Notification routes
@@ -176,7 +179,7 @@ See [configuration](docs/configuration.md) for every key.
 | herdr | `tell notify --via herdr --herdr-session work "Done"` | a running Herdr session |
 | command | `tell notify --via command "Done"` | personal `notify.command` |
 
-`--title` defaults to the project directory name. `--type` is `info` (default),
+`-t`/`--title` defaults to the project directory name. `-n`/`--type` is `info` (default),
 `success`, `warning`, or `failure`.
 
 The command route runs your executable with the body on stdin:

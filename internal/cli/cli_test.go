@@ -228,9 +228,32 @@ func TestCLIErrorOutput(t *testing.T) {
 	if code != 2 || errOut != "" || !json.Valid([]byte(out)) {
 		t.Fatalf("bad usage error: %d %s %s", code, out, errOut)
 	}
-	code, out, errOut = run("--apprise-tag", "--json", "--unknown")
-	if code != 2 || out != "" || errOut == "" {
-		t.Fatalf("value mistaken for output flag: %d %s %s", code, out, errOut)
+	for _, args := range [][]string{
+		{"--apprise-tag", "--json", "--unknown"},
+		{"-c", "-j", "--unknown"},
+		{"notify", "-t", "-j", "--unknown"},
+		{"-j=false", "--unknown"},
+	} {
+		code, out, errOut = run(args...)
+		if code != 2 || out != "" || errOut == "" {
+			t.Fatalf("wrong output mode for %v: %d %s %s", args, code, out, errOut)
+		}
+	}
+	for _, args := range [][]string{
+		{"-j", "notify", "--bogus", "hi"},
+		{"-c", "FILE", "-j", "notify", "--bogus", "hi"},
+		{"-c=FILE", "-j=true", "notify", "--bogus", "hi"},
+		{"-c", "FILE", "-j", "send", "--bogus", "hi"},
+	} {
+		code, out, errOut = run(args...)
+		var result struct{ Outcome string }
+		wantStderr := ""
+		if strings.Contains(strings.Join(args, " "), " send ") {
+			wantStderr = "tell send: route=\"\" recipient=\"\" intent=\"\" outcome=usage reason=invalid_invocation\n"
+		}
+		if code != 2 || errOut != wantStderr || json.Unmarshal([]byte(out), &result) != nil || result.Outcome != "usage" {
+			t.Fatalf("wrong delivery error for %v: %d %s %s", args, code, out, errOut)
+		}
 	}
 }
 
