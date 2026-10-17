@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@brett'
 created_date: '2026-10-16 23:24'
-updated_date: '2026-10-17 01:41'
-labels: []
+updated_date: '2026-10-17 01:56'
+labels:
+  - reviewed
 dependencies:
   - TELL-15
 modified_files:
@@ -47,6 +48,16 @@ Non-goals: interactive prompts, writing route values from flags, overwriting exi
 <!-- SECTION:NOTES:BEGIN -->
 Implemented and fast-forward merged bb87005 into main. Verification: go test ./internal/config ./internal/cli and task ci passed (unit, race, smoke, vet, Staticcheck, security). LSP clean for both changed Go files. Isolated built-binary checks passed for shared/user create and keep guidance, all route/transport names, unchanged JSON schema, byte-preservation, and config check. Initial ad hoc assertions corrected for macOS canonical paths and existing schema_version field; no product defect. One scoped diff review found no defects. README and configuration docs agree. task check:staged passed before implementation commit. Worktrunk removed owned worktree and branch; exact Herdr workspace disappearance verified. No blockers or remaining implementation steps.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @pi
+created: 2026-10-17 01:56
+---
+Review: shared/user create and keep messages match the file; templates list all routes/transports; docs agree; JSON unchanged. Fixed in 051663e: personal template had no notify.command example though the command route requires it; added commented example (validated with config check). Note: user next step says 'set notify.via' even when an existing file already sets it (acceptable per AC).
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 

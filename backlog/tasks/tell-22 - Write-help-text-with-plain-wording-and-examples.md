@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@brett'
 created_date: '2026-10-16 23:24'
-updated_date: '2026-10-17 01:39'
-labels: []
+updated_date: '2026-10-17 01:56'
+labels:
+  - reviewed
 dependencies:
   - TELL-18
   - TELL-19
@@ -50,6 +51,16 @@ Non-goals: man pages, colored help, completion of flag values, changing behavior
 <!-- SECTION:NOTES:BEGIN -->
 Implemented and fast-forward merged f1e597fa4e5df435668d7ad4009e4c13a70d0d0d into main. Verification: go test ./internal/cli passed; rendered root and notify/send/doctor/config/init --help inspected (requested order, one acceptance explanation, 2–3 examples each, meaningful value placeholders and defaults). Generated bash completion sourced under bash --noprofile --norc and registered complete -p tell; zsh completion sourced under zsh -f with compinit -D; fish completion sourced under mise exec aqua:fish-shell/fish-shell@4.9.3 -- fish --no-config. All exited 0. task ci passed (vet, Staticcheck, unit, race, smoke, Gitleaks, govulncheck); task check:staged and git diff --check passed; LSP clean. One focused self-review found no concrete defects; no runtime behavior changed. Owned worktree and branch tell-22-help removed via Worktrunk; exact Herdr workspace wF7 disappeared. No blocker or remaining implementation step.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @pi
+created: 2026-10-17 01:56
+---
+Review: ACs verified (root wording/order, single acceptance statement, 2-3 runnable examples per command, placeholders/defaults; bash/zsh/fish completion scripts source cleanly). Fixed in 051663e: --type/--intent defaults rendered quoted ("info") unlike other defaults; now DefaultText. Low-severity follow-ups, not fixed: (1) urfave emits raw backtick placeholders in shell-completion descriptions (e.g. 'Notification `route`: ...') in zsh/fish; (2) notify example '--via stderr --title Tests' sets a title the stderr route never prints.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 

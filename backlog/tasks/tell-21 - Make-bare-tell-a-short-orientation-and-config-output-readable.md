@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 23:24'
-updated_date: '2026-10-17 01:35'
-labels: []
+updated_date: '2026-10-17 01:56'
+labels:
+  - reviewed
 dependencies: []
 documentation:
   - docs/configuration.md
@@ -51,6 +52,16 @@ Verification: mise exec -- go test ./internal/cli and mise exec -- task ci passe
 
 Delivery: ca3c899 (feat(cli): simplify orientation and config output) committed after task check:staged and fast-forward merged into main. Owned tell-21 worktree and branch removed using Worktrunk; matching Herdr workspace wF6 disappearance verified. No remaining blocker or resumable implementation step; no push performed.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @pi
+created: 2026-10-17 01:56
+---
+Review: no defects. Verified with built binary in isolated HOME: bare tell summary (none/configured files, notify origin, send 'not configured' vs 'herdr → x y'), exit 1 with file:line validation message on invalid config, no provider calls; config/config show aligned table with quoted empty/double-space values and origins default/path/env NAME/flag --name. README and docs/configuration.md match output. Note: Next line always suggests tell init even when config exists (acceptable per AC).
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 
