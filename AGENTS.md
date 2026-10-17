@@ -11,8 +11,9 @@ Read README.md and docs/development.md before changing Tell. Read AGENTS.local.m
 - Use Conventional Commits. Never push or open a PR without instruction.
 - Keep no-argument commands safe: inspect only; never send messages or start services.
 - Distinguish implemented features from planned features. No successful stub commands.
-- Tell delivers one invocation and exits. Scheduling, queues, durable state, throttling, and deduplication belong to callers such as Noon. Never read scheduler-specific environment or payloads.
-- Keep provider credentials/configuration with the provider. Never print message bodies, tokens, or raw provider configuration in diagnostics.
+- Tell is evolving into a local integrations layer. Outbound notify/send stay one-shot; planned inbound behavior follows docs/listening.md and TELL-26 through TELL-29. Explicit source selection starts foreground listeners; bare commands remain inspection. Do not describe planned capabilities as shipped.
+- Listeners may own bounded in-memory admission buffers, duplicate suppression, connection recovery, and short local actions. Scheduling, durable queues/state, action retries, and long-running work belong to callers such as Noon. Never read scheduler-specific environment or payloads.
+- Keep outbound provider credentials/configuration with the provider. Planned inbound sources use personal-only environment-variable references; strip those credentials from child environments. Never print message bodies, tokens, raw provider configuration, or child output in diagnostics. Explicit event export is sensitive data, not diagnostics.
 
 ## Backlog
 - `backlog/` is the only task queue. Use Backlog.md CLI, never edit task Markdown directly.

@@ -1,5 +1,11 @@
 # Design
 
+This page describes implemented behavior. The [planned inbound contract](listening.md)
+refines decision-1: Tell becomes a local integrations layer with explicit foreground
+listeners, personal event routes, and bounded in-memory state. TELL-26 through
+TELL-29 track delivery; the current one-shot/no-state statements below are not
+constraints against that work. Scheduling and durable execution remain outside Tell.
+
 ## Boundary
 
 ```text

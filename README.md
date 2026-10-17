@@ -14,6 +14,11 @@ Tell is a CLI for terminals, scripts, and scheduler hooks. Your scheduler
 decide what is worth saying. Tell routes one message and reports what happened.
 It has no daemon, queue, database, or retries.
 
+**Planned direction:** Tell is growing into a local integrations layer: receive
+Slack events or signed GitHub webhooks through a user-managed cloudflared tunnel,
+then run a short local command, notify a person, or inform an agent. These inbound
+features are not implemented yet. See the [planned CLI and event contract](docs/listening.md).
+
 ## Installation
 
 Install with Homebrew:

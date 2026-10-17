@@ -103,8 +103,11 @@ stdio only. It must call the existing config and delivery operations; do not
 copy Noon's scheduler, store, or HTTP layers. The MCP process is owned by its
 client and exposes only notify, send, and read-only doctor. Route and recipient
 overrides remain default-deny through personal `mcp.agent_targets` configuration.
-Providers are subprocess adapters, not SDKs or plugins. See the [README client
-setup](../README.md#mcp-server) and [MCP trust boundary](design.md#mcp).
+Current outbound providers are subprocess adapters, not SDKs or plugins. Planned
+inbound sources own their network transports and verification; follow the
+[planned integration contract](listening.md), without adding listener lifecycle
+tools to MCP. See the [README client setup](../README.md#mcp-server) and
+[MCP trust boundary](design.md#mcp).
 
 ## Testing
 
