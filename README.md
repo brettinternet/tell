@@ -70,16 +70,18 @@ or inspect configuration.
 
 ## Quick tour
 
-Bare `tell` only inspects. It never sends.
+Bare `tell` only inspects. It never sends or runs provider executables.
+Use `tell config` for all settings and their origins, or `tell doctor` to check readiness.
 
 ```console
 $ tell
-Project: "/Users/me/dev/app"
-notify.via: "stderr" ("default")
-secrets.policy: "redact" ("default")
-timeout: "10s" ("default")
-...
-Inspection only; notify delivers via the selected route. Provider acceptance is not human acknowledgment.
+Project: /Users/me/dev/app
+Config files:
+  none
+Notify: stderr (default)
+Send: not configured
+
+Next: tell notify "hello" · tell doctor · tell init · tell --help
 ```
 
 The default route writes to stderr, leaving stdout for your script:

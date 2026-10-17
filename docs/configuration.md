@@ -1,7 +1,22 @@
 # Configuration
 
 Inspection (`tell`, `tell config`, `tell config check`, `tell doctor`) never
-sends a message.
+sends a message. Bare `tell` summarizes configuration without running providers:
+
+```console
+$ tell
+Project: /Users/me/dev/app
+Config files:
+  none
+Notify: stderr (default)
+Send: not configured
+
+Next: tell notify "hello" · tell doctor · tell init · tell --help
+```
+
+When both send settings exist, the summary shows the transport and recipient
+(for example, `Send: hcom → reviewer`). This is configuration, not a readiness
+probe; use `tell doctor` to check providers.
 
 ## Sources
 
@@ -18,19 +33,24 @@ Lowest to highest priority:
 Settings merge by field. `notify.command` is replaced whole, never merged.
 Tell does not automatically load `.tell.yaml`, even if a repository commits one.
 Use user config or an explicit `--config`/`TELL_CONFIG` file for personal file
-settings. `tell config` shows each value's winning source:
+settings. `tell config` and `tell config show` show aligned key, value, and
+origin columns. Empty or whitespace-significant values are quoted; origins
+are `default`, a file path, `env NAME`, or `flag --name`. JSON output is unchanged.
+For example (selected rows):
 
 ```console
 $ tell config
-Project: "/Users/me/dev/app"
-apprise.tag: "project-alerts" ("/Users/me/dev/app/tell.yaml")
-notify.command: "[configured]" ("/Users/me/.config/tell/config.yaml")
-notify.via: "command" ("/Users/me/.config/tell/config.yaml")
-timeout: "10s" ("default")
-...
+Project: /Users/me/dev/app
 Files (low → high precedence):
-  "/Users/me/.config/tell/config.yaml"
-  "/Users/me/dev/app/tell.yaml"
+  /Users/me/.config/tell/config.yaml
+  /Users/me/dev/app/tell.yaml
+
+KEY                VALUE           ORIGIN
+apprise.tag        project-alerts  /Users/me/dev/app/tell.yaml
+notify.command     [configured]    /Users/me/.config/tell/config.yaml
+notify.via         command         /Users/me/.config/tell/config.yaml
+timeout            10s             default
+...
 ```
 
 Missing files are skipped. Unreadable files, directories, dangling symlinks, and

@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"text/tabwriter"
+	"unicode"
 
 	"github.com/brettinternet/tell/internal/config"
 	"github.com/brettinternet/tell/internal/delivery"
@@ -270,25 +272,57 @@ func showConfig(_ context.Context, cmd *urfave.Command) error {
 	if cmd.Bool("json") {
 		return emit(cmd, map[string]any{"config": cfg})
 	}
-	fmt.Fprintf(cmd.Writer, "Project: %q\n", cfg.Project)
+	fmt.Fprintf(cmd.Writer, "Project: %s\n", displayValue(cfg.Project))
+	if cmd.Name == "tell" {
+		fmt.Fprintln(cmd.Writer, "Config files:")
+	} else {
+		fmt.Fprintln(cmd.Writer, "Files (low → high precedence):")
+	}
+	if len(cfg.Sources) == 0 {
+		fmt.Fprintln(cmd.Writer, "  none")
+	}
+	for _, source := range cfg.Sources {
+		fmt.Fprintf(cmd.Writer, "  %s\n", displayValue(source))
+	}
+	if cmd.Name == "tell" {
+		fmt.Fprintf(cmd.Writer, "Notify: %s (%s)\n", cfg.Notify.Via, displayOrigin(cfg.Origins["notify.via"]))
+		if cfg.Send.Via == "" || cfg.Send.To == "" {
+			fmt.Fprintln(cmd.Writer, "Send: not configured")
+		} else {
+			fmt.Fprintf(cmd.Writer, "Send: %s → %s\n", cfg.Send.Via, displayValue(cfg.Send.To))
+		}
+		fmt.Fprintln(cmd.Writer, "\nNext: tell notify \"hello\" · tell doctor · tell init · tell --help")
+		return nil
+	}
 	values := cfg.Values()
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
+	table := tabwriter.NewWriter(cmd.Writer, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(table, "\nKEY\tVALUE\tORIGIN")
 	for _, key := range keys {
-		fmt.Fprintf(cmd.Writer, "%s: %q (%q)\n", key, values[key], cfg.Origins[key])
+		fmt.Fprintf(table, "%s\t%s\t%s\n", key, displayValue(values[key]), displayOrigin(cfg.Origins[key]))
 	}
-	fmt.Fprintln(cmd.Writer, "Files (low → high precedence):")
-	if len(cfg.Sources) == 0 {
-		fmt.Fprintln(cmd.Writer, "  none")
+	return table.Flush()
+}
+
+// Quote whitespace that would otherwise be invisible or disrupt the table.
+func displayValue(value string) string {
+	if value == "" || strings.TrimSpace(value) != value || strings.ContainsFunc(value, unicode.IsControl) || strings.Contains(value, "  ") {
+		return strconv.Quote(value)
 	}
-	for _, source := range cfg.Sources {
-		fmt.Fprintf(cmd.Writer, "  %q\n", source)
+	return value
+}
+
+func displayOrigin(origin string) string {
+	for _, prefix := range []string{"env:", "flag:"} {
+		if value, ok := strings.CutPrefix(origin, prefix); ok {
+			return strings.TrimSuffix(prefix, ":") + " " + displayValue(value)
+		}
 	}
-	fmt.Fprintln(cmd.Writer, "Inspection only; notify delivers via the selected route. Provider acceptance is not human acknowledgment.")
-	return nil
+	return displayValue(origin)
 }
 
 func checkConfig(_ context.Context, cmd *urfave.Command) error {
