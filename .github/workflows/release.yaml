@@ -44,7 +44,12 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: task cli:package
-      - name: Publish GitHub release with generated notes
+      - name: Generate changelog and release notes
+        run: |
+          set -eu
+          mise exec git-cliff -- git-cliff --output dist/release/"$GITHUB_REF_NAME"/CHANGELOG.md
+          mise exec git-cliff -- git-cliff --current --strip header --output dist/release/"$GITHUB_REF_NAME"/release-notes.md
+      - name: Publish GitHub release with changelog notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -57,7 +62,9 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/release/"$GITHUB_REF_NAME"/*.tar.gz \
             dist/release/"$GITHUB_REF_NAME"/checksums.txt \
-            --verify-tag --generate-notes --title "$GITHUB_REF_NAME" --latest
+            dist/release/"$GITHUB_REF_NAME"/CHANGELOG.md \
+            --verify-tag --notes-file dist/release/"$GITHUB_REF_NAME"/release-notes.md \
+            --title "$GITHUB_REF_NAME" --latest
 
   mise-install:
     needs: release

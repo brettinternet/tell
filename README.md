@@ -348,5 +348,6 @@ failure and recovery, plus a [scheduled agent instruction](examples/noon/README.
 - [Configuration](docs/configuration.md): files, keys, readiness, init
 - [Design](docs/design.md): boundaries, outcomes, each route's exact behavior
 - [Development](docs/development.md): tasks, layout, testing
+- [Changelog](CHANGELOG.md): generated history; [releases](https://github.com/brettinternet/tell/releases) include an up-to-date changelog
 
 MIT licensed.

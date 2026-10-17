@@ -55,9 +55,22 @@ execution on all four architectures or live mise asset discovery.
 The release workflow adapts hum's exact-commit main-push CI gate and worklease's
 archive naming. On a version-tag push it waits for that commit's `ci.yaml`
 run to succeed, builds/checks archives, then creates a GitHub Release with
-generated notes, all four archives and checksums. Actions are SHA-pinned;
+git-cliff release notes, all four archives, checksums, and a full `CHANGELOG.md`
+asset generated at the tagged commit. Actions are SHA-pinned;
 only the publishing job has contents write permission. Existing releases
 are never overwritten. There are no tap updates, changelog commits, or pushes.
+
+### Changelog
+
+`cliff.toml` groups Conventional Commits into Added, Fixed, Performance, Changed,
+Documentation, and Reverted sections. Stable `vX.Y.Z` tags delimit releases.
+Run `task changelog` to refresh the checked-in `CHANGELOG.md` snapshot; do not
+edit generated entries by hand. Commit the snapshot when refreshing it.
+The release workflow regenerates the full changelog from Git history, so the
+published asset does not depend on that snapshot being current. Each release's
+body contains only its own changes (`git-cliff --current --strip header`).
+See [GitHub Releases](https://github.com/brettinternet/tell/releases) for the
+latest generated changelog and release notes.
 
 After publication, a four-runner matrix installs latest using the plain mise
 GitHub backend in fresh cache/config/data/state directories and checks the
