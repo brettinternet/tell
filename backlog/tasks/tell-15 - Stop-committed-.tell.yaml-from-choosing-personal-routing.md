@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@brett'
 created_date: '2026-10-16 23:19'
-updated_date: '2026-10-17 00:29'
-labels: []
+updated_date: '2026-10-17 01:49'
+labels:
+  - reviewed
 dependencies:
   - TELL-7
 references:
@@ -48,6 +49,16 @@ Implemented option (a): removed implicit .tell.yaml loading/project discovery an
 
 Delivery: implementation commit 5094d2e merged into main after rebasing over an unrelated backlog-only commit. task check:staged passed before implementation commit. Owned worktree and branch fix/tell-15-personal-routing removed via Worktrunk; no remaining blocker or resumable implementation step.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @pi
+created: 2026-10-17 01:49
+---
+Review: no defects. Implicit .tell.yaml loading and init --local are removed; shared tell.yaml still rejects all personal routing/policy keys; explicit --config/TELL_CONFIG remains trusted. Smoke test covers a committed .tell.yaml in a Git checkout. config/cli tests pass.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 

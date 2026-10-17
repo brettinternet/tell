@@ -4,8 +4,9 @@ title: Explain not-sent reasons with fixes in human output
 status: Done
 assignee: []
 created_date: '2026-10-16 23:24'
-updated_date: '2026-10-17 01:18'
-labels: []
+updated_date: '2026-10-17 01:49'
+labels:
+  - reviewed
 dependencies: []
 documentation:
   - docs/design.md
@@ -59,6 +60,16 @@ Implemented CLI-only fixed human explanations, retaining delivery JSON values an
 
 Independent reviewer completed the one scoped review with no validated findings. Implementation commit aba0806 passed task check:staged and was fast-forward merged into main. Owned worktree and branch tell-17-human-reasons removed via Worktrunk; matching Herdr workspace closure verified. No remaining blockers or resumable work for this item.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @pi
+created: 2026-10-17 01:49
+---
+Review: ACs verified against built binary (send receipt plus worded reason, missing_route/target/session name setting+flag+env, doctor ready/not ready with explanations, JSON reasons unchanged). humanReason covers every reason doctor can emit. No defects. Unrelated note: TestSendOutcomes/*timeout (150ms budget) flaked 2/10 under high machine load.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 

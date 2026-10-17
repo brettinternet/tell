@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-16 23:23'
-updated_date: '2026-10-17 01:14'
-labels: []
+updated_date: '2026-10-17 01:49'
+labels:
+  - reviewed
 dependencies: []
 documentation:
   - docs/design.md
@@ -63,6 +64,16 @@ Implemented detailed parser messages with command help hints, consistent config 
 
 Final verification: independent reviewer found two reproduced disclosure regressions (boolean parser values repeating a message; credentials in unknown YAML keys). Both fixed centrally; TestForwardedErrorsPreservePrivacy covers notify/send human+JSON and all config consumers. Focused tests, LSP, and task ci passed after fixes and again after rebasing onto current main. task check:staged passed. Implementation commit 83bcf2c fast-forward merged into main. Verified session receipt and Worktrunk listing before removal; owned fix/usage-errors worktree and branch removed, Herdr workspace wEX disappearance verified. No retained task worktrees, blockers, or next implementation steps. Shell safety guard interruption was resolved before committing; no checks bypassed.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: @pi
+created: 2026-10-17 01:49
+---
+Review: ACs verified against built binary (unknown flag exit 2 + help hint, config errors identical across notify/send/doctor/config check, --timeout/TELL_TIMEOUT/file:line origins, rejected --type/--intent values, notfy suggestion). Low-severity follow-ups, not fixed: (1) urfave reports --tittle as '-tittle'; (2) usageValue compares only individual args, so since TELL-20 a rejected --type/--intent equal to a joined multi-word body is echoed; (3) subcommand stray args (tell config bogus) hint 'tell --help' instead of the subcommand help; (4) 'did you mean "notify"?; run tell --help' punctuation.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 
