@@ -45,6 +45,13 @@ func doctor(ctx context.Context, cmd *urfave.Command) error {
 		}
 		routes = append(routes, inbound)
 	}
+	if cfg.Listen.GitHub != nil {
+		inbound := delivery.Readiness{Route: "listen/github", Ready: os.Getenv(cfg.GitHubSecretEnv()) != "", Reason: "local_config_only"}
+		if !inbound.Ready {
+			inbound.Reason = "missing_listener_credential"
+		}
+		routes = append(routes, inbound)
+	}
 	return &doctorReport{SchemaVersion: 1, Selected: cfg.Notify.Via, SelectedSend: selectedSend, Ready: ready, Routes: routes}
 }
 
@@ -79,6 +86,9 @@ func humanReason(route, reason, fallback string) string {
 	}
 	switch reason {
 	case "missing_listener_credential":
+		if route == "listen/github" {
+			return "set the configured listen.github.secret_env variable; readiness is local only, not authentication"
+		}
 		return "set the configured listen.slack.app_token_env variable; readiness is local only, not authentication"
 	case "missing_command":
 		return "set notify.command to an executable and arguments in personal config"
@@ -125,7 +135,7 @@ func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut i
 				selected = " (selected)"
 			}
 			count := ""
-			if route.Route == "listen/slack" {
+			if strings.HasPrefix(route.Route, "listen/") {
 				count = "; local configuration only, not authentication"
 			}
 			if route.Services != nil {

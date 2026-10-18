@@ -53,8 +53,8 @@ func TestListenPreviewAndDispatchIsolation(t *testing.T) {
 		var reportsMu sync.Mutex
 		root := NewRootCommand(config.BuildOpts{}, &out, &diag)
 		root.Command("listen").Action = func(ctx context.Context, cmd *urfave.Command) error {
-			return runListen(ctx, cmd, func(_ context.Context, opts listen.SlackOptions) error {
-				if opts.Token != "fixture-token" || opts.Timeout <= 0 {
+			return runListen(ctx, cmd, func(_ context.Context, opts listen.CaptureOptions) error {
+				if len(opts.Sources) != 1 || opts.Sources[0].Token != "fixture-token" || opts.Sources[0].Timeout <= 0 {
 					t.Error("selected listener options are wrong")
 				}
 				if cmd.Bool("print") {
@@ -67,12 +67,14 @@ func TestListenPreviewAndDispatchIsolation(t *testing.T) {
 					t.Fatal("dispatch/preview did not install a handler")
 				}
 				reported := make(chan struct{})
-				var reportOnce sync.Once
 				opts.OnEvent(event, func(route, outcome, reason string) {
 					reportsMu.Lock()
 					reports = append(reports, [3]string{route, outcome, reason})
+					complete := len(reports) == 3
 					reportsMu.Unlock()
-					reportOnce.Do(func() { close(reported) })
+					if complete {
+						close(reported)
+					}
 				}, io.Discard)
 				if opts.OnStop != nil {
 					<-reported
@@ -141,7 +143,7 @@ func TestListenDryRunHonorsContextCancellation(t *testing.T) {
 	root := NewRootCommand(config.BuildOpts{}, &out, &diag)
 	var result [3]string
 	root.Command("listen").Action = func(ctx context.Context, cmd *urfave.Command) error {
-		return runListen(ctx, cmd, func(_ context.Context, opts listen.SlackOptions) error {
+		return runListen(ctx, cmd, func(_ context.Context, opts listen.CaptureOptions) error {
 			opts.OnEvent(listen.Envelope{Source: "slack", Type: "event", ID: "Ev1"}, func(route, outcome, reason string) {
 				result = [3]string{route, outcome, reason}
 			}, io.Discard)
@@ -199,7 +201,7 @@ func TestSecondSignalCancelsRunningAction(t *testing.T) {
 	root := NewRootCommand(config.BuildOpts{}, &out, &diag)
 	results := make(chan [3]string, 1)
 	root.Command("listen").Action = func(ctx context.Context, cmd *urfave.Command) error {
-		return runListen(ctx, cmd, func(ctx context.Context, opts listen.SlackOptions) error {
+		return runListen(ctx, cmd, func(ctx context.Context, opts listen.CaptureOptions) error {
 			if opts.OnEvent == nil {
 				t.Fatal("dispatch handler is missing")
 			}
@@ -253,7 +255,7 @@ func TestListenCLISelection(t *testing.T) {
 		code int
 	}{
 		{[]string{"listen"}, 0}, {[]string{"--json", "listen"}, 0}, {[]string{"config", "check"}, 0}, {[]string{"--json", "config"}, 0}, {[]string{"doctor"}, 0},
-		{[]string{"listen", "--print"}, 2}, {[]string{"listen", "slack", "slack"}, 2}, {[]string{"listen", "github"}, 2},
+		{[]string{"listen", "--print"}, 2}, {[]string{"listen", "slack", "slack"}, 2}, {[]string{"listen", "github"}, 1},
 		{[]string{"listen", "--all", "slack"}, 2}, {[]string{"--json", "listen", "--print", "slack"}, 2}, {[]string{"listen", "--dry-run", "slack"}, 1}, {[]string{"listen", "--print", "--dry-run", "slack"}, 2},
 		{[]string{"listen", "slack"}, 1}, {[]string{"listen", "--print", "slack"}, 1}, {[]string{"listen", "--all", "--print"}, 1},
 	} {
@@ -269,9 +271,9 @@ func TestListenCLISelection(t *testing.T) {
 		called := false
 		root := NewRootCommand(config.BuildOpts{}, &out, &diag)
 		root.Command("listen").Action = func(ctx context.Context, cmd *urfave.Command) error {
-			return runListen(ctx, cmd, func(_ context.Context, opts listen.SlackOptions) error {
+			return runListen(ctx, cmd, func(_ context.Context, opts listen.CaptureOptions) error {
 				called = true
-				if opts.Token != "sentinel-private-app-credential" || opts.Timeout <= 0 {
+				if len(opts.Sources) != 1 || opts.Sources[0].Token != "sentinel-private-app-credential" || opts.Sources[0].Timeout <= 0 {
 					t.Error("wrong selected options")
 				}
 				return nil
@@ -288,7 +290,7 @@ func TestListenCLISelection(t *testing.T) {
 	var out, diag bytes.Buffer
 	root := NewRootCommand(config.BuildOpts{}, &out, &diag)
 	root.Command("listen").Action = func(ctx context.Context, cmd *urfave.Command) error {
-		return runListen(ctx, cmd, func(context.Context, listen.SlackOptions) error { return errors.New("listener output failed") })
+		return runListen(ctx, cmd, func(context.Context, listen.CaptureOptions) error { return errors.New("listener output failed") })
 	}
 	if err := root.Run(context.Background(), []string{"tell", "--config", file, "listen", "--print", "slack"}); err == nil {
 		t.Fatal("swallowed output error")

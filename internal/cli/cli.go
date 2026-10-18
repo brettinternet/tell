@@ -342,6 +342,9 @@ func showConfig(_ context.Context, cmd *urfave.Command) error {
 		if cfg.Listen.Slack != nil {
 			fmt.Fprintf(cmd.Writer, "Listen: slack (inspect with tell listen)\n")
 		}
+		if cfg.Listen.GitHub != nil {
+			fmt.Fprintf(cmd.Writer, "Listen: github (inspect with tell listen)\n")
+		}
 		fmt.Fprintf(cmd.Writer, "\n%s tell notify \"hello\" · tell doctor · tell init · tell --help\n", style.bold("Next:"))
 		return nil
 	}

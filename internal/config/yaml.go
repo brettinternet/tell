@@ -17,6 +17,7 @@ type fileValue struct {
 	key, text string
 	argv      []string
 	routes    []Route
+	repoIDs   []int64
 	line      int
 }
 
@@ -71,7 +72,7 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!int" || value.Value != "1" {
 				return fmt.Errorf("line %d: version must be 1", value.Line)
 			}
-		case "listen", "listen.slack":
+		case "listen", "listen.slack", "listen.github", "listen.http":
 			*values = append(*values, fileValue{key: name, text: "configured", line: value.Line})
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
@@ -82,6 +83,12 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return err
 			}
 			*values = append(*values, fileValue{key: name, routes: routes, line: value.Line})
+		case "listen.github.repository_ids":
+			repositoryIDs, err := parseRepositoryIDs(value)
+			if err != nil {
+				return err
+			}
+			*values = append(*values, fileValue{key: name, repoIDs: repositoryIDs, line: value.Line})
 		case "notify", "apprise", "herdr", "send", "secrets", "mcp":
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
@@ -101,7 +108,7 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return fmt.Errorf("line %d: notify.command executable must not be empty", value.Line)
 			}
 			*values = append(*values, fileValue{key: name, argv: argv, line: value.Line})
-		case "listen.slack.app_token_env", "secrets.policy", "timeout", "notify.via", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "send.via", "send.to", "send.from":
+		case "listen.slack.app_token_env", "listen.github.secret_env", "listen.http.addr", "secrets.policy", "timeout", "notify.via", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "send.via", "send.to", "send.from":
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 				return fmt.Errorf("line %d: %s must be a string", value.Line, name)
 			}
@@ -125,7 +132,28 @@ func prefixName(prefix string) string {
 	return prefix[:len(prefix)-1]
 }
 
+func parseRepositoryIDs(node *yaml.Node) ([]int64, error) {
+	if node.Kind != yaml.SequenceNode || node.Tag != "!!seq" || node.Anchor != "" || len(node.Content) == 0 {
+		return nil, fmt.Errorf("line %d: listen.github.repository_ids must be a non-empty list of positive integers", node.Line)
+	}
+	ids := make([]int64, 0, len(node.Content))
+	seen := make(map[int64]bool, len(node.Content))
+	for _, item := range node.Content {
+		if item.Kind != yaml.ScalarNode || item.Tag != "!!int" || item.Anchor != "" || !positiveDecimal.MatchString(item.Value) {
+			return nil, fmt.Errorf("line %d: listen.github.repository_ids must contain positive decimal integers", item.Line)
+		}
+		id, err := strconv.ParseInt(item.Value, 10, 64)
+		if err != nil || id <= 0 || seen[id] {
+			return nil, fmt.Errorf("line %d: listen.github.repository_ids must contain unique positive integers", item.Line)
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
 var yamlJSONNumber = regexp.MustCompile(`^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
+var positiveDecimal = regexp.MustCompile(`^[0-9]+$`)
 
 func parseRoutes(node *yaml.Node) ([]Route, error) {
 	if node.Kind != yaml.SequenceNode || node.Tag != "!!seq" || node.Anchor != "" {

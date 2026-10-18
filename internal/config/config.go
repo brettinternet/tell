@@ -60,11 +60,22 @@ type Send struct {
 
 type Listen struct {
 	Slack  *Slack  `json:"slack,omitempty"`
+	GitHub *GitHub `json:"github,omitempty"`
+	HTTP   *HTTP   `json:"http,omitempty"`
 	Routes []Route `json:"-"`
 }
 type Slack struct {
 	AppTokenEnv string `json:"app_token_env"`
 }
+type GitHub struct {
+	SecretEnv     string  `json:"secret_env"`
+	RepositoryIDs []int64 `json:"repository_ids"`
+}
+type HTTP struct {
+	Addr string `json:"addr"`
+}
+
+const defaultListenHTTPAddr = "127.0.0.1:8787"
 
 type Route struct {
 	Name   string               `json:"-"`
@@ -106,6 +117,7 @@ type Predicate struct {
 
 var environmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var routeName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+var githubEventName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,127}$`)
 var matchPath = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$`)
 var jsonNumber = regexp.MustCompile(`^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
 
@@ -119,8 +131,11 @@ func validateRouteSyntax(routes []Route) error {
 			return errors.New("listen.routes names must be unique")
 		}
 		names[route.Name] = true
-		if route.Source != "slack" || route.Type == "" || len(route.Type) > 128 || strings.ContainsFunc(route.Type, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
-			return errors.New("listen.routes source must be slack and type must be a nonempty safe value")
+		if (route.Source != "slack" && route.Source != "github") || route.Type == "" || len(route.Type) > 128 || strings.ContainsFunc(route.Type, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+			return errors.New("listen.routes source must be slack or github and type must be a nonempty safe value")
+		}
+		if route.Source == "github" && !githubEventName.MatchString(route.Type) {
+			return errors.New("listen.routes GitHub type must match [a-z][a-z0-9_]{0,127}")
 		}
 		actions := 0
 		if len(route.Run) > 0 {
@@ -226,6 +241,10 @@ func validateRoutes(cfg Config) error {
 		case "slack":
 			if cfg.Listen.Slack == nil {
 				return errors.New("listen.routes reference slack, but listen.slack is not configured")
+			}
+		case "github":
+			if cfg.Listen.GitHub == nil {
+				return errors.New("listen.routes reference github, but listen.github is not configured")
 			}
 		default:
 			return errors.New("listen.routes reference an unconfigured source")
@@ -333,6 +352,25 @@ func Load(input Input) (Config, error) {
 	if cfg.Listen.Slack != nil && cfg.Listen.Slack.AppTokenEnv == "" {
 		return Config{}, errors.New("listen.slack.app_token_env is required")
 	}
+	if cfg.Listen.GitHub != nil {
+		if cfg.Listen.GitHub.SecretEnv == "" {
+			return Config{}, errors.New("listen.github.secret_env is required")
+		}
+		if len(cfg.Listen.GitHub.RepositoryIDs) == 0 {
+			return Config{}, errors.New("listen.github.repository_ids must contain at least one positive integer")
+		}
+		if cfg.Listen.HTTP == nil {
+			cfg.Listen.HTTP = &HTTP{Addr: defaultListenHTTPAddr}
+		}
+	}
+	if cfg.Listen.HTTP != nil {
+		if cfg.Listen.HTTP.Addr == "" {
+			cfg.Listen.HTTP.Addr = defaultListenHTTPAddr
+		}
+		if err := validateListenHTTPAddr(cfg.Listen.HTTP.Addr); err != nil {
+			return Config{}, err
+		}
+	}
 	if err := validateRoutes(listenerCfg); err != nil {
 		return Config{}, err
 	}
@@ -350,9 +388,12 @@ func (cfg Config) Values() map[string]string {
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
 		"send.via": cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
-		"mcp.agent_targets":          fmt.Sprint(cfg.MCP.AgentTargets),
-		"listen.slack.app_token_env": cfg.SlackTokenEnv(),
-		"listen.routes":              strconv.Itoa(len(cfg.Listen.Routes)),
+		"mcp.agent_targets":            fmt.Sprint(cfg.MCP.AgentTargets),
+		"listen.slack.app_token_env":   cfg.SlackTokenEnv(),
+		"listen.github.secret_env":     cfg.GitHubSecretEnv(),
+		"listen.github.repository_ids": repositoryIDs(cfg.Listen.GitHub),
+		"listen.http.addr":             cfg.HTTPAddr(),
+		"listen.routes":                strconv.Itoa(len(cfg.Listen.Routes)),
 	}
 }
 
@@ -371,6 +412,30 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		if cfg.Listen.Slack == nil {
 			cfg.Listen.Slack = &Slack{}
 		}
+	case "listen.github":
+		if cfg.Listen.GitHub == nil {
+			cfg.Listen.GitHub = &GitHub{}
+		}
+	case "listen.github.secret_env":
+		if !environmentName.MatchString(value) {
+			return errors.New("listen.github.secret_env must be an environment variable name")
+		}
+		if cfg.Listen.GitHub == nil {
+			cfg.Listen.GitHub = &GitHub{}
+		}
+		cfg.Listen.GitHub.SecretEnv = value
+	case "listen.http":
+		if cfg.Listen.HTTP == nil {
+			cfg.Listen.HTTP = &HTTP{Addr: defaultListenHTTPAddr}
+		}
+	case "listen.http.addr":
+		if err := validateListenHTTPAddr(value); err != nil {
+			return err
+		}
+		if cfg.Listen.HTTP == nil {
+			cfg.Listen.HTTP = &HTTP{Addr: defaultListenHTTPAddr}
+		}
+		cfg.Listen.HTTP.Addr = value
 	case "listen.slack.app_token_env":
 		if !environmentName.MatchString(value) {
 			return errors.New("listen.slack.app_token_env must be an environment variable name")
@@ -492,6 +557,14 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 		}
 		if value.key == "listen.routes" {
 			cfg.Listen.Routes = append([]Route{}, value.routes...)
+			cfg.Origins[value.key] = path
+			continue
+		}
+		if value.key == "listen.github.repository_ids" {
+			if cfg.Listen.GitHub == nil {
+				cfg.Listen.GitHub = &GitHub{}
+			}
+			cfg.Listen.GitHub.RepositoryIDs = append([]int64{}, value.repoIDs...)
 			cfg.Origins[value.key] = path
 			continue
 		}

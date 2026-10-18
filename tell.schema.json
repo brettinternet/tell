@@ -64,7 +64,7 @@
       }
     },
     "listen": {
-      "description": "Personal-only inbound configuration. Slack capture supports literal run argv and native notify/send actions with single-pass scalar envelope templates. Route lists replace whole lists.",
+      "description": "Personal-only inbound configuration. Slack Socket Mode and signed GitHub repository webhooks support literal run argv and native notify/send actions with single-pass scalar envelope templates. Route lists replace whole lists.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -80,6 +80,37 @@
             }
           }
         },
+        "github": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["secret_env", "repository_ids"],
+          "properties": {
+            "secret_env": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "description": "Environment variable name holding the dedicated repository-webhook secret, never the secret itself. Removed from every Tell child environment."
+            },
+            "repository_ids": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
+              "description": "Positive GitHub repository.id allowlist checked against each signed webhook body."
+            }
+          }
+        },
+        "http": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "addr": {
+              "type": "string",
+              "pattern": "^(?:127(?:\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}|\\[::1\\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",
+              "default": "127.0.0.1:8787",
+              "description": "Literal IPv4/IPv6 loopback address and port only; never a wildcard, LAN address, or DNS name."
+            }
+          }
+        },
         "routes": {
           "type": "array",
           "description": "Whole-list replacement. Matching routes run literal argv commands; Tell bounds execution and discards child output.",
@@ -89,7 +120,7 @@
             "required": ["name", "source", "type"],
             "properties": {
               "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
-              "source": { "const": "slack" },
+              "source": { "enum": ["slack", "github"] },
               "type": { "allOf": [{ "$ref": "#/definitions/nonBlankString" }], "maxLength": 128 },
               "match": {
                 "type": "object",

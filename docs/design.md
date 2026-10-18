@@ -1,8 +1,8 @@
 # Design
 
 This page describes implemented behavior. Tell supports explicit foreground
-Slack capture, personal route matching and bounded local command, native notify,
-and inform-only send actions. GitHub webhooks remain planned in TELL-29. See the
+Slack capture and signed GitHub repository webhooks, personal route matching and
+bounded local command, native notify, and inform-only send actions. See the
 [integration contract](listening.md). Scheduling and durable execution remain
 outside Tell.
 
@@ -14,9 +14,9 @@ person / script / scheduler hook / MCP client
          tell  (outbound one-shot; explicit foreground capture; MCP client-owned session)
           ├── notify → stderr | desktop | Herdr | Apprise → services | your command
           ├── send   → hcom mailbox | idle Herdr agent pane
-          ├── listen slack → matched bounded local/native actions
-          ├── listen --dry-run slack → body-free match/preparation receipts
-          ├── listen --print slack → sensitive NDJSON (no matching/actions)
+          ├── listen slack/github → matched bounded local/native actions
+          ├── listen --dry-run SOURCE → body-free match/preparation receipts
+          ├── listen --print SOURCE → sensitive NDJSON (no matching/actions)
           └── mcp    → client-owned stdio process: notify | send | doctor
 ```
 
@@ -91,21 +91,52 @@ failures do not stop siblings. Matches are admitted in config order, not
 guaranteed start or side-effect order. Duplicate source/ID events cannot replay
 successful siblings.
 
-Acks precede payload validation/admission and never wait for a command. A 64-event
-ingress buffer atomically reserves source/ID only on admission; dedup lasts 10
-minutes, bounded to 10,000 oldest-first entries. Frames/envelopes are limited to
+Slack transport acknowledgments precede payload validation/admission and never
+wait for a command. A shared 64-event ingress buffer atomically reserves
+source/ID only on admission; dedup lasts 10 minutes, bounded to 10,000
+oldest-first entries. Slack frames and all encoded envelopes are limited to
 1 MiB/256 KiB; duplicate JSON keys and invalid metadata fail closed. Print
 removes the legacy payload token, but is otherwise sensitive data export, not
 arbitrary secret redaction. Diagnostic buffering is capped at 64 receipts; each
 output write has a 5-second stall budget. Failed/stalled output stops the
 listener, never accumulates unbounded writers or retries an action.
 
-Run one listener per Slack app. Acknowledgments are transient receipt, not
-durability; restart, buffer overflow, sleep, or action overflow can lose work.
-The first SIGINT/SIGTERM stops sources, drops queued work, and drains running
-actions within their per-action deadlines; the second cancels running actions
-as uncertain. Graceful stop exits 0; fatal source/output errors exit 1. Setup
-and limits are also in [the README](../README.md#slack-event-capture).
+Run one listener per Slack app. Slack acknowledgments are transport receipt,
+not durability; restart, buffer overflow, sleep, or action overflow can lose
+work. The first SIGINT/SIGTERM stops all selected sources, drops queued work,
+and drains running actions within their per-action deadlines; the second cancels
+running actions as uncertain. Graceful stop exits 0; fatal source/output errors
+exit 1. Setup and limits are also in the [README](../README.md#slack-event-capture).
+
+## GitHub repository webhook capture
+
+Explicit `tell listen github` binds the configured literal loopback address and
+fixed `/github` path; inspection and Slack-only runs never bind it. The source
+accepts only bounded JSON POST bodies with one each of the GitHub event, delivery,
+and SHA-256 signature headers. It validates HMAC over the exact raw bytes in
+constant time before parsing, checks the body repository ID against the personal
+allowlist, rejects duplicate JSON keys, and never copies headers or signatures
+into the common event envelope. A verified `ping` returns 204 without routing.
+
+GitHub signs the body, not delivery/event headers or a timestamp. Tell therefore
+uses both `(github, delivery ID)` and SHA-256 raw-body deduplication for 10
+minutes in the same bounded admission cache. Identical bodies can collapse
+separate deliveries; old valid requests can replay after expiry, eviction, or
+restart. `received_at` is local receipt time, not freshness proof. A tunnel is
+transport only; repository allowlists and signed payload validation are the
+authorization boundary. GitHub does not automatically redeliver failed
+webhook deliveries.
+
+A verified admitted event returns 202 before matching or action execution; an
+admitted duplicate returns 200, a verified ping 204, and full ingress or
+shutdown 503, and oversized headers 431. These statuses mean receipt in
+memory, not action success or persistence. Responses are body-free and never
+expose provider errors. The listener has a 16 KiB request-header cap, five-second read/write deadlines,
+30-second idle limit, at most 16 concurrent body readers, and shared bounded
+64-event ingress/action queues. Use a dedicated secret, explicit repository IDs,
+and a separately managed Cloudflare Tunnel with only `/github` forwarded.
+Tell does not install, authenticate, or manage cloudflared. Configuration and
+a copyable tunnel recipe are in the [README](../README.md#github-repository-webhooks).
 
 ## MCP
 

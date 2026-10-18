@@ -1,9 +1,9 @@
 # Local event integrations
 
-**Implemented:** Slack inspection, explicit `--print` capture, personal `run`,
-`notify`, and `send` routes with body-free `--dry-run` validation (TELL-26/27/28),
-bounded ingress/dedup/action queues, and connection recovery. **Planned:** GitHub
-webhooks (TELL-29). This refines decision-1; outbound commands retain their behavior.
+**Implemented:** Slack Socket Mode and signed GitHub repository webhooks, safe
+inspection, personal `run`, `notify`, and `send` routes with body-free `--dry-run`
+validation, bounded ingress/dedup/action queues, and Slack connection recovery
+(TELL-26/27/28/29). This refines decision-1; outbound commands retain their behavior.
 
 Tell is a local integrations layer: receive external events, match personal
 rules, and notify a person, inform an agent, or invoke a bounded local command.
@@ -19,17 +19,20 @@ Connection recovery is allowed; action retries and durable replay are not.
 | `tell listen` | Inspect configured sources and route names; exit without network, binding sockets, reading stdin, or running actions |
 | `tell --json listen` | The same inspection as one body-free JSON object with `schema_version: 1` |
 | `tell listen slack` | Start the foreground Slack listener and dispatch matching personal route actions |
-| `tell listen github` (planned) | Start only GitHub's loopback HTTP source |
-| `tell listen slack github` (planned) | Start those sources in one foreground process |
-| `tell listen --print --all` | Explicitly capture every configured source (currently Slack only) |
-| `tell listen --print slack` | Receive and acknowledge events; print NDJSON envelopes, but never run actions |
-| `tell listen --dry-run slack` | Receive and acknowledge events; validate matching templates/preparation without dispatch or payload output |
+| `tell listen github` | Start only GitHub's loopback HTTP source and dispatch matching personal route actions |
+| `tell listen slack github` | Start both selected sources in one foreground process |
+| `tell listen --print --all` | Explicitly capture every configured source |
+| `tell listen --print github` | Receive and acknowledge GitHub events; print NDJSON envelopes, but never run actions |
+| `tell listen --dry-run github` | Receive and acknowledge GitHub events; validate matching templates/preparation without dispatch or payload output |
+| `tell listen --print slack` | Receive and acknowledge Slack events; print NDJSON envelopes, but never run actions |
+| `tell listen --dry-run slack` | Receive and acknowledge Slack events; validate matching templates/preparation without dispatch or payload output |
 
 `--all`, `--print`, and `--dry-run` are listen-only flags, with no short aliases.
 Require source names or `--all` for either preview mode: `tell listen --print`
 is a usage error, not an implicit start-all.
 `--all` cannot accompany source names; repeated/unknown names, conflicting modes,
-and `--json` on any live invocation are usage errors (exit 2). Live output is a
+and `--json` on any live invocation are usage errors (exit 2). Source names are
+`slack` and `github`; `--all` chooses only configured sources. Live output is a
 stream, not the existing single-result JSON API. `--print` is not a JSON flag
 alias: it explicitly releases sensitive event data. No `start`, `stop`, daemon,
 service-install, tunnel, or provider-credential flags.
@@ -58,18 +61,32 @@ exit codes and MCP tools are unchanged. No new MCP listener tool.
 ## Configuration and inspection
 
 All `listen` keys are personal-only. `listen.slack.app_token_env` selects the
-Slack credential variable; `listen.routes` is a whole-list replacement (an
-empty list disables inherited routes). Use user config, `.git/tell.yaml`, or an
-explicit `--config` file. Shared `tell.yaml` rejects them even if overridden.
+Slack credential variable. `listen.github.secret_env` selects one webhook secret
+and `listen.github.repository_ids` is its required positive repository-ID
+allowlist. `listen.http.addr` defaults to `127.0.0.1:8787`; it accepts literal
+IPv4/IPv6 loopback IPs and a valid port only. `listen.routes` is a whole-list
+replacement (an empty list disables inherited routes). Use user config,
+`.git/tell.yaml`, or an explicit `--config` file. Shared `tell.yaml` rejects
+them even if overridden.
 Keep the existing strict YAML rules and source origins.
 
 ```yaml
 # Personal config; run commands are trusted local executables.
 version: 1
 listen:
+  github:
+    secret_env: TELL_GITHUB_WEBHOOK_SECRET
+    repository_ids: [123456789]
+  http:
+    addr: 127.0.0.1:8787
   slack:
     app_token_env: TELL_SLACK_APP_TOKEN
   routes:
+    - name: opened-pr
+      source: github
+      type: pull_request
+      match: {action: opened}
+      run: [/Users/me/.local/bin/handle-pr-event]
     - name: incident-kickoff
       source: slack
       type: channel_created
@@ -255,10 +272,10 @@ without dispatch or destination probes and reports only body-free outcomes; it
 never shows rendered previews. All action kinds share capacity, timeout,
 shutdown, credential stripping, and no-retry behavior.
 
-## Planned: GitHub webhooks through cloudflared — TELL-29
+## GitHub webhooks through cloudflared — TELL-29
 
-Promote with the user's concrete scope: GitHub **repository** webhooks through a
-separately managed Cloudflare Tunnel. One `listen.http.addr` (default
+GitHub **repository** webhooks use a separately managed Cloudflare Tunnel. One
+`listen.http.addr` (default
 `127.0.0.1:8787`) serves the fixed `/github` path only when GitHub is selected.
 Require a literal loopback IP and port 1–65535 (IPv4 or IPv6); refuse wildcard,
 LAN/public addresses and DNS names. No insecure override or per-source ports.
@@ -282,8 +299,9 @@ Headers/signatures are not copied into `data`. `ping` is verified and acknowledg
 with 204 but never dispatched; other valid event types use normal matching.
 
 Responses are fixed and body-free: 404 wrong path; 405 wrong method; 415 wrong
-content type/encoding; 413 raw/envelope size exceeded; 401 missing/bad signature;
-400 malformed/ambiguous metadata or JSON; 403 disallowed repository; 503 full
+content type/encoding; 413 raw/envelope size exceeded; 431 oversized headers;
+401 missing/bad signature; 400 malformed/ambiguous metadata or JSON; 403
+disallowed repository; 503 full
 ingress/shutdown. An admitted event returns 202 immediately, an already admitted
 duplicate 200. No non-2xx response reserves an identity. 2xx means verified and
 received in memory (or duplicate/ping), **not** action success or durable storage;
@@ -306,13 +324,25 @@ Use dedicated webhook secrets and repository allowlists. A tunnel is transport,
 not authorization. GitHub does not automatically redeliver failed deliveries;
 manual redelivery/reconciliation belongs outside Tell.
 
-The setup recipe uses a named Cloudflare Tunnel with a stable public HTTPS
-hostname mapped to `http://127.0.0.1:8787`, with only `/github` forwarded and a
-catch-all 404. Configure the repository webhook URL as
-`https://hooks.example.com/github`, JSON content type, TLS verification enabled,
-and the same secret. cloudflared must preserve raw bodies and signature headers;
-no transforming Worker or interactive Access login on this machine-to-machine
-path. Keep Cloudflare credentials/configuration with cloudflared. Tell never
+A named Cloudflare Tunnel uses a stable public HTTPS hostname. Keep this
+configuration and its credential file with cloudflared, not Tell:
+
+```yaml
+# cloudflared config.yaml
+tunnel: <TUNNEL-UUID>
+credentials-file: /Users/me/.cloudflared/<TUNNEL-UUID>.json
+ingress:
+  - hostname: hooks.example.com
+    path: ^/github$
+    service: http://127.0.0.1:8787
+  - service: http_status:404
+```
+
+Configure the GitHub **repository** webhook URL as
+`https://hooks.example.com/github`, choose JSON content type, enable TLS
+verification, and use the same dedicated secret as `listen.github.secret_env`.
+cloudflared must preserve raw bodies and signature headers; use no transforming
+Worker or interactive Access login on this machine-to-machine path. Tell never
 starts, installs, authenticates, or configures a tunnel. Live setup is optional
 manual verification; automated tests use local HTTP requests only.
 
@@ -328,9 +358,8 @@ Provider contracts checked during refinement against:
   and [redelivery](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks).
 - [Cloudflare published applications](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/).
 
-Implement Slack/envelope first, then command routing. Native actions and GitHub
-are independent after routing; neither needs the other. Each task updates help,
-completion, strict parsing, both editor schemas, safe inspection, and docs for
-only the capabilities it ships. Verify with local protocol/provider fixtures,
-focused Go tests, and `task ci`. Never claim a planned command works in current
-README examples or enable it in current schemas before implementation.
+Verification uses local provider/protocol fixtures, focused Go tests, race
+tests for listener admission and shutdown, and `task ci`. Live Cloudflare Tunnel
+setup is user-managed and optional; automated tests never contact GitHub or
+Cloudflare. Help, completion, strict parsing, both editor schemas, safe
+inspection, and docs describe only implemented listener behavior.

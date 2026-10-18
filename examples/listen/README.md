@@ -39,6 +39,68 @@ commands run concurrently and 64 can wait. This does not order command starts or
 side effects. Keep commands short and use `exec` in wrappers; Tell has no
 persistent queue, action retry, or completion history.
 
+## GitHub repository webhook
+
+Configure the dedicated webhook secret's environment variable name and the
+allowed repository IDs in personal config. Use the repository's numeric
+`repository.id`, not its owner/name:
+
+```yaml
+listen:
+  github:
+    secret_env: TELL_GITHUB_WEBHOOK_SECRET
+    repository_ids: [123456789]
+  http:
+    addr: 127.0.0.1:8787
+  routes:
+    - name: opened-pr
+      source: github
+      type: pull_request
+      match: {action: opened}
+      run: [/Users/me/.local/bin/handle-pr-event]
+```
+
+Set `TELL_GITHUB_WEBHOOK_SECRET` securely in the listener's environment; never
+put its value in YAML. In GitHub repository **Settings → Webhooks**, register
+`https://hooks.example.com/github`, choose `application/json`, enable TLS
+verification, use the same secret, and select only needed repository events.
+
+Create a named tunnel separately. Keep Cloudflare credentials with cloudflared
+and route only the fixed path to Tell's loopback listener:
+
+```sh
+cloudflared tunnel create tell-github-hooks
+cloudflared tunnel route dns tell-github-hooks hooks.example.com
+```
+
+```yaml
+# cloudflared config.yaml
+tunnel: <TUNNEL-UUID>
+credentials-file: /Users/me/.cloudflared/<TUNNEL-UUID>.json
+ingress:
+  - hostname: hooks.example.com
+    path: ^/github$
+    service: http://127.0.0.1:8787
+  - service: http_status:404
+```
+
+Run `cloudflared tunnel run tell-github-hooks` separately from
+`tell listen github`. Do not put an interactive Access challenge or transforming Worker on
+this machine-to-machine route; cloudflared must preserve the raw request body
+and signature header. Tell never creates, configures, authenticates, or manages
+the tunnel. `tell listen` remains offline. `tell doctor` does not bind or probe
+this inbound source, but keeps its existing outbound readiness probes. Only
+explicit `tell listen github` binds.
+
+GitHub signs the body, not event/delivery headers or a timestamp. Tell checks
+the body repository ID and verifies SHA-256 HMAC before parsing or matching.
+A 202 response means in-memory admission, not action success or durable storage;
+a 204 ping is never routed, and a 200 is a duplicate. Deduplication by delivery
+ID and raw-body digest is bounded to 10 minutes and does not prove freshness;
+old valid payloads can replay after expiry, eviction, or restart. GitHub does
+not automatically redeliver failed deliveries. Reconcile important provider
+state outside Tell. See [the exact contract](../../docs/listening.md#github-webhooks-through-cloudflared--tell-29).
+
 ## Native notification and agent actions
 
 A route can notify a person, inform one configured agent, or invoke a trusted

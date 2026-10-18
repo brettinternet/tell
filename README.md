@@ -13,8 +13,8 @@ Tell is a CLI for terminals, scripts, and scheduler hooks. Your scheduler
 (cron, launchd, CI, Noon) owns schedules, retries, and history. Your scripts
 decide what is worth saying. Tell routes one message and reports what happened.
 Outbound delivery has no retries. Tell has no installed daemon, durable queue,
-or database. Explicit foreground Slack listeners own bounded in-memory ingress,
-deduplication, action slots, and connection recovery; local command actions never
+or database. Explicit foreground Slack/GitHub listeners own bounded in-memory
+ingress, duplicate suppression, and action slots; local command actions never
 retry and do not create durable work.
 
 ## Slack event capture
@@ -34,12 +34,14 @@ listen:
 Set that variable securely in your shell, then select an explicit foreground mode:
 
 ```sh
-tell listen                    # inspect only; no connections
+tell listen                    # inspect only; no connections or binds
 tell --json listen             # one safe snapshot
 tell listen --dry-run slack    # body-free render/preparation checks, no delivery
-tell listen slack              # dispatch matching configured actions
-tell listen --print slack      # sensitive NDJSON export, no matching/actions
-tell listen --print --all      # every configured source (currently Slack only)
+tell listen slack              # dispatch matching Slack actions
+tell listen github             # dispatch signed GitHub repository webhooks
+tell listen slack github       # start both selected sources
+tell listen --print github     # explicit sensitive NDJSON export, no actions
+tell listen --print --all      # every configured source
 ```
 
 Configure a personal route with one literal argv action:
@@ -89,9 +91,66 @@ drops queued work; a second cancels running actions as uncertain. Fatal source/
 output errors exit 1. Bare commands, config checks, and inbound doctor readiness
 never connect.
 
-GitHub webhooks remain **planned** in TELL-29.
-Dispatch without routes for a selected source fails before connecting. See the
-[implemented capture and route contract](docs/listening.md).
+## GitHub repository webhooks
+
+Tell accepts signed GitHub **repository** webhooks at `POST /github` on a
+literal loopback listener. Configure the dedicated secret's environment
+variable name and an explicit repository ID allowlist in personal config only:
+
+```yaml
+# ~/.config/tell/config.yaml (never shared tell.yaml)
+listen:
+  github:
+    secret_env: TELL_GITHUB_WEBHOOK_SECRET
+    repository_ids: [123456789]
+  http:
+    addr: 127.0.0.1:8787
+  routes:
+    - name: opened-pr
+      source: github
+      type: pull_request
+      match: {action: opened}
+      run: [/Users/me/.local/bin/handle-pr-event]
+```
+
+Set `TELL_GITHUB_WEBHOOK_SECRET` securely outside the config file. In the
+GitHub repository's **Settings → Webhooks**, add
+`https://hooks.example.com/github`, choose `application/json`, enable TLS
+verification, set the same dedicated secret, and subscribe only to needed
+repository events (for example, Pull requests). `repository_ids` must contain
+the repository's numeric `repository.id`; organization hooks and GitHub Apps
+are not supported.
+
+Create and run a named Cloudflare Tunnel separately from Tell. Keep its
+credentials and config with cloudflared; forward only `/github` to the loopback
+origin and return 404 for every other path:
+
+```yaml
+# cloudflared config.yaml
+tunnel: <TUNNEL-UUID>
+credentials-file: /Users/me/.cloudflared/<TUNNEL-UUID>.json
+ingress:
+  - hostname: hooks.example.com
+    path: ^/github$
+    service: http://127.0.0.1:8787
+  - service: http_status:404
+```
+
+Tell never starts or configures a tunnel. Do not add an interactive Access
+challenge or a transforming Worker; cloudflared must preserve the signed raw
+body and signature header. A tunnel is transport, not authorization. The
+handler verifies SHA-256 HMAC before parsing, then checks the signed repository
+ID. GitHub does not sign the delivery/event headers or a timestamp; ID and raw
+body-digest deduplication is bounded to 10 minutes and is not freshness proof.
+
+A verified event gets 202 after in-memory admission, not after an action
+finishes; 200 is an admitted duplicate and 204 is a verified ping that is never
+routed. No durable replay exists, and GitHub does not automatically redeliver
+failed webhook deliveries. Reconcile important state with GitHub. Inspect with
+`tell listen`; `tell doctor` adds inbound readiness without binding, and keeps
+its existing outbound probes. Then explicitly run `tell listen github`. See
+[the exact listener contract](docs/listening.md).
+Dispatch without routes for a selected source fails before binding or connecting.
 
 ## Installation
 

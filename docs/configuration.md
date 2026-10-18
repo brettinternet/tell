@@ -113,7 +113,7 @@ apprise:
 [command delivery](design.md#command-delivery). `XDG_CONFIG_HOME` must be
 absolute when set.
 
-### Slack listener
+### Inbound listeners
 
 `listen.slack.app_token_env` is a required nonempty environment variable name
 (`[A-Za-z_][A-Za-z0-9_]*`) when the Slack block exists. It is set only in personal
@@ -121,7 +121,7 @@ files, merges by field, and has no flag or environment override for the name.
 The credential value stays in that variable, never in config or snapshots. The
 personal-only `listen.routes` list replaces as a whole across config layers;
 an empty list disables inherited routes. Each route requires a unique name,
-configured source (`slack`), exact event type, optional AND predicates, and
+configured source (`slack` or `github`), exact event type, optional AND predicates, and
 exactly one `run`, `notify`, or `send` action. Unknown fields, null/empty or
 mixed actions, malformed paths/scalars, invalid selectors, and send `request`
 intent are rejected. Action messages/templates and run argv are never printed
@@ -165,6 +165,42 @@ inform-only and adds fixed source/ID provenance plus an untrusted-event warning;
 prefer IDs and links over raw event text. `inform` is not a prompt-injection
 sandbox.
 
+GitHub repository webhooks use one personal `listen.github.secret_env` name and
+a required nonempty `repository_ids` allowlist. The secret value is read only
+when GitHub is selected and never enters config snapshots. `listen.http.addr`
+defaults to `127.0.0.1:8787` and accepts only a literal IPv4/IPv6 loopback IP
+plus a port from 1 through 65535; DNS, wildcard, LAN, and public addresses are
+rejected. An `http` block alone is not a configured source. Tell serves only
+`POST /github` while `github` is selected; it never starts or manages the
+user-owned Cloudflare Tunnel. Shared `tell.yaml` rejects all listen settings.
+
+```yaml
+listen:
+  github:
+    secret_env: TELL_GITHUB_WEBHOOK_SECRET
+    repository_ids: [123456789]
+  http:
+    addr: 127.0.0.1:8787
+  routes:
+    - name: opened-pr
+      source: github
+      type: pull_request
+      match: {action: opened}
+      run: [/Users/me/.local/bin/handle-pr-event]
+```
+
+Only selected sources need a nonempty environment value. `tell doctor` reports
+that local readiness without binding or probing the tunnel; inbound readiness
+does not change the outbound-selected exit status. GitHub verifies the exact
+raw-body SHA-256 HMAC before parsing. The body repository ID is checked against
+the allowlist. Delivery/event headers and timestamps are not signed; body-digest
+and delivery-ID dedup lasts 10 minutes but is not freshness or durable replay
+protection. Verified `ping` returns 204 without routing, admitted events return
+202 before actions finish, and admitted duplicates return 200. GitHub does not
+automatically redeliver failed deliveries. See the [GitHub webhook
+contract](listening.md#github-webhooks-through-cloudflared--tell-29) for bounds,
+status codes, replay limits, and the named tunnel recipe.
+
 `tell listen`, `tell --json listen`, `config`, and `config check` inspect/validate
 without inbound IO or requiring the variable to be set. Bare `tell` names
 configured sources. CLI `doctor` adds informational local credential readiness,
@@ -172,8 +208,9 @@ not provider authentication; its existing outbound-selected exit rule is
 unchanged. All child processes lose the named credential variable.
 
 Only explicit source selection starts a listener: `tell listen slack`,
-`tell listen --dry-run slack`, or `tell listen --print slack` (with `--all`
-variants). `--all` with names, repeated/unknown names, selector-free preview
+`tell listen github`, or `tell listen slack github`; preview modes accept either
+source or `--all`. `--all` selects only configured sources. `--all` with names,
+repeated/unknown names, selector-free preview
 flags, conflicting modes, and live `--json` exit 2. Missing selected
 config/credentials or dispatch/dry-run without routes exits 1 before I/O.
 `--dry-run` emits body-free route receipts and validates native templates and
@@ -182,9 +219,9 @@ sensitive envelopes without matching. `run` receives envelope JSON on stdin,
 invocation CWD, inherited environment minus inbound credentials, then the five
 fixed event/project variables; output streams are discarded. Native actions use
 the same executor bounds, timeout, shutdown, and stripped child environment.
-`--timeout` bounds
-setup requests and each action, not listener lifetime. GitHub is not shipped.
-See [Slack setup, privacy and loss limits](../README.md#slack-event-capture).
+`--timeout` bounds source setup requests and each action, not listener lifetime.
+See the [Slack setup](../README.md#slack-event-capture) and [GitHub repository
+webhook and Cloudflare Tunnel setup](../README.md#github-repository-webhooks).
 
 ## Project discovery
 
@@ -211,6 +248,9 @@ repository code runs during discovery.
 | `send.to` | — | `TELL_SEND_TO` | `--to` |
 | `send.from` | `tell-automation` | `TELL_SEND_FROM` | `--from` |
 | `listen.slack.app_token_env` | — | — | — |
+| `listen.github.secret_env` | — | — | — |
+| `listen.github.repository_ids` | — | — | — |
+| `listen.http.addr` | `127.0.0.1:8787` | — | — |
 | `listen.routes` | — | — | — |
 | `mcp.agent_targets` | `false` | `TELL_MCP_AGENT_TARGETS` | `--mcp-agent-targets` |
 
@@ -271,7 +311,7 @@ and `-u`/`--user` and `-l`/`--local` for `init`. `-h`/`--help` and `-v`/`--versi
 Global flags are `--project`, `--config`, `--json`, `--no-color`, and `--timeout` (plus
 help/version). Put all other flags after the command:
 
-- `listen`: `--all`, `--print`, `--dry-run` (no short aliases); source `slack` only.
+- `listen`: `--all`, `--print`, `--dry-run` (no short aliases); sources `slack` and `github`.
 - `notify`: `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`,
   `--herdr-session`, `--title`, `--type`.
 - `send`: `--send-via`, `--to`, `--from`, `--herdr-session`, `--intent`.

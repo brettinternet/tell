@@ -25,6 +25,27 @@ type SlackOptions struct {
 	OnEvent  func(Envelope, func(route, outcome, reason string), io.Writer)
 	OnStop   func()
 }
+
+type SourceOptions struct {
+	Name          string
+	Token         string
+	Secret        string
+	Addr          string
+	RepositoryIDs []int64
+	Timeout       time.Duration
+}
+
+type CaptureOptions struct {
+	Sources  []SourceOptions
+	Out, Err io.Writer
+	OnEvent  func(Envelope, func(route, outcome, reason string), io.Writer)
+	OnStop   func()
+}
+
+type sourceSpec struct {
+	name    string
+	prepare func() (func(context.Context, *admission, func(Envelope, string)) error, error)
+}
 type transport struct {
 	endpoint      string
 	client        *http.Client

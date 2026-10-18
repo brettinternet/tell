@@ -170,22 +170,32 @@ func event(payload json.RawMessage, now time.Time) (Envelope, []byte, error) {
 
 type identity struct{ source, id string }
 type reservation struct {
-	key identity
-	at  time.Time
+	key       identity
+	digest    [32]byte
+	hasDigest bool
+	at        time.Time
 }
 type admission struct {
 	mu       sync.Mutex
 	ids      map[identity]*list.Element
+	digests  map[[32]byte]*list.Element
 	order    *list.List
 	events   chan []byte
 	capacity int
 	ttl      time.Duration
+	closed   bool
 }
 
 func newAdmission() *admission {
-	return &admission{ids: map[identity]*list.Element{}, order: list.New(), events: make(chan []byte, ingressLimit), capacity: 10000, ttl: 10 * time.Minute}
+	return &admission{ids: map[identity]*list.Element{}, digests: map[[32]byte]*list.Element{}, order: list.New(), events: make(chan []byte, ingressLimit), capacity: 10000, ttl: 10 * time.Minute}
 }
 func (a *admission) admit(e Envelope, data []byte, now time.Time) string {
+	return a.admitWithDigest(e, data, now, nil)
+}
+func (a *admission) admitGitHub(e Envelope, data []byte, digest [32]byte, now time.Time) string {
+	return a.admitWithDigest(e, data, now, &digest)
+}
+func (a *admission) admitWithDigest(e Envelope, data []byte, now time.Time, digest *[32]byte) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for first := a.order.Front(); first != nil; first = a.order.Front() {
@@ -194,8 +204,11 @@ func (a *admission) admit(e Envelope, data []byte, now time.Time) string {
 		}
 		a.remove(first)
 	}
+	if a.closed {
+		return "not_sent/busy"
+	}
 	key := identity{e.Source, e.ID}
-	if a.ids[key] != nil {
+	if a.ids[key] != nil || (digest != nil && a.digests[*digest] != nil) {
 		return "duplicate"
 	}
 	select {
@@ -206,10 +219,33 @@ func (a *admission) admit(e Envelope, data []byte, now time.Time) string {
 	if a.order.Len() == a.capacity {
 		a.remove(a.order.Front())
 	}
-	a.ids[key] = a.order.PushBack(reservation{key, now})
+	reservation := reservation{key: key, at: now}
+	if digest != nil {
+		reservation.digest = *digest
+		reservation.hasDigest = true
+	}
+	element := a.order.PushBack(reservation)
+	a.ids[key] = element
+	if digest != nil {
+		a.digests[*digest] = element
+	}
 	return "accepted"
 }
+func (a *admission) close() {
+	a.mu.Lock()
+	a.closed = true
+	a.mu.Unlock()
+}
+func (a *admission) isClosed() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.closed
+}
 func (a *admission) remove(element *list.Element) {
-	delete(a.ids, element.Value.(reservation).key)
+	reservation := element.Value.(reservation)
+	delete(a.ids, reservation.key)
+	if reservation.hasDigest {
+		delete(a.digests, reservation.digest)
+	}
 	a.order.Remove(element)
 }
