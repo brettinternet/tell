@@ -30,7 +30,7 @@ func InitLocal(input Input) (path string, created bool, err error) {
 		return "", false, err
 	}
 	if dir == "" {
-		return "", false, fmt.Errorf("%s is not a Git checkout; use tell init --user for personal config", project)
+		return "", false, fmt.Errorf("project %s has no .git, so .git/tell.yaml would not load here; use tell init --user for personal config", project)
 	}
 	return createTemplate(filepath.Join(dir, "tell.yaml"), 0o600, localHeader+personalBody)
 }
