@@ -24,7 +24,11 @@ Start with a visible personal route, for example `notify.via: desktop` in
 | Example | Scenario | Level | Also uses |
 | --- | --- | --- | --- |
 | [command-routes](command-routes/README.md) | Your own provider: phone via ntfy, quiet hours, audit log, tmux, speech | intermediate | curl, ntfy |
-| [listen](listen/README.md) | Match Slack or signed GitHub repository events to native actions, bounded commands, or a truthful Noon handoff; includes a user-managed Cloudflare Tunnel recipe | advanced | Python, Noon (handoff only), cloudflared (GitHub only) |
+| [listen](listen/README.md) | Slack setup, local commands, and signed GitHub webhooks through Cloudflare Tunnel | advanced | Python (commands), cloudflared (GitHub) |
+| [Incident channel](listen/incident-channel/README.md) | New `inc-*` channel → desktop notification, optional agent inform | basic | Slack, hcom (optional) |
+| [Mention an agent](listen/mention-agent/README.md) | App mention in one Slack channel → agent inform | intermediate | Slack, hcom |
+| [Reaction triage](listen/reaction-triage/README.md) | Eyes reaction on a Slack message → agent inform | intermediate | Slack, hcom |
+| [Incident job](listen/incident-noon/README.md) | New `inc-*` channel → queued Noon job with event data | advanced | Slack, Noon, Python, jq |
 | [apprise](apprise/README.md) | Phone, Slack, and Discord with per-message audience tags | intermediate | Apprise |
 | [github-actions](github-actions/README.md) | Post failed nightly runs to a team channel | intermediate | GitHub Actions, Apprise |
 

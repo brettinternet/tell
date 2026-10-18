@@ -1,0 +1,10 @@
+# Merge into your project's noon.yaml and replace the absolute path.
+version: 1
+jobs:
+  incident-kickoff:
+    requests: each
+    timeout: 30s
+    run: |
+      jq -ce '.data | select(.source == "slack" and .type == "channel_created")' \
+        "$NOON_EVENT_FILE" |
+        python3 /absolute/path/to/tell/examples/listen/record-event.py

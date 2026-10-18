@@ -1,0 +1,16 @@
+# Personal config. Run with tell --config PATH listen slack.
+version: 1
+listen:
+  slack:
+    app_token_env: TELL_SLACK_APP_TOKEN
+  routes:
+    - name: incident-channel-created
+      source: slack
+      type: channel_created
+      match:
+        event.channel.name: {prefix: "inc-"}
+      notify:
+        via: desktop
+        type: warning
+        title: "New incident: ${data.event.channel.name}"
+        message: "Inspect Slack channel ${data.event.channel.id}; event ${id}."

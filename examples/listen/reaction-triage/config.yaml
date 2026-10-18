@@ -1,0 +1,18 @@
+# Replace the channel ID and hcom recipient before use.
+version: 1
+listen:
+  slack:
+    app_token_env: TELL_SLACK_APP_TOKEN
+  routes:
+    - name: reaction-triage
+      source: slack
+      type: reaction_added
+      match:
+        event.reaction: eyes
+        event.item.type: message
+        event.item.channel: C0123456789
+      send:
+        via: hcom
+        to: triage
+        intent: inform
+        message: "Slack triage marker from ${data.event.user} on channel ${data.event.item.channel}, message ${data.event.item.ts}; event ${id}. Retrieve context with your own Slack tools."

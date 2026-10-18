@@ -1,0 +1,16 @@
+# Replace the channel ID and hcom recipient before use.
+version: 1
+listen:
+  slack:
+    app_token_env: TELL_SLACK_APP_TOKEN
+  routes:
+    - name: mention-triage
+      source: slack
+      type: app_mention
+      match:
+        event.channel: C0123456789
+      send:
+        via: hcom
+        to: triage
+        intent: inform
+        message: "Slack app mention in channel ${data.event.channel}, message ${data.event.ts}; event ${id}. Retrieve context with your own Slack tools."

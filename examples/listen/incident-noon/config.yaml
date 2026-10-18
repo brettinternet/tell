@@ -1,0 +1,12 @@
+# Replace the absolute path. Start Tell from the enabled Noon project.
+version: 1
+listen:
+  slack:
+    app_token_env: TELL_SLACK_APP_TOKEN
+  routes:
+    - name: incident-kickoff
+      source: slack
+      type: channel_created
+      match:
+        event.channel.name: {prefix: "inc-"}
+      run: [python3, /absolute/path/to/tell/examples/listen/noon-handoff.py]

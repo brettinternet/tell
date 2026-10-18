@@ -1,9 +1,51 @@
-# Slack event routes
+# Event routes
 
-Tell can match Slack events to literal local commands or native notify/send
-actions. Configure the Slack
-app and credential environment variable as in the [README setup](../../README.md#slack-event-capture),
-then add this to personal config:
+| Slack recipe | Trigger → action |
+| --- | --- |
+| [Incident channel](incident-channel/README.md) | Create `inc-*` → desktop notification, optional agent inform |
+| [Mention an agent](mention-agent/README.md) | Mention the app in one channel → agent inform |
+| [Reaction triage](reaction-triage/README.md) | Add 👀 to a message → agent inform |
+| [Incident job](incident-noon/README.md) | Create `inc-*` → Noon job with event data |
+
+[GitHub repository webhooks](#github-repository-webhook) are covered below.
+
+## Slack setup
+
+1. Create a Slack app and enable Socket Mode.
+2. Generate an app-level token with `connections:write`. Set it securely in
+   `TELL_SLACK_APP_TOKEN`; do not put the token in YAML.
+3. Under **Event Subscriptions → Subscribe to bot events**, add the events
+   for your recipe and the corresponding bot scopes.
+4. Install the app in your workspace, or reinstall after changing scopes.
+   Invite it to channels used by the mention and reaction recipes.
+
+| Recipe | Bot event | Bot scope |
+| --- | --- | --- |
+| Incident channel / Noon job | `channel_created` | `channels:read` |
+| Mention an agent | `app_mention` | `app_mentions:read` |
+| Reaction triage | `reaction_added` | `reactions:read` |
+
+Run recipe commands from the Tell checkout unless noted. The configs use
+explicit `--config` paths so they do not load your normal config files.
+Listener settings are personal; never merge them into shared `tell.yaml`.
+To combine recipes, merge their routes into one list. A later `listen.routes`
+setting replaces the whole list.
+
+Run one listener per Slack app. Multiple connections split deliveries.
+`tell listen` only inspects; `--dry-run slack` connects and consumes events
+without actions. Trigger a new event after switching to dispatch.
+
+Match paths start inside `data`, such as `event.channel.name`.
+Templates start at the envelope root, such as `${data.event.channel.name}`.
+
+Mention/reaction events carry channel IDs, not names. Tell does not look up
+names, fetch history, or reply in Slack. Keep IDs as pointers rather than
+forwarding message text. Use `--print slack` only for deliberate sensitive
+event export, not routine logs.
+
+## Local command
+
+Add this route to personal config to record only the latest event identity:
 
 ```yaml
 listen:
@@ -103,85 +145,19 @@ state outside Tell. See [the exact contract](../../docs/listening.md#github-webh
 
 ## Native notification and agent actions
 
-A route can notify a person, inform one configured agent, or invoke a trusted
-command. Use separate matching routes for intentional fan-out; each route has
-exactly one action. Static selectors override personal outbound settings only
-for that action:
+Use [incident-channel](incident-channel/README.md) for a desktop notification
+and optional agent fan-out, [mention-agent](mention-agent/README.md) for app
+mentions, or [reaction-triage](reaction-triage/README.md) for emoji markers.
 
-```yaml
-listen:
-  routes:
-    - name: notify-channel
-      source: slack
-      type: channel_created
-      match:
-        event.channel.name: {prefix: "inc-"}
-      notify:
-        via: desktop
-        title: "New incident channel ${data.event.channel.name}"
-        type: warning
-        message: "Slack event ${id}; inspect channel ID ${data.event.channel.id}."
-    - name: inform-reviewer
-      source: slack
-      type: channel_created
-      match:
-        event.channel.name: {prefix: "inc-"}
-      send:
-        via: hcom
-        to: reviewer
-        intent: inform
-        message: "Inspect Slack channel ID ${data.event.channel.id} for event ${id}; use provider tools to retrieve context."
-```
-
-Only message and notify title allow single-pass `${path}` placeholders rooted at
-the envelope. Use `$${` for a literal `${`; missing or compound values fail the
-action. The combined rendered message/title is capped at 256 KiB before Tell's
-shared preparation. `send` is inform-only and includes fixed external-event
-source/ID provenance plus a warning that event content is untrusted. This is not
-a prompt-injection sandbox: prefer stable IDs and provider links, not raw
-user-authored text. `tell listen --dry-run slack` validates templates and message
-policy without delivering or probing targets, and never prints rendered text.
+Each route has one action. Separate routes match independently; failures do
+not block siblings. `send` supports only `inform`, with fixed external-event
+provenance and an untrusted-content warning. It is not a prompt-injection sandbox.
 
 ## Noon handoff
 
-For work that needs durable scheduling/history, configure and enable this Noon
-job (and keep `noon serve` running to dispatch it):
+[incident-noon](incident-noon/README.md) includes Tell config, a runnable Noon
+job, and verification commands. It reuses [noon-handoff.py](noon-handoff.py)
+and [record-event.py](record-event.py).
 
-```yaml
-jobs:
-  incident-kickoff:
-    run: [./handle-event]
-    requests: each
-```
-
-`requests: each` preserves each payload but permits at most 20 queued due-now
-runs per job; configure no cooldown with it. The handoff route can use this
-trusted executable:
-
-```yaml
-listen:
-  routes:
-    - name: kickoff-incident
-      source: slack
-      type: channel_created
-      match:
-        event.channel.name: {prefix: "inc-"}
-      run: [python3, /absolute/path/to/examples/listen/noon-handoff.py]
-```
-
-The wrapper uses `TELL_EVENT_SOURCE:TELL_EVENT_ID` when the key is within Noon's
-1–200 ASCII character limit (`[A-Za-z0-9._:-]`); otherwise it maps the same
-source-qualified identity to a stable SHA-256 key. Tell caps its envelope at
-256 KiB, the same maximum Noon accepts for `--data`; Noon validates its input
-and rejects oversize payloads. The wrapper passes stdin unchanged, never
-truncates it, and `exec`s Noon so a failed start/queue is a nonzero Tell action
-outcome. It does not claim that a queued run completed. Noon retains idempotency
-keys only for its newest 50 finished runs per job, so this is not permanent
-replay protection.
-
-Noon wraps the Tell envelope inside its own `data`; a Noon job reads its event
-file via `NOON_EVENT_FILE`. They are different envelope formats. The job must
-validate/map its own payload and reconcile important state. Tell does no
-Noon-specific parsing, scheduling, retries, or durable storage. See
-[Noon triggers](https://github.com/brettinternet/noon/blob/main/docs/triggers.md)
-for the caller-owned queue and payload contract.
+Tell owns the short handoff; Noon owns queued work and history. Neither a
+Slack acknowledgment nor a successful handoff means the job finished.
