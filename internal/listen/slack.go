@@ -40,7 +40,7 @@ func production() transport {
 		dial: func(ctx context.Context, address string) (*websocket.Conn, error) {
 			u, err := url.Parse(address)
 			if err != nil || u.Scheme != "wss" || u.Host == "" || u.User != nil {
-				return nil, errors.New("invalid_connection_url")
+				return nil, &setupError{reason: "invalid_connection_url"}
 			}
 			conn, response, err := websocket.Dial(ctx, address, &websocket.DialOptions{HTTPClient: client})
 			if err != nil && response != nil {
@@ -333,8 +333,6 @@ func receive(ctx context.Context, opts SlackOptions, tr transport, a *admission,
 						return setup
 					}
 					retryAfter = setup.after
-				} else if err.Error() == "invalid_connection_url" {
-					return errors.New("Slack setup: invalid_connection_url")
 				}
 			}
 		}
@@ -397,6 +395,10 @@ func connection(ctx context.Context, conn *websocket.Conn, tr transport, a *admi
 			return nil
 		case "events_api":
 			e, encoded, err := event(message["payload"], tr.now())
+			if errors.Is(err, errIgnored) {
+				receipt(Envelope{}, "ignored")
+				continue
+			}
 			if err != nil {
 				receipt(Envelope{}, "not_sent/"+err.Error())
 				continue

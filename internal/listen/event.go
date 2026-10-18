@@ -17,6 +17,9 @@ const rawLimit = 1 << 20
 const envelopeLimit = 256 << 10
 const ingressLimit = 64
 
+// errIgnored marks valid non-event payloads, such as interactive callbacks.
+var errIgnored = errors.New("ignored")
+
 type Envelope struct {
 	SchemaVersion int                        `json:"schema_version"`
 	Source        string                     `json:"source"`
@@ -147,7 +150,7 @@ func event(payload json.RawMessage, now time.Time) (Envelope, []byte, error) {
 		return Envelope{}, nil, err
 	}
 	if field(p, "type") != "event_callback" {
-		return Envelope{}, nil, errors.New("ignored")
+		return Envelope{}, nil, errIgnored
 	}
 	var nested map[string]json.RawMessage
 	if json.Unmarshal(p["event"], &nested) != nil {

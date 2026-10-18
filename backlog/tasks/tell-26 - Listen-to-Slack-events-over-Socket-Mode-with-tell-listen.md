@@ -5,10 +5,11 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-17 21:01'
-updated_date: '2026-10-17 22:42'
+updated_date: '2026-10-18 00:30'
 labels:
   - listen
   - slack
+  - reviewed
 dependencies: []
 references:
   - 'https://docs.slack.dev/apis/events-api/using-socket-mode'
@@ -95,6 +96,8 @@ AC5: README, design/configuration/development/listening docs, AGENTS, help/compl
 One direct acceptance/privacy review completed; delegation was unavailable and the user chose direct implementation. Fixed WebSocket 4xx retry classification and SIGPIPE handling; regression fixtures and task ci passed afterward.
 
 Delivery: source commit 2501b32d926407c7085cb0d24733e4ab3de4696e fast-forward merged to main. Source task check:staged passed. Worktrunk removed the verified session-owned tell-26-slack checkout and branch; its Herdr workspace wG9 is confirmed absent. No push or PR. No remaining blocker or implementation step. Final notes were reworded after a Gitleaks false positive in prose; no scan bypass or allowlist was added.
+
+Review: implementation matches docs/listening.md. Fixed non-event_callback payload receipts to report 'ignored' (was 'not_sent/ignored') and replaced string-matched invalid_connection_url with typed setupError. task ci passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -4,8 +4,9 @@ title: Improve human CLI readability with restrained terminal styling
 status: Done
 assignee: []
 created_date: '2026-10-17 05:55'
-updated_date: '2026-10-17 06:08'
-labels: []
+updated_date: '2026-10-18 00:27'
+labels:
+  - reviewed
 dependencies: []
 ordinal: 18000
 ---
@@ -44,6 +45,15 @@ Exact-commit main CI run 39008486651 passed on Linux and macOS. Created annotate
 
 Published stable release https://github.com/brettinternet/tell/releases/tag/v0.3.0 at 2026-10-17T06:07:39Z from af215cf. gh release view confirmed four platform archives plus checksums.txt, not draft/prerelease. Release workflow https://github.com/brettinternet/tell/actions/runs/39008645164 succeeded: publication and mise-install on ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, and macos-14 all passed. All acceptance and delivery obligations verified; no blockers or retained worktrees.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-10-18 00:27
+---
+Review: no defects. Verified on a real PTY (script): doctor bolds selected label, green ready, neutral optional unready, indented remediation; --no-color and NO_COLOR=1 produce plain output; config check green 'valid'; send receipt bold prefix + red usage outcome; --json send leaves JSON and receipt unstyled; usage error red 'tell:'; help headings bold after layout; zsh completion has no ANSI. Unit/PTY suite passes. Follow-up (not TELL-25 scope; TELL-27 active in internal/cli): TELL-26 listen inspection labels (Listen:/Routes:) are not bolded like bare tell orientation.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 
