@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/brettinternet/tell/main/tell.shared.schema.json",
   "title": "Tell shared project configuration",
-  "description": "Shared tell.yaml cannot choose destinations or personal policy. Inbound sources and listen.routes argv are personal-only; use personal configuration for all listen settings.",
+  "description": "Shared tell.yaml cannot choose destinations or personal policy. Inbound sources and all listen.routes actions are personal-only; use personal configuration for all listen settings.",
   "allOf": [
     { "$ref": "tell.schema.json" },
     {

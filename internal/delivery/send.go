@@ -9,18 +9,9 @@ import (
 	"github.com/brettinternet/tell/internal/config"
 )
 
-// ValidRecipient deliberately supports exact local hcom names, not remote/tag
-// selectors. Herdr also accepts explicit pane IDs such as w1:p2.
-func ValidRecipient(route, to string) bool {
-	if config.ValidIdentity(to) && !strings.HasSuffix(to, "-") && to != "help" && to != "self" {
-		return true
-	}
-	if route == "herdr" {
-		workspace, pane, ok := strings.Cut(to, ":")
-		return ok && strings.HasPrefix(workspace, "w") && strings.HasPrefix(pane, "p") && config.ValidIdentity(workspace) && config.ValidIdentity(pane)
-	}
-	return false
-}
+// ValidRecipient preserves the public delivery helper while sharing the exact
+// static-recipient rules with configuration validation.
+func ValidRecipient(route, to string) bool { return config.ValidRecipient(route, to) }
 
 func sendTarget(cfg config.Config) *Result {
 	route := cfg.Send.Via
@@ -40,7 +31,17 @@ func sendTarget(cfg config.Config) *Result {
 }
 
 // Send executes once. The caller owns schedules, retries and completion tracking.
-func Send(ctx context.Context, cfg config.Config, body, intent string) (result *Result) {
+func Send(ctx context.Context, cfg config.Config, body, intent string) *Result {
+	return send(ctx, cfg, body, intent, "", "")
+}
+
+// SendExternal sends an inform action with fixed provenance that identifies the
+// external event and warns that its content is untrusted.
+func SendExternal(ctx context.Context, cfg config.Config, body, source, eventID string) *Result {
+	return send(ctx, cfg, body, "inform", source, eventID)
+}
+
+func send(ctx context.Context, cfg config.Config, body, intent, source, eventID string) (result *Result) {
 	ctx = childContext(ctx, cfg)
 	route := cfg.Send.Via
 	redactions := 0
@@ -51,20 +52,11 @@ func Send(ctx context.Context, cfg config.Config, body, intent string) (result *
 	if !config.ValidIdentity(cfg.Send.From) || intent != "inform" && intent != "request" {
 		return NewResult(route, "config", "invalid_sender", "invalid sender or intent")
 	}
-	message, count, reason := prepare(Message{Body: body}, cfg.Secrets.Policy)
+	message, count, reason := PrepareSendMessage(cfg, body, intent, source, eventID)
 	redactions = count
 	if reason != "" {
 		return NewResult(route, "config", reason, "send rejected during message preparation")
 	}
-	header := "[Tell automation: " + cfg.Send.From + "; route: " + route + "; intent: " + intent + "]\n"
-	// The sender is personal configuration, but provenance is still outbound
-	// text: scan it too rather than allowing a token-shaped identity to leak.
-	provenance, headerCount, headerReason := prepare(Message{Body: header}, cfg.Secrets.Policy)
-	redactions += headerCount
-	if headerReason != "" {
-		return NewResult(route, "config", headerReason, "send rejected during provenance preparation")
-	}
-	message.Body = provenance.Body + normalize(message.Body, bodyLimit-len(provenance.Body))
 	timeout, _ := time.ParseDuration(cfg.Timeout)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

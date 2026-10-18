@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -21,6 +23,7 @@ type action struct {
 	event    Envelope
 	envelope []byte
 	report   func(route, outcome, reason string)
+	stderr   io.Writer
 }
 
 // Executor bounds active and waiting command actions. It never retries work.
@@ -59,6 +62,12 @@ func NewExecutor(cfg config.Config, cwd string) *Executor {
 
 // Submit enqueues one route action without waiting for a running child.
 func (e *Executor) Submit(route config.Route, event Envelope, report func(route, outcome, reason string)) bool {
+	return e.SubmitWithWriter(route, event, report, io.Discard)
+}
+
+// SubmitWithWriter additionally supplies the bounded listener writer for native
+// notify actions selected to the intentional stderr delivery route.
+func (e *Executor) SubmitWithWriter(route config.Route, event Envelope, report func(route, outcome, reason string), stderr io.Writer) bool {
 	envelope, err := json.Marshal(event)
 	if err != nil {
 		if report != nil {
@@ -72,7 +81,7 @@ func (e *Executor) Submit(route config.Route, event Envelope, report func(route,
 		return false
 	}
 	select {
-	case e.jobs <- action{route: route, event: event, envelope: envelope, report: report}:
+	case e.jobs <- action{route: route, event: event, envelope: envelope, report: report, stderr: stderr}:
 		return true
 	default:
 		return false
@@ -99,10 +108,67 @@ func (e *Executor) worker() {
 }
 
 func (e *Executor) execute(task action) {
+	ctx, cancel := context.WithTimeout(e.ctx, e.timeout)
+	defer cancel()
+	if len(task.route.Run) > 0 {
+		e.executeCommand(ctx, task)
+		return
+	}
+	rendered, reason := renderAction(ctx, e.cfg, task.route, task.event)
+	if reason != "" {
+		reportAction(task, "not_sent", reason)
+		return
+	}
+	var result *deliverypkg.Result
+	switch {
+	case task.route.Notify != nil:
+		stderr := task.stderr
+		if stderr == nil {
+			stderr = io.Discard
+		}
+		writer := &actionWriter{ctx: ctx, writer: stderr}
+		result = deliverypkg.Notify(ctx, rendered.cfg, rendered.notify, writer)
+		var writeFailure *queuedWriteFailure
+		if errors.As(writer.err, &writeFailure) {
+			result = deliverypkg.NewResult("stderr", writeFailure.outcome, writeFailure.reason, "notification output did not complete")
+		}
+	case task.route.Send != nil:
+		result = deliverypkg.SendExternal(ctx, rendered.cfg, rendered.message, task.event.Source, task.event.ID)
+	default:
+		reportAction(task, "config", "invalid_action")
+		return
+	}
+	reportDelivery(task, result)
+}
+
+type actionWriter struct {
+	ctx    context.Context
+	writer io.Writer
+	err    error
+}
+
+func (writer *actionWriter) Write(data []byte) (int, error) {
+	if err := writer.ctx.Err(); err != nil {
+		writer.err = queuedWriteError(outputResult{err: err})
+		return 0, writer.err
+	}
+	if contextual, ok := writer.writer.(interface {
+		WriteContext(context.Context, []byte) (int, error)
+	}); ok {
+		n, err := contextual.WriteContext(writer.ctx, data)
+		writer.err = err
+		return n, err
+	}
+	n, err := writer.writer.Write(data)
+	writer.err = err
+	return n, err
+}
+
+func (e *Executor) executeCommand(ctx context.Context, task action) {
 	argv := task.route.Run
 	env := commandEnvironment(e.cfg, task.route.Name, task.event)
 	code, failure := deliverypkg.RunCommand(
-		e.ctx, e.timeout, "listen/"+task.route.Name, argv[0], argv[1:],
+		ctx, e.timeout, "listen/"+task.route.Name, argv[0], argv[1:],
 		bytes.NewReader(task.envelope), env, e.cwd,
 	)
 	if failure != nil {
@@ -117,6 +183,18 @@ func (e *Executor) execute(task action) {
 	default:
 		reportAction(task, "failed", "provider_failure")
 	}
+}
+
+func reportDelivery(task action, result *deliverypkg.Result) {
+	if result == nil {
+		reportAction(task, "failed", "provider_failure")
+		return
+	}
+	reason := ""
+	if result.Failure != nil {
+		reason = result.Failure.Reason
+	}
+	reportAction(task, result.Outcome, reason)
 }
 
 func commandEnvironment(cfg config.Config, route string, event Envelope) []string {

@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,19 +35,22 @@ func TestListenPreviewAndDispatchIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := filepath.Join(dir, "config.yaml")
-	configuration := "listen:\n  slack: {app_token_env: TELL_TEST_SLACK_SECRET}\n  routes:\n    - name: only-route\n      source: slack\n      type: channel_created\n      match: {event.channel.name: {prefix: inc-}}\n      run: [" + command + "]\n"
+	configuration := "listen:\n  slack: {app_token_env: TELL_TEST_SLACK_SECRET}\n  routes:\n    - name: only-route\n      source: slack\n      type: channel_created\n      match: {event.channel.name: {prefix: inc-}}\n      run: [" + command + "]\n" +
+		"    - name: notify-channel\n      source: slack\n      type: channel_created\n      notify: {message: 'Alert ${data.event.channel.name}', via: stderr}\n" +
+		"    - name: send-missing\n      source: slack\n      type: channel_created\n      send: {message: '${data.event.missing}', via: hcom, to: reviewer}\n"
 	if err := os.WriteFile(file, []byte(configuration), 0600); err != nil {
 		t.Fatal(err)
 	}
 	event := listen.Envelope{Source: "slack", Type: "channel_created", ID: "Ev1", Data: map[string]json.RawMessage{"event": json.RawMessage(`{"channel":{"name":"inc-api"}}`)}}
 	var inspection, inspectionError bytes.Buffer
-	if code := Run(context.Background(), []string{"tell", "--config", file, "--json", "listen"}, config.BuildOpts{}, &inspection, &inspectionError); code != 0 || !strings.Contains(inspection.String(), "only-route") || strings.Contains(inspection.String(), command) {
+	if code := Run(context.Background(), []string{"tell", "--config", file, "--json", "listen"}, config.BuildOpts{}, &inspection, &inspectionError); code != 0 || !strings.Contains(inspection.String(), "only-route") || strings.Contains(inspection.String(), command) || strings.Contains(inspection.String(), "Alert ${") {
 		t.Fatalf("inspection leaked argv or omitted route name: code=%d %s %s", code, inspection.String(), inspectionError.String())
 	}
 
 	run := func(args []string) ([][3]string, error) {
 		var out, diag bytes.Buffer
 		var reports [][3]string
+		var reportsMu sync.Mutex
 		root := NewRootCommand(config.BuildOpts{}, &out, &diag)
 		root.Command("listen").Action = func(ctx context.Context, cmd *urfave.Command) error {
 			return runListen(ctx, cmd, func(_ context.Context, opts listen.SlackOptions) error {
@@ -64,25 +69,34 @@ func TestListenPreviewAndDispatchIsolation(t *testing.T) {
 				reported := make(chan struct{})
 				var reportOnce sync.Once
 				opts.OnEvent(event, func(route, outcome, reason string) {
+					reportsMu.Lock()
 					reports = append(reports, [3]string{route, outcome, reason})
+					reportsMu.Unlock()
 					reportOnce.Do(func() { close(reported) })
-				})
+				}, io.Discard)
 				if opts.OnStop != nil {
 					<-reported
 					opts.OnStop()
 				}
-				if len(reports) == 0 {
+				reportsMu.Lock()
+				hasReports := len(reports) > 0
+				reportsMu.Unlock()
+				if !hasReports {
 					t.Error("no route receipt")
 				}
 				return nil
 			})
 		}
 		err := root.Run(context.Background(), append([]string{"tell", "--config", file, "listen"}, args...))
-		return reports, err
+		reportsMu.Lock()
+		result := append([][3]string(nil), reports...)
+		reportsMu.Unlock()
+		sort.Slice(result, func(i, j int) bool { return result[i][0] < result[j][0] })
+		return result, err
 	}
 
 	reports, err := run([]string{"--dry-run", "slack"})
-	if err != nil || !reflect.DeepEqual(reports, [][3]string{{"only-route", "dry_run", ""}}) {
+	if err != nil || !reflect.DeepEqual(reports, [][3]string{{"notify-channel", "dry_run", ""}, {"only-route", "dry_run", ""}, {"send-missing", "not_sent", "template_value"}}) {
 		t.Fatalf("dry-run route receipts: %v %v", reports, err)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
@@ -96,11 +110,49 @@ func TestListenPreviewAndDispatchIsolation(t *testing.T) {
 		t.Fatal("print mode executed the route")
 	}
 	reports, err = run([]string{"slack"})
-	if err != nil || !reflect.DeepEqual(reports, [][3]string{{"only-route", "accepted", ""}}) {
+	if err != nil || !reflect.DeepEqual(reports, [][3]string{{"notify-channel", "accepted", ""}, {"only-route", "accepted", ""}, {"send-missing", "not_sent", "template_value"}}) {
 		t.Fatalf("dispatch receipts: %v %v", reports, err)
 	}
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatal("dispatch did not execute a matched route")
+	}
+}
+
+func TestListenDryRunHonorsContextCancellation(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("TELL_TEST_SLACK_SECRET", "fixture-token")
+	file := filepath.Join(dir, "config.yaml")
+	configuration := `listen:
+  slack: {app_token_env: TELL_TEST_SLACK_SECRET}
+  routes:
+    - name: dry-run
+      source: slack
+      type: event
+      send: {message: hi, via: hcom, to: reviewer}
+`
+	if err := os.WriteFile(file, []byte(configuration), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var out, diag bytes.Buffer
+	root := NewRootCommand(config.BuildOpts{}, &out, &diag)
+	var result [3]string
+	root.Command("listen").Action = func(ctx context.Context, cmd *urfave.Command) error {
+		return runListen(ctx, cmd, func(_ context.Context, opts listen.SlackOptions) error {
+			opts.OnEvent(listen.Envelope{Source: "slack", Type: "event", ID: "Ev1"}, func(route, outcome, reason string) {
+				result = [3]string{route, outcome, reason}
+			}, io.Discard)
+			return nil
+		})
+	}
+	if err := root.Run(ctx, []string{"tell", "--config", file, "listen", "--dry-run", "slack"}); err != nil {
+		t.Fatal(err)
+	}
+	if result != [3]string{"dry-run", "not_sent", "cancelled"} {
+		t.Fatalf("cancelled dry-run result = %v", result)
 	}
 }
 
@@ -152,7 +204,7 @@ func TestSecondSignalCancelsRunningAction(t *testing.T) {
 				t.Fatal("dispatch handler is missing")
 			}
 			event := listen.Envelope{Source: "slack", Type: "channel_created", ID: "running", Data: map[string]json.RawMessage{}}
-			opts.OnEvent(event, func(route, outcome, reason string) { results <- [3]string{route, outcome, reason} })
+			opts.OnEvent(event, func(route, outcome, reason string) { results <- [3]string{route, outcome, reason} }, io.Discard)
 			waitForFile(t, started)
 			go func() { <-ctx.Done(); second <- syscall.SIGTERM }()
 			cancel()

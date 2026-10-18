@@ -36,8 +36,8 @@ Set that variable securely in your shell, then select an explicit foreground mod
 ```sh
 tell listen                    # inspect only; no connections
 tell --json listen             # one safe snapshot
-tell listen --dry-run slack    # body-free route match receipts, no commands
-tell listen slack              # dispatch matching command routes
+tell listen --dry-run slack    # body-free render/preparation checks, no delivery
+tell listen slack              # dispatch matching configured actions
 tell listen --print slack      # sensitive NDJSON export, no matching/actions
 tell listen --print --all      # every configured source (currently Slack only)
 ```
@@ -62,8 +62,15 @@ invocation CWD, inherits the environment minus configured inbound credentials,
 and gets fixed `TELL_EVENT_SOURCE`, `TELL_EVENT_TYPE`, `TELL_EVENT_ID`,
 `TELL_ROUTE`, and `TELL_PROJECT` values. It is not a shell command: argv is
 literal, with no interpolation. Child stdout/stderr are discarded. Preview
-receipts never contain event bodies or argv. See the [command-route and Noon
-handoff example](examples/listen/README.md).
+receipts never contain event bodies, argv, templates, or rendered text.
+
+Routes can instead use native `notify` or inform-only `send` actions. Each route
+has exactly one `run`, `notify`, or `send` action; add routes for explicit
+fan-out. Only message and notify title support single-pass `${path}` placeholders
+rooted at the Tell envelope. `$${` emits a literal `${`; missing or compound
+values fail closed. Send messages include fixed external-event provenance and a
+warning that event content is untrusted. Prefer IDs and links over raw event text;
+`inform` is not a prompt-injection sandbox. See the [listener action examples](examples/listen/README.md).
 
 Print mode acknowledges events but does not match or run actions. Payloads may
 contain private text and secrets; only Slack's legacy top-level token is
@@ -74,7 +81,7 @@ listener.
 Frames are capped at 1 MiB, envelopes at 256 KiB, and ingress at 64 events.
 Duplicate IDs are suppressed per source for 10 minutes, up to 10,000
 oldest-first entries. The action executor admits four running and 64 waiting
-commands; excess matches get `not_sent/busy` without retry. Full ingress drops
+actions; excess matches get `not_sent/busy` without retry. Full ingress drops
 without reserving the ID; restart, sleep, or disconnection can lose events.
 Output is bounded too; a write stalled for 5 seconds or a broken stream stops
 capture. First SIGINT/SIGTERM drains running actions within their deadlines and
@@ -82,7 +89,7 @@ drops queued work; a second cancels running actions as uncertain. Fatal source/
 output errors exit 1. Bare commands, config checks, and inbound doctor readiness
 never connect.
 
-Native notify/send actions and GitHub webhooks remain **planned** in TELL-28/29.
+GitHub webhooks remain **planned** in TELL-29.
 Dispatch without routes for a selected source fails before connecting. See the
 [implemented capture and route contract](docs/listening.md).
 
@@ -412,7 +419,7 @@ See [outcomes](docs/design.md#outcomes) and [message preparation](docs/design.md
 [examples/](examples/README.md) has copyable recipes: notify when slow
 commands finish, Claude Code and Codex hooks, MCP agents, CI and test
 watchers that hand failures to agents, transition-only scheduled checks,
-Slack command routes and a bounded Noon handoff, phone push via ntfy or Apprise,
+Slack native/command routes and a bounded Noon handoff, phone push via ntfy or Apprise,
 and safe fallback chains.
 [examples/noon](examples/noon/README.md) has a Noon hook that notifies only on
 failure and recovery, plus a [scheduled agent instruction](examples/noon/README.md#scheduled-instructions).

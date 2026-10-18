@@ -72,6 +72,31 @@ type Route struct {
 	Type   string               `json:"-"`
 	Match  map[string]Predicate `json:"-"`
 	Run    []string             `json:"-"`
+	Notify *NotifyAction        `json:"-"`
+	Send   *SendAction          `json:"-"`
+}
+
+type NotifyAction struct {
+	Message      string
+	Title        string
+	TitleSet     bool
+	Type         string
+	Via          string
+	HerdrSession string
+	AppriseTag   string
+}
+
+type SendAction struct {
+	Message      string
+	Via          string
+	To           string
+	HerdrSession string
+	Intent       string
+}
+
+type TemplatePart struct {
+	Text string
+	Path string
 }
 
 type Predicate struct {
@@ -97,13 +122,72 @@ func validateRouteSyntax(routes []Route) error {
 		if route.Source != "slack" || route.Type == "" || len(route.Type) > 128 || strings.ContainsFunc(route.Type, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 			return errors.New("listen.routes source must be slack and type must be a nonempty safe value")
 		}
-		if len(route.Run) == 0 || strings.TrimSpace(route.Run[0]) == "" {
-			return errors.New("listen.routes require one nonempty run argv action")
-		}
-		for _, arg := range route.Run {
-			if strings.ContainsRune(arg, 0) {
-				return errors.New("listen.routes run arguments must not contain NUL")
+		actions := 0
+		if len(route.Run) > 0 {
+			actions++
+			if strings.TrimSpace(route.Run[0]) == "" {
+				return errors.New("listen.routes run executable must not be empty")
 			}
+			for _, arg := range route.Run {
+				if strings.ContainsRune(arg, 0) {
+					return errors.New("listen.routes run arguments must not contain NUL")
+				}
+			}
+		}
+		if route.Notify != nil {
+			actions++
+			if strings.TrimSpace(route.Notify.Message) == "" {
+				return errors.New("listen.routes notify actions require a nonempty message")
+			}
+			if _, err := ParseTemplate(route.Notify.Message); err != nil {
+				return errors.New("listen.routes notify message has invalid template syntax")
+			}
+			if _, err := ParseTemplate(route.Notify.Title); err != nil {
+				return errors.New("listen.routes notify title has invalid template syntax")
+			}
+			if route.Notify.Type != "" && route.Notify.Type != "info" && route.Notify.Type != "success" && route.Notify.Type != "warning" && route.Notify.Type != "failure" {
+				return errors.New("listen.routes notify type must be info, success, warning, or failure")
+			}
+			if route.Notify.Via != "" {
+				if !validTemplateFreeSelector(route.Notify.Via) {
+					return errors.New("listen.routes notify via is invalid")
+				}
+				switch route.Notify.Via {
+				case "stderr", "desktop", "apprise", "herdr", "command":
+				default:
+					return errors.New("listen.routes notify via must be stderr, desktop, apprise, herdr, or command")
+				}
+			}
+			if route.Notify.HerdrSession != "" && !validTemplateFreeSelector(route.Notify.HerdrSession) {
+				return errors.New("listen.routes notify herdr_session is invalid")
+			}
+			if route.Notify.AppriseTag != "" && !validTemplateFreeSelector(route.Notify.AppriseTag) {
+				return errors.New("listen.routes notify apprise_tag is invalid")
+			}
+		}
+		if route.Send != nil {
+			actions++
+			if strings.TrimSpace(route.Send.Message) == "" {
+				return errors.New("listen.routes send actions require a nonempty message")
+			}
+			if _, err := ParseTemplate(route.Send.Message); err != nil {
+				return errors.New("listen.routes send message has invalid template syntax")
+			}
+			if route.Send.Via != "" && route.Send.Via != "hcom" && route.Send.Via != "herdr" {
+				return errors.New("listen.routes send via must be hcom or herdr")
+			}
+			if route.Send.To != "" && !validTemplateFreeSelector(route.Send.To) {
+				return errors.New("listen.routes send to is invalid")
+			}
+			if route.Send.HerdrSession != "" && !validTemplateFreeSelector(route.Send.HerdrSession) {
+				return errors.New("listen.routes send herdr_session is invalid")
+			}
+			if route.Send.Intent != "" && route.Send.Intent != "inform" {
+				return errors.New("listen.routes send intent must be inform")
+			}
+		}
+		if actions != 1 {
+			return errors.New("listen.routes require exactly one run, notify, or send action")
 		}
 		for path, predicate := range route.Match {
 			if !matchPath.MatchString(path) {
@@ -129,18 +213,38 @@ func validateRouteSyntax(routes []Route) error {
 	return nil
 }
 
-func validateRoutes(listen Listen) error {
-	if err := validateRouteSyntax(listen.Routes); err != nil {
+func validTemplateFreeSelector(value string) bool {
+	return strings.TrimSpace(value) != "" && !strings.Contains(value, "${") && !strings.ContainsAny(value, "\x00\x1b\r\n")
+}
+
+func validateRoutes(cfg Config) error {
+	if err := validateRouteSyntax(cfg.Listen.Routes); err != nil {
 		return err
 	}
-	for _, route := range listen.Routes {
+	for _, route := range cfg.Listen.Routes {
 		switch route.Source {
 		case "slack":
-			if listen.Slack == nil {
+			if cfg.Listen.Slack == nil {
 				return errors.New("listen.routes reference slack, but listen.slack is not configured")
 			}
 		default:
 			return errors.New("listen.routes reference an unconfigured source")
+		}
+		if route.Send != nil {
+			via := route.Send.Via
+			if via == "" {
+				via = cfg.Send.Via
+			}
+			to := route.Send.To
+			if to == "" {
+				to = cfg.Send.To
+			}
+			if to != "" && via != "" && !ValidRecipient(via, to) {
+				return errors.New("listen.routes send recipient is invalid for its transport")
+			}
+			if to != "" && via == "" && !ValidRecipient("hcom", to) && !ValidRecipient("herdr", to) {
+				return errors.New("listen.routes send recipient is invalid")
+			}
 		}
 	}
 	return nil
@@ -209,6 +313,9 @@ func Load(input Input) (Config, error) {
 			}
 		}
 	}
+	// Invocation flags select outbound sends; dormant listener routes validate
+	// against configured defaults rather than those one-shot selectors.
+	listenerCfg := cfg
 	for key, value := range input.Overrides {
 		if key == "secrets.policy" || key == "notify.command" || key == "listen" || strings.HasPrefix(key, "listen.") {
 			return Config{}, fmt.Errorf("%s is settable only in personal config files", key)
@@ -216,11 +323,17 @@ func Load(input Input) (Config, error) {
 		if err := cfg.apply(key, value.Text, input.CWD, value.Source); err != nil {
 			return Config{}, fmt.Errorf("%s: %w", strings.TrimPrefix(strings.TrimPrefix(value.Source, "flag:"), "env:"), err)
 		}
+		outboundSelectorFlag := strings.HasPrefix(value.Source, "flag:") && (key == "send.via" || key == "send.to")
+		if !outboundSelectorFlag {
+			if err := listenerCfg.apply(key, value.Text, input.CWD, value.Source); err != nil {
+				return Config{}, fmt.Errorf("%s: %w", strings.TrimPrefix(strings.TrimPrefix(value.Source, "flag:"), "env:"), err)
+			}
+		}
 	}
 	if cfg.Listen.Slack != nil && cfg.Listen.Slack.AppTokenEnv == "" {
 		return Config{}, errors.New("listen.slack.app_token_env is required")
 	}
-	if err := validateRoutes(cfg.Listen); err != nil {
+	if err := validateRoutes(listenerCfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil

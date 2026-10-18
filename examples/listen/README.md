@@ -1,6 +1,7 @@
-# Slack command routes
+# Slack event routes
 
-Tell can match Slack events to literal local command argv. Configure the Slack
+Tell can match Slack events to literal local commands or native notify/send
+actions. Configure the Slack
 app and credential environment variable as in the [README setup](../../README.md#slack-event-capture),
 then add this to personal config:
 
@@ -37,6 +38,47 @@ subprocess or target probes. Start real dispatch explicitly with
 commands run concurrently and 64 can wait. This does not order command starts or
 side effects. Keep commands short and use `exec` in wrappers; Tell has no
 persistent queue, action retry, or completion history.
+
+## Native notification and agent actions
+
+A route can notify a person, inform one configured agent, or invoke a trusted
+command. Use separate matching routes for intentional fan-out; each route has
+exactly one action. Static selectors override personal outbound settings only
+for that action:
+
+```yaml
+listen:
+  routes:
+    - name: notify-channel
+      source: slack
+      type: channel_created
+      match:
+        event.channel.name: {prefix: "inc-"}
+      notify:
+        via: desktop
+        title: "New incident channel ${data.event.channel.name}"
+        type: warning
+        message: "Slack event ${id}; inspect channel ID ${data.event.channel.id}."
+    - name: inform-reviewer
+      source: slack
+      type: channel_created
+      match:
+        event.channel.name: {prefix: "inc-"}
+      send:
+        via: hcom
+        to: reviewer
+        intent: inform
+        message: "Inspect Slack channel ID ${data.event.channel.id} for event ${id}; use provider tools to retrieve context."
+```
+
+Only message and notify title allow single-pass `${path}` placeholders rooted at
+the envelope. Use `$${` for a literal `${`; missing or compound values fail the
+action. The combined rendered message/title is capped at 256 KiB before Tell's
+shared preparation. `send` is inform-only and includes fixed external-event
+source/ID provenance plus a warning that event content is untrusted. This is not
+a prompt-injection sandbox: prefer stable IDs and provider links, not raw
+user-authored text. `tell listen --dry-run slack` validates templates and message
+policy without delivering or probing targets, and never prints rendered text.
 
 ## Noon handoff
 

@@ -1,8 +1,8 @@
 # Design
 
 This page describes implemented behavior. Tell supports explicit foreground
-Slack capture, personal route matching and bounded local command actions. Native
-notify/send actions and GitHub webhooks remain planned in TELL-28/29. See the
+Slack capture, personal route matching and bounded local command, native notify,
+and inform-only send actions. GitHub webhooks remain planned in TELL-29. See the
 [integration contract](listening.md). Scheduling and durable execution remain
 outside Tell.
 
@@ -14,8 +14,8 @@ person / script / scheduler hook / MCP client
          tell  (outbound one-shot; explicit foreground capture; MCP client-owned session)
           ├── notify → stderr | desktop | Herdr | Apprise → services | your command
           ├── send   → hcom mailbox | idle Herdr agent pane
-          ├── listen slack → matched bounded local commands
-          ├── listen --dry-run slack → body-free match receipts
+          ├── listen slack → matched bounded local/native actions
+          ├── listen --dry-run slack → body-free match/preparation receipts
           ├── listen --print slack → sensitive NDJSON (no matching/actions)
           └── mcp    → client-owned stdio process: notify | send | doctor
 ```
@@ -35,8 +35,9 @@ invocations, only the caller knows whether a message repeats, and a dropped
 alert costs more than a duplicate. A hook that notifies only on status change
 is the caller's job (see [examples/noon](../examples/noon/README.md)).
 
-There are no action retries, fallback routes, fan-out, agent spawning, or plugin
-registry. `tell mcp` is a client-owned stdio process, not a daemon; each tool call
+There are no action retries, fallback routes, agent spawning, or plugin
+registry. Multiple listener routes provide explicit fan-out; each matching route
+uses one action. `tell mcp` is a client-owned stdio process, not a daemon; each tool call
 uses the same one-shot delivery and readiness operations as the CLI. It exposes
 only `notify`, `send`, and read-only `doctor`, with no resources, prompts, HTTP,
 or MCP-specific retry behavior.
@@ -49,17 +50,20 @@ personal cases with no extra runtime. Apprise fans out to external services.
 The command route runs one personal executable with a fixed contract.
 
 `send` gives an existing agent information (`--intent inform`) or an
-instruction (`--intent request`). Instructions are legitimate when a person or
-their scheduled job wrote them. Send pointers (run IDs, paths, URLs), not raw
-job output, so agents read untrusted data through their own tools. Tell never
-waits for a reply or for the work to finish. Tracked agent work belongs to the
+instruction (`--intent request`). Event-driven routes are deliberately
+restricted to `inform`; their fixed external-event warning and source/ID
+provenance identify event text as untrusted but do not make it safe to follow.
+Prefer IDs and links over raw user-authored event content. Instructions are
+legitimate when a person or their scheduled job wrote them. Tell never waits
+for a reply or for the work to finish. Tracked agent work belongs to the
 scheduler's agent jobs (such as Noon's); ask-and-wait belongs to Unharness.
 
-## Slack capture and command routes
+## Slack capture and routes
 
 Bare `listen` and `--json listen` inspect only. Explicit `listen slack` dispatches
-matching command routes; `--dry-run slack` reports body-free matches without
-commands, and `--print slack` exports envelopes without matching. Setup uses
+matching route actions; `--dry-run slack` reports body-free match and preparation
+results without delivery or destination probes, and `--print slack` exports
+envelopes without matching. Setup uses
 fixed HTTPS and returned WSS URLs, never forwards app Authorization to
 WebSockets or redirects, and retries transient setup/connection failures with
 cancellable 1–60s jittered backoff and Retry-After. Selected credentials are
@@ -67,14 +71,25 @@ checked only at startup. Their configured variable names are removed from every
 outbound provider, doctor, and listener-action child environment.
 
 Each route has exact source/type selection, ANDed typed scalar/path predicates,
-and one literal `run` argv. No shell, interpolation, array path traversal, or
-numeric float rounding is used. The child receives the envelope on stdin and
-EOF, runs in the invocation CWD (not `--project`), and gets fixed source/type/ID,
-route, and project environment values. Child stdout/stderr are discarded.
-Actions use the existing 0/3/other and start/timeout outcomes; failures do not
-stop siblings or retry. Four actions run with 64 queued; matches are admitted in
-config order, not guaranteed command-start or side-effect order. Duplicate
-source/ID events cannot replay successful siblings.
+and exactly one literal `run`, native `notify`, or inform-only `send` action.
+Command argv is never templated. Native message/title placeholders use a
+single-pass `${envelope.path}` grammar with `$${` escaping; only string, number,
+and boolean values render. Expansion is capped at 256 KiB before the shared
+normalization, secret policy, provenance, and truncation preparation. Send adds
+fixed external source/ID provenance and warns that event content is untrusted;
+`inform` does not sandbox prompt injection. Dry-run validates rendering and
+preparation without delivery or destination probes, never exposing rendered
+text. Native stderr notifications enter the bounded listener output queue and
+its single writer.
+
+`run` receives the envelope on stdin and EOF, runs in the invocation CWD (not
+`--project`), and gets fixed source/type/ID, route, and project environment
+values. Child stdout/stderr are discarded. All action kinds use the same four
+running/64 waiting executor, per-action timeout, shutdown, stripped inbound
+credentials, and no-retry behavior. Existing delivery outcomes remain honest;
+failures do not stop siblings. Matches are admitted in config order, not
+guaranteed start or side-effect order. Duplicate source/ID events cannot replay
+successful siblings.
 
 Acks precede payload validation/admission and never wait for a command. A 64-event
 ingress buffer atomically reserves source/ID only on admission; dedup lasts 10

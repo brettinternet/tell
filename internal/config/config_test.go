@@ -101,7 +101,7 @@ func TestListenRoutesConfig(t *testing.T) {
 		"- {name: nul-argv, source: slack, type: e, run: [\"bad\\0arg\"]}\n",
 		"- {name: null-match, source: slack, type: e, match: {id: null}, run: [/bin/true]}\n",
 		"- {name: bad-prefix, source: slack, type: e, match: {id: {prefix: 1}}, run: [/bin/true]}\n",
-		"- {name: bad-action, source: slack, type: e, notify: {message: body}}\n",
+		"- {name: bad-action, source: slack, type: e, notify: {message: body, via: invalid}}\n",
 		"- {name: bad-source, source: github, type: e, run: [/bin/true]}\n",
 	} {
 		file := filepath.Join(input.CWD, "routes.yaml")
@@ -116,6 +116,123 @@ func TestListenRoutesConfig(t *testing.T) {
 	input.File = &file
 	if _, err := config.Load(input); err == nil {
 		t.Fatal("accepted a route for an unconfigured Slack source")
+	}
+}
+
+// Native action configuration is a strict exclusive union, selectors cannot be
+// templated, and action details remain hidden from effective-config JSON.
+func TestNativeRouteConfig(t *testing.T) {
+	input := fixture(t)
+	file := filepath.Join(input.CWD, "native.yaml")
+	writeFile(t, file, `send: {via: hcom, to: reviewer}
+notify: {via: apprise}
+apprise: {tag: inherited}
+listen:
+  slack: {app_token_env: TOKEN}
+  routes:
+    - name: notify-route
+      source: slack
+      type: channel_created
+      notify:
+        message: 'Channel ${data.event.channel.id} ($${literal})'
+        title: 'Alert ${id}'
+        type: warning
+        via: apprise
+        apprise_tag: urgent
+    - name: send-route
+      source: slack
+      type: channel_created
+      send:
+        message: 'Inspect channel ${data.event.channel.id}; event ${id}'
+        to: reviewer
+        intent: inform
+`)
+	input.File = &file
+	cfg, err := config.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Listen.Routes) != 2 || cfg.Listen.Routes[0].Notify == nil || cfg.Listen.Routes[1].Send == nil {
+		t.Fatalf("native action union was not parsed: %+v", cfg.Listen.Routes)
+	}
+	if !cfg.Listen.Routes[0].Notify.TitleSet || cfg.Listen.Routes[0].Notify.AppriseTag != "urgent" || cfg.Listen.Routes[1].Send.Intent != "inform" {
+		t.Fatalf("native action options were lost: %+v", cfg.Listen.Routes)
+	}
+	encoded, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "Channel ${") || strings.Contains(string(encoded), "Inspect channel") || strings.Contains(string(encoded), "urgent") {
+		t.Fatalf("inspection exposed action configuration: %s", encoded)
+	}
+
+	for _, route := range []string{
+		"- {name: no-action, source: slack, type: e}\n",
+		"- {name: mixed, source: slack, type: e, run: [/bin/true], notify: {message: hi}}\n",
+		"- {name: mixed-native, source: slack, type: e, notify: {message: hi}, send: {message: hi}}\n",
+		"- {name: null-action, source: slack, type: e, notify: null}\n",
+		"- {name: empty-action, source: slack, type: e, notify: {}}\n",
+		"- {name: unknown-action-field, source: slack, type: e, notify: {message: hi, command: [/bin/sh]}}\n",
+		"- {name: duplicate-action-field, source: slack, type: e, notify: {message: hi, message: again}}\n",
+		"- {name: invalid-template, source: slack, type: e, notify: {message: '${data..id}'}}\n",
+		"- {name: unterminated-template, source: slack, type: e, send: {message: '${id'}}\n",
+		"- {name: templated-selector, source: slack, type: e, notify: {message: hi, via: '${id}'}}\n",
+		"- {name: unsafe-send-selector, source: slack, type: e, send: {message: hi, via: hcom, to: '@reviewer'}}\n",
+		"- {name: invalid-send-transport, source: slack, type: e, send: {message: hi, via: remote, to: reviewer}}\n",
+		"- {name: request-intent, source: slack, type: e, send: {message: hi, intent: request}}\n",
+	} {
+		writeFile(t, file, "listen:\n  slack: {app_token_env: TOKEN}\n  routes:\n"+route)
+		if _, err := config.Load(input); err == nil {
+			t.Errorf("accepted invalid native route %q", route)
+		}
+	}
+}
+
+func TestOutboundSendFlagsDoNotChangeListenerSelectorValidation(t *testing.T) {
+	input := fixture(t)
+	file := filepath.Join(input.CWD, "native-send.yaml")
+	input.File = &file
+	input.Overrides = map[string]config.Value{
+		"send.via": {Text: "herdr", Source: "flag:--send-via"},
+		"send.to":  {Text: "w1:p2", Source: "flag:--to"},
+	}
+	writeFile(t, file, `send: {via: hcom, to: reviewer}
+listen:
+  slack: {app_token_env: TOKEN}
+  routes:
+    - name: inherited-send
+      source: slack
+      type: event
+      send: {message: hi}
+`)
+	cfg, err := config.Load(input)
+	if err != nil || cfg.Send.Via != "herdr" || cfg.Send.To != "w1:p2" {
+		t.Fatalf("outbound overrides or inherited listener selectors: %+v %v", cfg, err)
+	}
+
+	writeFile(t, file, `send: {via: hcom, to: w1:p2}
+listen:
+  slack: {app_token_env: TOKEN}
+  routes:
+    - name: inherited-send
+      source: slack
+      type: event
+      send: {message: hi}
+`)
+	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "invalid for its transport") {
+		t.Fatalf("outbound override hid invalid inherited listener selectors: %v", err)
+	}
+}
+
+func TestTemplateGrammar(t *testing.T) {
+	parts, err := config.ParseTemplate("literal $${id} ${data.event.channel.id}")
+	if err != nil || !reflect.DeepEqual(parts, []config.TemplatePart{{Text: "literal ${id} "}, {Path: "data.event.channel.id"}}) {
+		t.Fatalf("template parts: %+v %v", parts, err)
+	}
+	for _, malformed := range []string{"${}", "${data..id}", "${id", "${a[0]}"} {
+		if _, err := config.ParseTemplate(malformed); err == nil {
+			t.Errorf("accepted malformed template %q", malformed)
+		}
 	}
 }
 

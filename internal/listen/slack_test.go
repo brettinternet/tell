@@ -135,6 +135,288 @@ func TestSlackProtocol(t *testing.T) {
 	}
 }
 
+// Native stderr notifications share the listener's bounded single-writer path,
+// so concurrent delivery workers cannot race a bytes.Buffer or block the ack.
+func TestNativeStderrOutputUsesBoundedListenerWriter(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var server *httptest.Server
+	acknowledged := make(chan struct{})
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/open" {
+			fmt.Fprintf(w, `{"ok":true,"url":%q}`, "ws"+strings.TrimPrefix(server.URL, "http")+"/socket")
+			return
+		}
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		if err := conn.Write(ctx, websocket.MessageText, []byte(delivery("Ev1"))); err != nil {
+			t.Error(err)
+			return
+		}
+		if _, _, err := conn.Read(ctx); err != nil {
+			t.Error(err)
+			return
+		}
+		close(acknowledged)
+		<-ctx.Done()
+	}))
+	defer server.Close()
+
+	cfg := config.Config{Project: "/project", Timeout: "3s", Notify: config.Notify{Via: "stderr"}, Secrets: config.Secrets{Policy: "redact"}}
+	for i := range 4 {
+		cfg.Listen.Routes = append(cfg.Listen.Routes, config.Route{
+			Name: fmt.Sprintf("notify-%d", i), Source: "slack", Type: "channel_created",
+			Notify: &config.NotifyAction{Message: fmt.Sprintf("intentional-%d-${id}", i)},
+		})
+	}
+	executor := NewExecutor(cfg, currentDirectory(t))
+	var out, diag capture
+	results := make(chan string, 4)
+	opts := SlackOptions{Token: "fixture-token", Timeout: time.Second, Out: &out, Err: &diag}
+	opts.OnEvent = func(event Envelope, report func(route, outcome, reason string), writer io.Writer) {
+		for _, route := range Matches(cfg.Listen.Routes, event) {
+			if !executor.SubmitWithWriter(route, event, func(name, outcome, reason string) {
+				results <- name + ":" + outcome
+			}, writer) {
+				report(route.Name, "not_sent", "busy")
+			}
+		}
+	}
+	opts.OnStop = func() { executor.Stop(); executor.Wait() }
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, opts, fixtureTransport(server)) }()
+	select {
+	case <-acknowledged:
+	case <-time.After(3 * time.Second):
+		t.Fatal("listener did not acknowledge the event")
+	}
+	for range 4 {
+		select {
+		case result := <-results:
+			if !strings.HasSuffix(result, ":accepted") {
+				t.Fatalf("notification result: %s", result)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("native stderr notifications did not finish")
+		}
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if out.text() != "" {
+		t.Fatalf("intentional stderr delivery used stdout: %q", out.text())
+	}
+	for i := range 4 {
+		if got := strings.Count(diag.text(), fmt.Sprintf("intentional-%d-Ev1\n", i)); got != 1 {
+			t.Fatalf("stderr delivery %d count=%d: %q", i, got, diag.text())
+		}
+	}
+}
+
+type gatedWriter struct {
+	started     chan struct{}
+	release     chan struct{}
+	err         error
+	startOnce   sync.Once
+	releaseOnce sync.Once
+}
+
+func (writer *gatedWriter) Write(data []byte) (int, error) {
+	writer.startOnce.Do(func() { close(writer.started) })
+	<-writer.release
+	if writer.err != nil {
+		return 0, writer.err
+	}
+	return len(data), nil
+}
+
+func (writer *gatedWriter) unblock() { writer.releaseOnce.Do(func() { close(writer.release) }) }
+
+func startStderrAction(t *testing.T, stream io.Writer, outputTimeout time.Duration) (*Executor, <-chan [3]string, <-chan error, func()) {
+	t.Helper()
+	queue := make(chan *outputRequest, 64)
+	outputCtx, cancel := context.WithCancel(context.Background())
+	failures := make(chan error, 1)
+	outputDone := make(chan struct{})
+	go func() {
+		output(outputCtx, stream, queue, outputTimeout, func(err error) {
+			cancel()
+			failures <- err
+		})
+		close(outputDone)
+	}()
+	cfg := config.Config{Project: "/project", Timeout: "2s", Notify: config.Notify{Via: "stderr"}, Secrets: config.Secrets{Policy: "redact"}}
+	executor := NewExecutor(cfg, currentDirectory(t))
+	results := make(chan [3]string, 1)
+	route := config.Route{Name: "native-stderr", Notify: &config.NotifyAction{Message: "deliver", Via: "stderr"}}
+	writer := &queuedWriter{queue: queue, fail: func(err error) { cancel(); failures <- err }, ctx: outputCtx}
+	if !executor.SubmitWithWriter(route, Envelope{Source: "slack", Type: "event", ID: "Ev1"}, func(route, outcome, reason string) {
+		results <- [3]string{route, outcome, reason}
+	}, writer) {
+		t.Fatal("native stderr action was not admitted")
+	}
+	cleanup := func() {
+		executor.Stop()
+		executor.Wait()
+		close(queue)
+		cancel()
+		<-outputDone
+	}
+	return executor, results, failures, cleanup
+}
+
+// Native stderr actions must wait for the serialized writer's actual result,
+// not report acceptance when their bytes are merely queued.
+func TestNativeStderrActionWaitsForActualWrite(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		writeErr error
+		outcome  string
+		reason   string
+	}{
+		{name: "success", outcome: "accepted"},
+		{name: "failure", writeErr: io.ErrClosedPipe, outcome: "failed", reason: "io"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stream := &gatedWriter{started: make(chan struct{}), release: make(chan struct{}), err: tc.writeErr}
+			_, results, _, cleanup := startStderrAction(t, stream, time.Second)
+			defer func() { stream.unblock(); cleanup() }()
+			select {
+			case <-stream.started:
+			case <-time.After(time.Second):
+				t.Fatal("stderr writer was not called")
+			}
+			select {
+			case result := <-results:
+				t.Fatalf("action reported before write completion: %v", result)
+			case <-time.After(20 * time.Millisecond):
+			}
+			stream.unblock()
+			select {
+			case result := <-results:
+				if result[1] != tc.outcome || result[2] != tc.reason {
+					t.Fatalf("action result = %v, want %s/%s", result, tc.outcome, tc.reason)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("stderr action did not receive its write result")
+			}
+		})
+	}
+}
+
+// A stalled native-action write is uncertain and releases its worker slot.
+func TestStalledNativeStderrActionReleasesWorker(t *testing.T) {
+	stream := &gatedWriter{started: make(chan struct{}), release: make(chan struct{})}
+	_, results, failures, cleanup := startStderrAction(t, stream, 30*time.Millisecond)
+	defer func() { stream.unblock(); cleanup() }()
+	select {
+	case <-stream.started:
+	case <-time.After(time.Second):
+		t.Fatal("stderr writer was not called")
+	}
+	select {
+	case result := <-results:
+		if result[1] != "uncertain" || result[2] != "output_stalled" {
+			t.Fatalf("stalled output action = %v", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stalled writer held its executor slot")
+	}
+	select {
+	case err := <-failures:
+		if !strings.Contains(err.Error(), "stalled") {
+			t.Fatalf("global output failure = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stalled output did not fail the listener writer")
+	}
+}
+
+// A stalled writer failure stops the listener, and queued native actions do
+// not keep the executor alive while waiting for output that can no longer run.
+func TestStalledNativeStderrActionStopsListener(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var server *httptest.Server
+	acknowledged := make(chan struct{})
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/open" {
+			fmt.Fprintf(w, `{"ok":true,"url":%q}`, "ws"+strings.TrimPrefix(server.URL, "http")+"/socket")
+			return
+		}
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		if err := conn.Write(ctx, websocket.MessageText, []byte(delivery("stalled"))); err != nil {
+			t.Error(err)
+			return
+		}
+		if _, _, err := conn.Read(ctx); err != nil {
+			t.Error(err)
+			return
+		}
+		close(acknowledged)
+		<-ctx.Done()
+	}))
+	defer func() { cancel(); server.Close() }()
+
+	stream := &gatedWriter{started: make(chan struct{}), release: make(chan struct{})}
+	cfg := config.Config{Project: "/project", Timeout: "2s", Notify: config.Notify{Via: "stderr"}, Secrets: config.Secrets{Policy: "redact"}}
+	route := config.Route{Name: "native-stderr", Source: "slack", Type: "channel_created", Notify: &config.NotifyAction{Message: "deliver", Via: "stderr"}}
+	cfg.Listen.Routes = []config.Route{route}
+	executor := NewExecutor(cfg, currentDirectory(t))
+	results := make(chan [3]string, 1)
+	var out capture
+	options := SlackOptions{Token: "fixture-token", Timeout: time.Second, Out: &out, Err: stream}
+	options.OnEvent = func(event Envelope, report func(string, string, string), writer io.Writer) {
+		if !executor.SubmitWithWriter(route, event, func(name, outcome, reason string) {
+			results <- [3]string{name, outcome, reason}
+		}, writer) {
+			report(route.Name, "not_sent", "busy")
+		}
+	}
+	options.OnStop = func() { executor.Stop(); executor.Wait() }
+	tr := fixtureTransport(server)
+	tr.outputTimeout = 30 * time.Millisecond
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, options, tr) }()
+	select {
+	case <-acknowledged:
+	case <-ctx.Done():
+		t.Fatal("listener did not acknowledge the event")
+	}
+	select {
+	case <-stream.started:
+	case <-ctx.Done():
+		t.Fatal("native stderr output did not start")
+	}
+	select {
+	case result := <-results:
+		if result[1] != "not_sent" || result[2] != "cancelled" {
+			t.Fatalf("queued action after listener output failure = %v", result)
+		}
+	case <-ctx.Done():
+		t.Fatal("stalled writer held its executor slot")
+	}
+	stream.unblock()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "stalled") {
+			t.Fatalf("listener did not stop on output failure: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("listener/executor did not drain after writer failure")
+	}
+}
+
 // A duplicated admitted envelope must not repeat either successful sibling action.
 func TestDuplicateEventDoesNotRepeatMatchingActions(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -182,13 +464,14 @@ func TestDuplicateEventDoesNotRepeatMatchingActions(t *testing.T) {
 	cfg.Listen.Routes = []config.Route{
 		{Name: "first", Source: "slack", Type: "channel_created", Match: map[string]config.Predicate{"event.channel.name": {Prefix: &prefix}}, Run: []string{os.Args[0], "-test.run=^TestCommandFixtureProcess$", "--", "--fixture-child"}},
 		{Name: "second", Source: "slack", Type: "channel_created", Match: map[string]config.Predicate{"event.channel.id": {Value: "C1"}}, Run: []string{os.Args[0], "-test.run=^TestCommandFixtureProcess$", "--", "--fixture-child"}},
+		{Name: "native-notify", Source: "slack", Type: "channel_created", Notify: &config.NotifyAction{Message: "native-${id}", Via: "stderr"}},
 	}
 	executor := NewExecutor(cfg, currentDirectory(t))
 	var out, diag capture
 	opts := SlackOptions{Token: "fixture-token", Timeout: time.Second, Out: &out, Err: &diag}
-	opts.OnEvent = func(event Envelope, report func(route, outcome, reason string)) {
+	opts.OnEvent = func(event Envelope, report func(route, outcome, reason string), deliveryWriter io.Writer) {
 		for _, route := range Matches(cfg.Listen.Routes, event) {
-			if !executor.Submit(route, event, report) {
+			if !executor.SubmitWithWriter(route, event, report, deliveryWriter) {
 				report(route.Name, "not_sent", "busy")
 			}
 		}
@@ -228,6 +511,9 @@ func TestDuplicateEventDoesNotRepeatMatchingActions(t *testing.T) {
 	}
 	if strings.Contains(diag.text(), "private-event-body") {
 		t.Fatal("event body escaped into diagnostics")
+	}
+	if got := strings.Count(diag.text(), "native-same-id\n"); got != 1 {
+		t.Fatalf("duplicate delivery repeated native sibling: count=%d diagnostics=%q", got, diag.text())
 	}
 }
 

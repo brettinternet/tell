@@ -1,11 +1,9 @@
 # Local event integrations
 
-**Implemented:** Slack inspection, explicit `--print` capture, personal
-`run` routes and body-free `--dry-run` matching (TELL-26/27), bounded
-ingress/dedup/action queues, and connection recovery. **Planned:** native
-`notify`/`send` actions (TELL-28) and GitHub webhooks (TELL-29). Examples below
-use only shipped Slack/command behavior unless labeled planned. This refines
-decision-1; outbound commands retain their behavior.
+**Implemented:** Slack inspection, explicit `--print` capture, personal `run`,
+`notify`, and `send` routes with body-free `--dry-run` validation (TELL-26/27/28),
+bounded ingress/dedup/action queues, and connection recovery. **Planned:** GitHub
+webhooks (TELL-29). This refines decision-1; outbound commands retain their behavior.
 
 Tell is a local integrations layer: receive external events, match personal
 rules, and notify a person, inform an agent, or invoke a bounded local command.
@@ -20,12 +18,12 @@ Connection recovery is allowed; action retries and durable replay are not.
 | --- | --- |
 | `tell listen` | Inspect configured sources and route names; exit without network, binding sockets, reading stdin, or running actions |
 | `tell --json listen` | The same inspection as one body-free JSON object with `schema_version: 1` |
-| `tell listen slack` | Start the foreground Slack listener and dispatch matching personal `run` routes |
+| `tell listen slack` | Start the foreground Slack listener and dispatch matching personal route actions |
 | `tell listen github` (planned) | Start only GitHub's loopback HTTP source |
 | `tell listen slack github` (planned) | Start those sources in one foreground process |
 | `tell listen --print --all` | Explicitly capture every configured source (currently Slack only) |
 | `tell listen --print slack` | Receive and acknowledge events; print NDJSON envelopes, but never run actions |
-| `tell listen --dry-run slack` | Receive and acknowledge events; report matching routes without actions or payload output |
+| `tell listen --dry-run slack` | Receive and acknowledge events; validate matching templates/preparation without dispatch or payload output |
 
 `--all`, `--print`, and `--dry-run` are listen-only flags, with no short aliases.
 Require source names or `--all` for either preview mode: `tell listen --print`
@@ -136,8 +134,8 @@ receipts include connecting, connected, reconnecting, and stopped. Do not print
 raw provider errors, headers, URLs with tickets, payloads, argv, templates, or
 child output. Preview receipts use `dry_run`, never `accepted`. No-match,
 duplicate, and admission-drop receipts are distinguishable. Intentional message
-delivery to the configured stderr notify route is not a diagnostic; it still
-uses the ordinary preparation pipeline.
+delivery to the configured stderr notify route is not a diagnostic; it enters
+the same bounded, single-writer output queue and uses ordinary preparation.
 
 ## Slack source — TELL-26
 
@@ -165,13 +163,13 @@ events/scopes (for example `channel_created`/`channels:read`), and app installat
 Run one listener per Slack app: Slack distributes deliveries among connections,
 not a copy to every listener. Sleep/disconnection can lose events.
 
-## Route matching and command actions — TELL-27
+## Route matching and actions — TELL-27/28
 
 Each route has a unique `name` matching `[a-z0-9][a-z0-9_-]*`, a configured
-`source`, exact `type`, optional `match`, and exactly one action. The only shipped
-action is `run`; native `notify` and `send` may extend that union later. Unknown
-keys and multiple actions fail config validation; there are no action lists or
-implicit fallbacks.
+`source`, exact `type`, optional `match`, and exactly one `run`, `notify`, or
+`send` action. Unknown keys, null/empty actions, and multiple actions fail
+config validation; there are no action lists or implicit fallbacks. Multiple
+matching routes are explicit fan-out in config order.
 
 `match` maps dot-separated object paths inside `data` to scalar equality
 (string, finite JSON number, boolean; same type) or `{prefix: STRING}`. All
@@ -221,42 +219,40 @@ keys are retained only for its
 newest 50 finished runs per job; Tell adds no durable replay guarantee. No
 Noon-specific parsing is implemented in Tell.
 
-## Planned: native notification and agent actions — TELL-28
+## Native notification and agent actions — TELL-28
 
-Promote: direct cross-tool communication is core product scope, not contingent
-on repeated wrapper scripts. Reuse the in-process delivery/preparation APIs;
-do not spawn `tell` recursively or duplicate transports.
-
-- `notify`: required `message`; optional `title`, `type` (default info), static
-  `via`, `herdr_session`, and `apprise_tag` selectors. Inherit omitted selectors
-  and the default project title from effective personal outbound configuration.
-- `send`: required `message`; optional static `via`, `to`, `herdr_session`, and
-  `intent` (only `inform`, also the default). Inherit omitted selectors from
-  effective personal send configuration. No event-driven `request` intent in
-  this slice; a trusted command wrapper can explicitly make that policy choice.
-- Neither action can set executable/config paths, sender identity, timeout, or
-  secret policy. Validate static selector syntax at config load; dynamic target
-  readiness remains per-action and returns existing honest delivery outcomes.
+Native actions reuse in-process delivery and message-preparation APIs; they do
+not spawn `tell` recursively or duplicate transports. Each route action has a
+required nonblank `message`. `notify` accepts optional `title`, `type` (default
+`info`), `via`, `herdr_session`, and `apprise_tag`. `send` accepts optional
+static `via`, exact `to`, `herdr_session`, and `intent: inform` (the default and
+only allowed intent). Omitted selectors inherit effective personal outbound
+configuration; the project directory name supplies notify's default title.
+Static selector syntax is validated at config load, while readiness and target
+state remain per-action delivery outcomes. Actions cannot set executables,
+provider config paths, sender identity, timeout, or secret policy.
 
 Only message and notify title accept `${path}` placeholders rooted in the
-**envelope**, for example `${data.event.channel.id}` or `${id}`. Paths use the
-same grammar as matching. `$${` emits literal `${`; substitution is single-pass,
-with no functions, expressions, shell, recursion, or environment lookup. String,
-number, and boolean values render as text. Missing/null/object/array values fail
-that route as `not_sent/template_value`; never silently send an empty value.
-Malformed placeholder syntax is a startup config error. Reject placeholders in
-all selectors and enum fields. Literal command argv is never templated.
+**Tell envelope**, for example `${data.event.channel.id}` or `${id}`. Paths use
+the matching grammar. `$${` emits literal `${`; substitution is single-pass,
+with no functions, expressions, shell, recursion, or environment lookup. Strings,
+finite JSON numbers, and booleans render as text. Missing/null/object/array
+values fail that route as `not_sent/template_value`; never silently send an empty
+value. Malformed placeholder syntax is a startup config error. Placeholders are
+rejected in selectors and enum fields. Literal command argv is never templated.
 
-Render inside the shared action budget with a 256 KiB pre-preparation cap;
-exceeding it is `not_sent/template_size`, without partial delivery. Then apply
-existing normalization, secret policy, provenance, and truncation. Secret-policy
-rejection/scanner failure is the existing per-action config outcome, not fatal
-to the listener. Receipts never contain rendered text. Send adds fixed provenance
-identifying an external event and its source/ID, marking interpolated fields as
-untrusted data; it does not grant event authors authority to instruct the agent.
-Prefer IDs and links over raw user-authored text. `inform` is not a prompt-injection
-sandbox. Dry-run validates rendering/policy without dispatch and reports only
-validation results/errors, never rendered previews. All action kinds share capacity,
+Render inside the shared action budget with a 256 KiB combined pre-preparation
+cap across message and notify title; exceeding it is `not_sent/template_size`,
+without partial delivery. Then apply the existing normalization, secret policy,
+provenance, and truncation pipeline. Secret-policy rejection/scanner failure is
+the existing per-action config outcome, not fatal to the listener. Receipts never
+contain rendered text. Send always uses `inform` and adds fixed provenance with
+the external source and event ID plus an explicit warning that event content is
+untrusted. This does not grant event authors authority to instruct the agent.
+Prefer IDs and links over raw user-authored text. `inform` is not a
+prompt-injection sandbox. Dry-run performs template and preparation validation
+without dispatch or destination probes and reports only body-free outcomes; it
+never shows rendered previews. All action kinds share capacity, timeout,
 shutdown, credential stripping, and no-retry behavior.
 
 ## Planned: GitHub webhooks through cloudflared — TELL-29

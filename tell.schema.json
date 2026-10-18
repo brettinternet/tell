@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/brettinternet/tell/main/tell.schema.json",
   "title": "Tell personal configuration",
-  "description": "For user config, .git/tell.yaml, or an explicit --config file. Shared tell.yaml uses tell.shared.schema.json. Run tell config check for authoritative validation.",
+  "description": "For user config, .git/tell.yaml, or an explicit --config file. Personal Slack routes support exactly one run, notify, or send action. Shared tell.yaml uses tell.shared.schema.json. Run tell config check for authoritative validation.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -64,7 +64,7 @@
       }
     },
     "listen": {
-      "description": "Personal-only inbound configuration. Slack capture, body-free dry-run matching, and literal run argv routes are supported. Route lists replace whole lists.",
+      "description": "Personal-only inbound configuration. Slack capture supports literal run argv and native notify/send actions with single-pass scalar envelope templates. Route lists replace whole lists.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -86,7 +86,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "source", "type", "run"],
+            "required": ["name", "source", "type"],
             "properties": {
               "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
               "source": { "const": "slack" },
@@ -115,8 +115,38 @@
                 "minItems": 1,
                 "items": [{ "$ref": "#/definitions/nonBlankString" }],
                 "additionalItems": { "$ref": "#/definitions/string" }
+              },
+              "notify": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["message"],
+                "properties": {
+                  "message": { "$ref": "#/definitions/templateString", "description": "Message with single-pass ${path} envelope scalar placeholders; $${ escapes a literal opener." },
+                  "title": { "type": "string", "description": "Optional title with the same envelope placeholder grammar; empty explicitly suppresses the default project title." },
+                  "type": { "enum": ["info", "success", "warning", "failure"], "default": "info" },
+                  "via": { "enum": ["stderr", "desktop", "apprise", "herdr", "command"], "description": "Static override; otherwise inherit effective notify.via." },
+                  "herdr_session": { "$ref": "#/definitions/staticSelector", "description": "Static session override; otherwise inherit herdr.session." },
+                  "apprise_tag": { "$ref": "#/definitions/staticSelector", "description": "Static Apprise tag override; otherwise inherit apprise.tag." }
+                }
+              },
+              "send": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["message"],
+                "properties": {
+                  "message": { "$ref": "#/definitions/templateString", "description": "Message with single-pass ${path} envelope scalar placeholders; $${ escapes a literal opener." },
+                  "via": { "enum": ["hcom", "herdr"], "description": "Static override; otherwise inherit send.via." },
+                  "to": { "$ref": "#/definitions/staticSelector", "description": "One static exact recipient; never interpolated." },
+                  "herdr_session": { "$ref": "#/definitions/staticSelector", "description": "Static session override; otherwise inherit herdr.session." },
+                  "intent": { "const": "inform", "default": "inform", "description": "Inform only; external event content is untrusted." }
+                }
               }
-            }
+            },
+            "oneOf": [
+              { "required": ["run"] },
+              { "required": ["notify"] },
+              { "required": ["send"] }
+            ]
           }
         }
       }
@@ -131,6 +161,8 @@
   },
   "definitions": {
     "string": { "type": "string", "not": { "pattern": "[\u0000\u001b\r\n]" } },
-    "nonBlankString": { "allOf": [{ "$ref": "#/definitions/string" }, { "pattern": "\\S" }] }
+    "nonBlankString": { "allOf": [{ "$ref": "#/definitions/string" }, { "pattern": "\\S" }] },
+    "templateString": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "staticSelector": { "allOf": [{ "$ref": "#/definitions/nonBlankString" }], "not": { "pattern": "\\$\\$?\\{" } }
   }
 }

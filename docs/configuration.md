@@ -121,9 +121,11 @@ files, merges by field, and has no flag or environment override for the name.
 The credential value stays in that variable, never in config or snapshots. The
 personal-only `listen.routes` list replaces as a whole across config layers;
 an empty list disables inherited routes. Each route requires a unique name,
-configured source (`slack`), exact event type, optional AND predicates, and one
-literal `run` argv action. Unknown fields and malformed paths/scalars are
-rejected. Run argv and predicate values are never printed by inspection.
+configured source (`slack`), exact event type, optional AND predicates, and
+exactly one `run`, `notify`, or `send` action. Unknown fields, null/empty or
+mixed actions, malformed paths/scalars, invalid selectors, and send `request`
+intent are rejected. Action messages/templates and run argv are never printed
+by inspection.
 
 ```yaml
 listen:
@@ -136,7 +138,32 @@ listen:
       match:
         event.channel.name: {prefix: "inc-"}
       run: [/Users/me/.local/bin/incident-to-noon]
+    - name: notify-channel
+      source: slack
+      type: channel_created
+      notify:
+        title: "Channel ${data.event.channel.name} created"
+        message: "Slack event ${id}; inspect channel ${data.event.channel.id}"
+        via: desktop
+    - name: inform-agent
+      source: slack
+      type: channel_created
+      send:
+        via: hcom
+        to: reviewer
+        message: "Review Slack event ${id} for channel ${data.event.channel.id}; use provider tools for context."
+        intent: inform
 ```
+
+Only message and notify title support single-pass `${path}` placeholders rooted
+at the envelope. `$${` emits a literal `${`; only strings, numbers, and booleans
+render, and missing/null/object/array values fail as `not_sent/template_value`.
+Malformed placeholders fail config validation. Selectors and enum fields are
+static. Combined rendered message/title input is capped at 256 KiB before the
+shared normalization/secret-policy/provenance/truncation pipeline. Send is
+inform-only and adds fixed source/ID provenance plus an untrusted-event warning;
+prefer IDs and links over raw event text. `inform` is not a prompt-injection
+sandbox.
 
 `tell listen`, `tell --json listen`, `config`, and `config check` inspect/validate
 without inbound IO or requiring the variable to be set. Bare `tell` names
@@ -149,10 +176,13 @@ Only explicit source selection starts a listener: `tell listen slack`,
 variants). `--all` with names, repeated/unknown names, selector-free preview
 flags, conflicting modes, and live `--json` exit 2. Missing selected
 config/credentials or dispatch/dry-run without routes exits 1 before I/O.
-`--dry-run` emits body-free route receipts and runs no commands; `--print`
-exports envelopes without matching. `run` receives envelope JSON on stdin,
+`--dry-run` emits body-free route receipts and validates native templates and
+message preparation without delivery or target probes; `--print` exports
+sensitive envelopes without matching. `run` receives envelope JSON on stdin,
 invocation CWD, inherited environment minus inbound credentials, then the five
-fixed event/project variables; output streams are discarded. `--timeout` bounds
+fixed event/project variables; output streams are discarded. Native actions use
+the same executor bounds, timeout, shutdown, and stripped child environment.
+`--timeout` bounds
 setup requests and each action, not listener lifetime. GitHub is not shipped.
 See [Slack setup, privacy and loss limits](../README.md#slack-event-capture).
 

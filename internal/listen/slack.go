@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -20,7 +22,7 @@ type SlackOptions struct {
 	Token    string
 	Timeout  time.Duration
 	Out, Err io.Writer
-	OnEvent  func(Envelope, func(route, outcome, reason string))
+	OnEvent  func(Envelope, func(route, outcome, reason string), io.Writer)
 	OnStop   func()
 }
 type transport struct {
@@ -74,9 +76,12 @@ func run(ctx context.Context, opts SlackOptions, tr transport) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	a := newAdmission()
-	diagnostics := make(chan []byte, 64)
+	diagnostics := make(chan *outputRequest, 64)
+	outputCtx, stopOutput := context.WithCancel(context.Background())
+	defer stopOutput()
 	failures := make(chan error, 1)
 	fail := func(err error) {
+		stopOutput()
 		select {
 		case failures <- err:
 		default:
@@ -85,7 +90,7 @@ func run(ctx context.Context, opts SlackOptions, tr transport) error {
 	receipt := func(e Envelope, outcome string) {
 		queueDiagnostic := func(line string) {
 			select {
-			case diagnostics <- []byte(line):
+			case diagnostics <- &outputRequest{data: []byte(line)}:
 			default:
 				fail(errors.New("listener diagnostic output busy"))
 			}
@@ -102,20 +107,19 @@ func run(ctx context.Context, opts SlackOptions, tr transport) error {
 			line += " reason=" + reason
 		}
 		select {
-		case diagnostics <- []byte(line + "\n"):
+		case diagnostics <- &outputRequest{data: []byte(line + "\n")}:
 		default:
 			fail(errors.New("listener diagnostic output busy"))
 		}
 	}
-	outputCtx, stopOutput := context.WithCancel(context.Background())
-	defer stopOutput()
 	outputDone := make(chan struct{}, 2)
 	eventsDone := make(chan struct{})
 	if opts.OnEvent == nil {
-		go func() { output(outputCtx, opts.Out, a.events, tr.outputTimeout, fail); outputDone <- struct{}{} }()
+		go func() { outputBytes(outputCtx, opts.Out, a.events, tr.outputTimeout, fail); outputDone <- struct{}{} }()
 	} else {
+		deliveryWriter := &queuedWriter{queue: diagnostics, fail: fail, ctx: outputCtx}
 		go func() {
-			handleEvents(a.events, opts.OnEvent, actionReceipt, fail)
+			handleEvents(a.events, opts.OnEvent, actionReceipt, deliveryWriter, fail)
 			close(eventsDone)
 			outputDone <- struct{}{}
 		}()
@@ -161,18 +165,253 @@ func run(ctx context.Context, opts SlackOptions, tr transport) error {
 	}
 	return result
 }
-func handleEvents(queue <-chan []byte, handler func(Envelope, func(route, outcome, reason string)), report func(Envelope, string, string, string), fail func(error)) {
+func handleEvents(queue <-chan []byte, handler func(Envelope, func(route, outcome, reason string), io.Writer), report func(Envelope, string, string, string), deliveryWriter io.Writer, fail func(error)) {
 	for data := range queue {
 		var event Envelope
 		if json.Unmarshal(data, &event) != nil {
 			fail(errors.New("listener event queue contained invalid data"))
 			return
 		}
-		handler(event, func(route, outcome, reason string) { report(event, route, outcome, reason) })
+		handler(event, func(route, outcome, reason string) { report(event, route, outcome, reason) }, deliveryWriter)
 	}
 }
 
-func output(ctx context.Context, writer io.Writer, queue <-chan []byte, timeout time.Duration, fail func(error)) {
+const (
+	outputPending uint32 = iota
+	outputStarted
+	outputExpired
+)
+
+type outputRequest struct {
+	data  []byte
+	ctx   context.Context
+	ack   chan outputResult
+	state atomic.Uint32
+	once  sync.Once
+}
+
+type outputResult struct {
+	err     error
+	started bool
+}
+
+type outputCompletion struct {
+	request *outputRequest
+	result  outputResult
+}
+
+var errOutputStalled = errors.New("listener output stalled")
+
+type queuedWriteFailure struct {
+	outcome string
+	reason  string
+	cause   error
+}
+
+func (err *queuedWriteFailure) Error() string { return err.cause.Error() }
+func (err *queuedWriteFailure) Unwrap() error { return err.cause }
+
+func (request *outputRequest) respond(result outputResult) {
+	if request.ack != nil {
+		request.once.Do(func() { request.ack <- result })
+	}
+}
+
+func (request *outputRequest) skipExpired() bool {
+	if request.state.Load() == outputExpired {
+		return true
+	}
+	if request.ctx == nil || request.ctx.Err() == nil {
+		return false
+	}
+	if request.state.CompareAndSwap(outputPending, outputExpired) {
+		request.respond(outputResult{err: request.ctx.Err()})
+		return true
+	}
+	return request.state.Load() == outputExpired
+}
+
+func (request *outputRequest) started() bool { return request.state.Load() == outputStarted }
+
+func (request *outputRequest) expire(err error) {
+	if request.state.CompareAndSwap(outputPending, outputExpired) {
+		request.respond(outputResult{err: err})
+		return
+	}
+	request.respond(outputResult{err: err, started: request.started()})
+}
+
+type queuedWriter struct {
+	queue chan<- *outputRequest
+	fail  func(error)
+	ctx   context.Context
+}
+
+func (writer *queuedWriter) Write(data []byte) (int, error) {
+	return writer.WriteContext(context.Background(), data)
+}
+
+func (writer *queuedWriter) WriteContext(ctx context.Context, data []byte) (int, error) {
+	request := &outputRequest{data: append([]byte(nil), data...), ctx: ctx, ack: make(chan outputResult, 1)}
+	var writerDone <-chan struct{}
+	if writer.ctx != nil {
+		writerDone = writer.ctx.Done()
+	}
+	select {
+	case writer.queue <- request:
+	case <-ctx.Done():
+		return 0, queuedWriteError(outputResult{err: ctx.Err()})
+	case <-writerDone:
+		return 0, queuedWriteError(outputResult{err: context.Canceled})
+	default:
+		writer.fail(errors.New("listener diagnostic output busy"))
+		return 0, errors.New("listener diagnostic output busy")
+	}
+	select {
+	case result := <-request.ack:
+		return queuedWriteResult(len(data), result)
+	case <-ctx.Done():
+		request.expire(ctx.Err())
+		return queuedWriteResultOnCancellation(len(data), request, ctx.Err())
+	case <-writerDone:
+		request.expire(context.Canceled)
+		return queuedWriteResultOnCancellation(len(data), request, context.Canceled)
+	}
+}
+
+func queuedWriteResultOnCancellation(size int, request *outputRequest, err error) (int, error) {
+	select {
+	case result := <-request.ack:
+		return queuedWriteResult(size, result)
+	default:
+		return 0, queuedWriteError(outputResult{err: err, started: request.started()})
+	}
+}
+
+func queuedWriteResult(size int, result outputResult) (int, error) {
+	if result.err != nil {
+		return 0, queuedWriteError(result)
+	}
+	return size, nil
+}
+
+func queuedWriteError(result outputResult) error {
+	if !errors.Is(result.err, context.Canceled) && !errors.Is(result.err, context.DeadlineExceeded) && !errors.Is(result.err, errOutputStalled) {
+		return result.err
+	}
+	reason := "cancelled"
+	if errors.Is(result.err, context.DeadlineExceeded) {
+		reason = "timeout"
+	} else if errors.Is(result.err, errOutputStalled) {
+		reason = "output_stalled"
+	}
+	outcome := "not_sent"
+	if result.started {
+		outcome = "uncertain"
+	}
+	return &queuedWriteFailure{outcome: outcome, reason: reason, cause: result.err}
+}
+
+func output(ctx context.Context, writer io.Writer, queue <-chan *outputRequest, timeout time.Duration, fail func(error)) {
+	// A dedicated writer bounds the number of blocked Writes, even for arbitrary
+	// io.Writers without deadlines. Never spawn another after a timeout.
+	jobs := make(chan *outputRequest)
+	defer close(jobs)
+	done := make(chan outputCompletion, 1)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case request, ok := <-jobs:
+				if !ok {
+					return
+				}
+				if request.skipExpired() || !request.state.CompareAndSwap(outputPending, outputStarted) {
+					done <- outputCompletion{request: request, result: outputResult{err: context.Canceled}}
+					continue
+				}
+				if request.ctx != nil && request.ctx.Err() != nil {
+					request.state.CompareAndSwap(outputStarted, outputExpired)
+					request.respond(outputResult{err: request.ctx.Err()})
+					done <- outputCompletion{request: request, result: outputResult{err: request.ctx.Err()}}
+					continue
+				}
+				n, err := writer.Write(request.data)
+				if err == nil && n != len(request.data) {
+					err = io.ErrShortWrite
+				}
+				result := outputResult{err: err, started: true}
+				request.respond(result)
+				select {
+				case done <- outputCompletion{request: request, result: result}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case request, ok := <-queue:
+			if !ok {
+				return
+			}
+			if request.skipExpired() {
+				continue
+			}
+			requestContext := request.ctx
+			var requestDone <-chan struct{}
+			if requestContext != nil {
+				requestDone = requestContext.Done()
+			}
+			select {
+			case jobs <- request:
+			case <-ctx.Done():
+				request.expire(ctx.Err())
+				return
+			case <-requestDone:
+				request.skipExpired()
+				continue
+			}
+			timer := time.NewTimer(timeout)
+		awaitWrite:
+			for {
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					request.expire(ctx.Err())
+					return
+				case <-requestDone:
+					request.expire(requestContext.Err())
+					requestDone = nil
+				case completed := <-done:
+					timer.Stop()
+					if completed.request != request {
+						fail(errors.New("listener output writer lost request order"))
+						return
+					}
+					if completed.result.err != nil {
+						if !completed.result.started && request.skipExpired() {
+							break awaitWrite
+						}
+						fail(errors.New("listener output failed"))
+						return
+					}
+					break awaitWrite
+				case <-timer.C:
+					request.expire(errOutputStalled)
+					fail(errOutputStalled)
+					return
+				}
+			}
+		}
+	}
+}
+
+func outputBytes(ctx context.Context, writer io.Writer, queue <-chan []byte, timeout time.Duration, fail func(error)) {
 	// A dedicated writer bounds the number of blocked Writes, even for arbitrary
 	// io.Writers without deadlines. Never spawn another after a timeout.
 	jobs := make(chan []byte)

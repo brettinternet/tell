@@ -190,11 +190,97 @@ func parseRoute(node *yaml.Node) (Route, error) {
 				}
 				route.Run[i] = arg.Value
 			}
+		case "notify":
+			action, err := parseNotifyAction(value)
+			if err != nil {
+				return Route{}, err
+			}
+			route.Notify = &action
+		case "send":
+			action, err := parseSendAction(value)
+			if err != nil {
+				return Route{}, err
+			}
+			route.Send = &action
 		default:
 			return Route{}, fmt.Errorf("line %d: unknown route field %q", key.Line, key.Value)
 		}
 	}
 	return route, nil
+}
+
+func parseNotifyAction(node *yaml.Node) (NotifyAction, error) {
+	var action NotifyAction
+	if node.Kind != yaml.MappingNode || node.Tag != "!!map" || node.Anchor != "" {
+		return action, fmt.Errorf("line %d: route notify action must be a mapping", node.Line)
+	}
+	seen := map[string]bool{}
+	for i := 0; i < len(node.Content); i += 2 {
+		key, value := node.Content[i], node.Content[i+1]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" || seen[key.Value] {
+			return action, fmt.Errorf("line %d: notify action keys must be unique strings", key.Line)
+		}
+		seen[key.Value] = true
+		if value.Anchor != "" || value.Kind == yaml.AliasNode || value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
+			return action, fmt.Errorf("line %d: notify action %s must be a string without aliases", value.Line, key.Value)
+		}
+		if key.Value != "title" && strings.TrimSpace(value.Value) == "" {
+			return action, fmt.Errorf("line %d: notify action %s must not be empty", value.Line, key.Value)
+		}
+		switch key.Value {
+		case "message":
+			action.Message = value.Value
+		case "title":
+			action.Title, action.TitleSet = value.Value, true
+		case "type":
+			action.Type = value.Value
+		case "via":
+			action.Via = value.Value
+		case "herdr_session":
+			action.HerdrSession = value.Value
+		case "apprise_tag":
+			action.AppriseTag = value.Value
+		default:
+			return action, fmt.Errorf("line %d: unknown notify action field %q", key.Line, key.Value)
+		}
+	}
+	return action, nil
+}
+
+func parseSendAction(node *yaml.Node) (SendAction, error) {
+	var action SendAction
+	if node.Kind != yaml.MappingNode || node.Tag != "!!map" || node.Anchor != "" {
+		return action, fmt.Errorf("line %d: route send action must be a mapping", node.Line)
+	}
+	seen := map[string]bool{}
+	for i := 0; i < len(node.Content); i += 2 {
+		key, value := node.Content[i], node.Content[i+1]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" || seen[key.Value] {
+			return action, fmt.Errorf("line %d: send action keys must be unique strings", key.Line)
+		}
+		seen[key.Value] = true
+		if value.Anchor != "" || value.Kind == yaml.AliasNode || value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
+			return action, fmt.Errorf("line %d: send action %s must be a string without aliases", value.Line, key.Value)
+		}
+		if strings.TrimSpace(value.Value) == "" {
+			return action, fmt.Errorf("line %d: send action %s must not be empty", value.Line, key.Value)
+		}
+		switch key.Value {
+		case "message":
+			action.Message = value.Value
+		case "via":
+			action.Via = value.Value
+		case "to":
+			action.To = value.Value
+		case "herdr_session":
+			action.HerdrSession = value.Value
+		case "intent":
+			action.Intent = value.Value
+		default:
+			return action, fmt.Errorf("line %d: unknown send action field %q", key.Line, key.Value)
+		}
+	}
+	return action, nil
 }
 
 func parseRouteMatch(node *yaml.Node) (map[string]Predicate, error) {

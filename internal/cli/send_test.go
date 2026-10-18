@@ -107,6 +107,28 @@ func checkSendReceipt(t *testing.T, code int, out, diag, route, outcome, reason 
 
 // Explicit targeting and -- prevent body mentions/options from broadcasting;
 // literal and explicit stdin messages must cross exactly the same boundary.
+func TestOutboundSendFlagsDoNotOverrideDormantListenerSelectors(t *testing.T) {
+	environment(t)
+	record := sendProvider(t)
+	configuration := writeUserConfig(t, `send: {via: hcom, to: reviewer}
+listen:
+  slack: {app_token_env: TELL_TEST_SLACK_SECRET}
+  routes:
+    - name: inherited-send
+      source: slack
+      type: event
+      send: {message: hi}
+`)
+	code, out, diag := run("--config", configuration, "--json", "send", "--send-via", "herdr", "--to", "w1:p2", "--herdr-session", "work", "hello")
+	result := checkSendReceipt(t, code, out, diag, "herdr", "accepted", "")
+	if result.Recipient != "w1:p2" {
+		t.Fatalf("outbound recipient: %+v", result)
+	}
+	if _, err := os.Stat(record + ".sent"); err != nil {
+		t.Fatalf("explicit Herdr send did not reach its fixture: %v", err)
+	}
+}
+
 func TestSendLiteralAndStdin(t *testing.T) {
 	for _, route := range []string{"hcom", "herdr"} {
 		for _, input := range []string{"literal", "stdin", "words", "leading-dash", "middle-dash", "missing"} {

@@ -240,8 +240,16 @@ func TestExecutorGracefulStopDropsWaitingActions(t *testing.T) {
 		entries, err := os.ReadDir(startDir)
 		return err == nil && len(entries) == actionWorkers
 	})
+	native := config.Route{Name: "native-drop", Notify: &config.NotifyAction{Message: "queued", Via: "stderr"}}
 	for i := 0; i < actionQueueLimit; i++ {
-		if !submit("drop-" + strconv.Itoa(i)) {
+		id := "drop-" + strconv.Itoa(i)
+		var admitted bool
+		if i%2 == 0 {
+			admitted = executor.SubmitWithWriter(native, Envelope{Source: "slack", Type: "event", ID: id, Data: map[string]json.RawMessage{}}, func(route, outcome, reason string) { results <- [3]string{route, outcome, reason} }, io.Discard)
+		} else {
+			admitted = submit(id)
+		}
+		if !admitted {
 			t.Fatalf("waiting action %d was refused", i)
 		}
 	}
@@ -294,8 +302,16 @@ func TestExecutorAdmissionBounds(t *testing.T) {
 		entries, err := os.ReadDir(startDir)
 		return err == nil && len(entries) == actionWorkers
 	})
+	native := config.Route{Name: "native-bounded", Notify: &config.NotifyAction{Message: "queued", Via: "stderr"}}
 	for i := 0; i < actionQueueLimit; i++ {
-		if !submit("queued-" + string(rune('a'+i))) {
+		id := "queued-" + string(rune('a'+i))
+		var admitted bool
+		if i%2 == 0 {
+			admitted = executor.SubmitWithWriter(native, Envelope{Source: "slack", Type: "event", ID: id, Data: map[string]json.RawMessage{}}, func(route, outcome, reason string) { results <- [3]string{route, outcome, reason} }, io.Discard)
+		} else {
+			admitted = submit(id)
+		}
+		if !admitted {
 			t.Fatalf("waiting slot %d was refused", i)
 		}
 	}

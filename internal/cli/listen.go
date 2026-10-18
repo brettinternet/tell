@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -19,7 +20,7 @@ type listenerFailure struct{ error }
 func listenCommand() *urfave.Command {
 	return &urfave.Command{
 		Name: "listen", Usage: "Inspect configured sources or explicitly capture events", ArgsUsage: "[slack...]",
-		Description: "With no source, inspect and exit without connecting. Explicit source selection starts a foreground listener.\n--print exports sensitive envelopes; --dry-run reports body-free matching routes without running commands.\nRun actions use literal argv, receive the envelope on stdin, and have stdout/stderr discarded.\n\nExamples:\n  tell listen\n  tell --json listen\n  tell listen slack\n  tell listen --dry-run slack\n  tell listen --print slack\n  tell listen --dry-run --all",
+		Description: "With no source, inspect and exit without connecting. Explicit source selection starts a foreground listener.\n--print exports sensitive envelopes; --dry-run validates matching actions without delivery.\nRun actions use literal argv, receive the envelope on stdin, and have stdout/stderr discarded. Native notify/send actions use single-pass scalar envelope templates.\n\nExamples:\n  tell listen\n  tell --json listen\n  tell listen slack\n  tell listen --dry-run slack\n  tell listen --print slack\n  tell listen --dry-run --all",
 		Flags: []urfave.Flag{
 			&urfave.BoolFlag{Name: "all", Usage: "Start every configured source (cannot accompany source names)"},
 			&urfave.BoolFlag{Name: "print", Usage: "Export sensitive NDJSON events without matching or running actions"},
@@ -127,14 +128,15 @@ func runListen(ctx context.Context, cmd *urfave.Command, capture func(context.Co
 	options := listen.SlackOptions{Token: token, Timeout: timeout, Out: cmd.Writer, Err: cmd.ErrWriter}
 	var executor *listen.Executor
 	if cmd.Bool("dry-run") {
-		options.OnEvent = func(event listen.Envelope, report func(string, string, string)) {
+		options.OnEvent = func(event listen.Envelope, report func(string, string, string), _ io.Writer) {
 			matched := listen.Matches(cfg.Listen.Routes, event)
 			if len(matched) == 0 {
 				report("", "no_match", "")
 				return
 			}
 			for _, route := range matched {
-				report(route.Name, "dry_run", "")
+				outcome, reason := listen.ValidateAction(ctx, cfg, route, event)
+				report(route.Name, outcome, reason)
 			}
 		}
 	} else if !cmd.Bool("print") {
@@ -143,14 +145,14 @@ func runListen(ctx context.Context, cmd *urfave.Command, capture func(context.Co
 			return err
 		}
 		executor = listen.NewExecutor(cfg, cwd)
-		options.OnEvent = func(event listen.Envelope, report func(string, string, string)) {
+		options.OnEvent = func(event listen.Envelope, report func(string, string, string), deliveryWriter io.Writer) {
 			matched := listen.Matches(cfg.Listen.Routes, event)
 			if len(matched) == 0 {
 				report("", "no_match", "")
 				return
 			}
 			for _, route := range matched {
-				if !executor.Submit(route, event, report) {
+				if !executor.SubmitWithWriter(route, event, report, deliveryWriter) {
 					report(route.Name, "not_sent", "busy")
 				}
 			}
