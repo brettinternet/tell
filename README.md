@@ -13,8 +13,9 @@ Tell is a CLI for terminals, scripts, and scheduler hooks. Your scheduler
 (cron, launchd, CI, Noon) owns schedules, retries, and history. Your scripts
 decide what is worth saying. Tell routes one message and reports what happened.
 Outbound delivery has no retries. Tell has no installed daemon, durable queue,
-or database. Explicit foreground Slack capture owns bounded in-memory buffers,
-duplicate suppression, and connection recovery.
+or database. Explicit foreground Slack listeners own bounded in-memory ingress,
+deduplication, action slots, and connection recovery; local command actions never
+retry and do not create durable work.
 
 ## Slack event capture
 
@@ -30,30 +31,60 @@ listen:
     app_token_env: TELL_SLACK_APP_TOKEN
 ```
 
-Set that variable securely in your shell, then:
+Set that variable securely in your shell, then select an explicit foreground mode:
 
 ```sh
 tell listen                    # inspect only; no connections
 tell --json listen             # one safe snapshot
-tell listen --print slack      # foreground sensitive NDJSON export
+tell listen --dry-run slack    # body-free route match receipts, no commands
+tell listen slack              # dispatch matching command routes
+tell listen --print slack      # sensitive NDJSON export, no matching/actions
 tell listen --print --all      # every configured source (currently Slack only)
 ```
 
-Print mode acknowledges events but runs no actions. Payloads may contain private
-text and secrets; only Slack's legacy top-level token is removed. Never pipe
-capture into an untrusted log. Run **one listener per Slack app**: Slack distributes
-deliveries among connections, not a copy to each listener.
+Configure a personal route with one literal argv action:
 
-Frames are capped at 1 MiB, envelopes at 256 KiB, ingress at 64 events. Duplicate
-IDs are suppressed per source for 10 minutes, up to 10,000 oldest-first entries.
-Full ingress drops without reserving the ID; restart, sleep, or disconnection
-can lose events. Output is bounded too; a write stalled for 5 seconds or a broken
-stream stops capture. SIGINT/SIGTERM exit 0; fatal source/output errors exit 1.
-Bare commands, config checks, and inbound doctor readiness never connect.
+```yaml
+listen:
+  slack:
+    app_token_env: TELL_SLACK_APP_TOKEN
+  routes:
+    - name: incident-kickoff
+      source: slack
+      type: channel_created
+      match:
+        event.channel.name: {prefix: "inc-"}
+      run: [/Users/me/.local/bin/incident-to-noon]
+```
 
-Routes/actions, dry-run, and GitHub webhooks remain **planned** in TELL-27–29.
-Dispatch without routes fails with a print-mode hint. See the
-[implemented capture and planned integration contract](docs/listening.md).
+`run` receives the complete Tell envelope as stdin and EOF. It runs in the
+invocation CWD, inherits the environment minus configured inbound credentials,
+and gets fixed `TELL_EVENT_SOURCE`, `TELL_EVENT_TYPE`, `TELL_EVENT_ID`,
+`TELL_ROUTE`, and `TELL_PROJECT` values. It is not a shell command: argv is
+literal, with no interpolation. Child stdout/stderr are discarded. Preview
+receipts never contain event bodies or argv. See the [command-route and Noon
+handoff example](examples/listen/README.md).
+
+Print mode acknowledges events but does not match or run actions. Payloads may
+contain private text and secrets; only Slack's legacy top-level token is
+removed. Never pipe capture into an untrusted log. Run **one listener per Slack
+app**: Slack distributes deliveries among connections, not a copy to each
+listener.
+
+Frames are capped at 1 MiB, envelopes at 256 KiB, and ingress at 64 events.
+Duplicate IDs are suppressed per source for 10 minutes, up to 10,000
+oldest-first entries. The action executor admits four running and 64 waiting
+commands; excess matches get `not_sent/busy` without retry. Full ingress drops
+without reserving the ID; restart, sleep, or disconnection can lose events.
+Output is bounded too; a write stalled for 5 seconds or a broken stream stops
+capture. First SIGINT/SIGTERM drains running actions within their deadlines and
+drops queued work; a second cancels running actions as uncertain. Fatal source/
+output errors exit 1. Bare commands, config checks, and inbound doctor readiness
+never connect.
+
+Native notify/send actions and GitHub webhooks remain **planned** in TELL-28/29.
+Dispatch without routes for a selected source fails before connecting. See the
+[implemented capture and route contract](docs/listening.md).
 
 ## Installation
 
@@ -92,8 +123,9 @@ Tell itself needs no provider runtime for inspection or stderr delivery.
 Optional routes require their external executable on PATH: Apprise with its
 own provider configuration; Herdr with an existing explicit session; hcom with
 a participating recipient; desktop uses macOS osascript or Linux notify-send
-and a desktop D-Bus session. The command route requires your own executable.
-Credentials remain with each provider. Run `tell doctor` before delivery.
+and a desktop D-Bus session. Outbound command delivery and inbound
+`listen.routes[].run` each require your own executable. Credentials remain with
+each provider. Run `tell doctor` before delivery.
 
 `tell --version` (or `tell version`) reports the version (without the tag's `v`),
 seven-character source commit, and build timestamp:
@@ -380,7 +412,8 @@ See [outcomes](docs/design.md#outcomes) and [message preparation](docs/design.md
 [examples/](examples/README.md) has copyable recipes: notify when slow
 commands finish, Claude Code and Codex hooks, MCP agents, CI and test
 watchers that hand failures to agents, transition-only scheduled checks,
-phone push via ntfy or Apprise, and safe fallback chains.
+Slack command routes and a bounded Noon handoff, phone push via ntfy or Apprise,
+and safe fallback chains.
 [examples/noon](examples/noon/README.md) has a Noon hook that notifies only on
 failure and recovery, plus a [scheduled agent instruction](examples/noon/README.md#scheduled-instructions).
 

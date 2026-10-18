@@ -1,9 +1,10 @@
 # Design
 
 This page describes implemented behavior. Tell supports explicit foreground
-Slack capture, with bounded transient state; personal routes/actions and GitHub
-webhooks remain planned in TELL-27–29. See the [integration contract](listening.md).
-Scheduling and durable execution remain outside Tell.
+Slack capture, personal route matching and bounded local command actions. Native
+notify/send actions and GitHub webhooks remain planned in TELL-28/29. See the
+[integration contract](listening.md). Scheduling and durable execution remain
+outside Tell.
 
 ## Boundary
 
@@ -13,7 +14,9 @@ person / script / scheduler hook / MCP client
          tell  (outbound one-shot; explicit foreground capture; MCP client-owned session)
           ├── notify → stderr | desktop | Herdr | Apprise → services | your command
           ├── send   → hcom mailbox | idle Herdr agent pane
-          ├── listen --print slack → sensitive NDJSON (no actions)
+          ├── listen slack → matched bounded local commands
+          ├── listen --dry-run slack → body-free match receipts
+          ├── listen --print slack → sensitive NDJSON (no matching/actions)
           └── mcp    → client-owned stdio process: notify | send | doctor
 ```
 
@@ -52,29 +55,42 @@ job output, so agents read untrusted data through their own tools. Tell never
 waits for a reply or for the work to finish. Tracked agent work belongs to the
 scheduler's agent jobs (such as Noon's); ask-and-wait belongs to Unharness.
 
-## Slack capture
+## Slack capture and command routes
 
-Bare `listen` and `--json listen` inspect only. Explicit `--print slack` or
-`--print --all` starts the foreground connection. Dispatch is rejected until
-routes ship. Setup uses fixed HTTPS and returned WSS URLs, never forwards the
-app Authorization header to WebSockets or redirects, and retries transient
-setup/connection failures with cancellable 1–60s jittered backoff and Retry-After.
-Selected credentials are checked only at startup. Their configured variable
-names are removed from every outbound provider and doctor child environment.
+Bare `listen` and `--json listen` inspect only. Explicit `listen slack` dispatches
+matching command routes; `--dry-run slack` reports body-free matches without
+commands, and `--print slack` exports envelopes without matching. Setup uses
+fixed HTTPS and returned WSS URLs, never forwards app Authorization to
+WebSockets or redirects, and retries transient setup/connection failures with
+cancellable 1–60s jittered backoff and Retry-After. Selected credentials are
+checked only at startup. Their configured variable names are removed from every
+outbound provider, doctor, and listener-action child environment.
 
-Acks precede payload validation/admission and never wait for stdout. A 64-event
-buffer atomically reserves source/ID only on admission; dedup lasts 10 minutes,
-bounded to 10,000 oldest-first entries. Frames/envelopes are limited to
-1 MiB/256 KiB; duplicate JSON keys and invalid metadata fail closed.
-Print removes the legacy payload token, but is otherwise sensitive data export,
-not arbitrary secret redaction. Diagnostic buffering is capped at 64 receipts;
-each output write has a 5-second stall budget. Failed/stalled output stops the
+Each route has exact source/type selection, ANDed typed scalar/path predicates,
+and one literal `run` argv. No shell, interpolation, array path traversal, or
+numeric float rounding is used. The child receives the envelope on stdin and
+EOF, runs in the invocation CWD (not `--project`), and gets fixed source/type/ID,
+route, and project environment values. Child stdout/stderr are discarded.
+Actions use the existing 0/3/other and start/timeout outcomes; failures do not
+stop siblings or retry. Four actions run with 64 queued; matches are admitted in
+config order, not guaranteed command-start or side-effect order. Duplicate
+source/ID events cannot replay successful siblings.
+
+Acks precede payload validation/admission and never wait for a command. A 64-event
+ingress buffer atomically reserves source/ID only on admission; dedup lasts 10
+minutes, bounded to 10,000 oldest-first entries. Frames/envelopes are limited to
+1 MiB/256 KiB; duplicate JSON keys and invalid metadata fail closed. Print
+removes the legacy payload token, but is otherwise sensitive data export, not
+arbitrary secret redaction. Diagnostic buffering is capped at 64 receipts; each
+output write has a 5-second stall budget. Failed/stalled output stops the
 listener, never accumulates unbounded writers or retries an action.
 
 Run one listener per Slack app. Acknowledgments are transient receipt, not
-durability; restart, buffer overflow, and sleep can lose events. SIGINT/SIGTERM
-exit 0, fatal source/output errors exit 1. Setup and limits are also in
-[the README](../README.md#slack-event-capture).
+durability; restart, buffer overflow, sleep, or action overflow can lose work.
+The first SIGINT/SIGTERM stops sources, drops queued work, and drains running
+actions within their per-action deadlines; the second cancels running actions
+as uncertain. Graceful stop exits 0; fatal source/output errors exit 1. Setup
+and limits are also in [the README](../README.md#slack-event-capture).
 
 ## MCP
 

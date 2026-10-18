@@ -118,13 +118,24 @@ absolute when set.
 `listen.slack.app_token_env` is a required nonempty environment variable name
 (`[A-Za-z_][A-Za-z0-9_]*`) when the Slack block exists. It is set only in personal
 files, merges by field, and has no flag or environment override for the name.
-The credential value stays in that variable, never in config or snapshots.
-Unknown listener fields, including routes and API URL overrides, are rejected.
+The credential value stays in that variable, never in config or snapshots. The
+personal-only `listen.routes` list replaces as a whole across config layers;
+an empty list disables inherited routes. Each route requires a unique name,
+configured source (`slack`), exact event type, optional AND predicates, and one
+literal `run` argv action. Unknown fields and malformed paths/scalars are
+rejected. Run argv and predicate values are never printed by inspection.
 
 ```yaml
 listen:
   slack:
     app_token_env: TELL_SLACK_APP_TOKEN
+  routes:
+    - name: incident-kickoff
+      source: slack
+      type: channel_created
+      match:
+        event.channel.name: {prefix: "inc-"}
+      run: [/Users/me/.local/bin/incident-to-noon]
 ```
 
 `tell listen`, `tell --json listen`, `config`, and `config check` inspect/validate
@@ -133,11 +144,16 @@ configured sources. CLI `doctor` adds informational local credential readiness,
 not provider authentication; its existing outbound-selected exit rule is
 unchanged. All child processes lose the named credential variable.
 
-Only explicit `tell listen --print slack` or `--print --all` connects.
-`--all` with names, repeated/unknown names, `--print` without selection, and
-live `--json` exit 2. Missing selected config/credentials or dispatch without
-routes exit 1 before IO. `--timeout` bounds setup requests, not listener lifetime.
-`--dry-run`, routes/actions, and GitHub are not shipped.
+Only explicit source selection starts a listener: `tell listen slack`,
+`tell listen --dry-run slack`, or `tell listen --print slack` (with `--all`
+variants). `--all` with names, repeated/unknown names, selector-free preview
+flags, conflicting modes, and live `--json` exit 2. Missing selected
+config/credentials or dispatch/dry-run without routes exits 1 before I/O.
+`--dry-run` emits body-free route receipts and runs no commands; `--print`
+exports envelopes without matching. `run` receives envelope JSON on stdin,
+invocation CWD, inherited environment minus inbound credentials, then the five
+fixed event/project variables; output streams are discarded. `--timeout` bounds
+setup requests and each action, not listener lifetime. GitHub is not shipped.
 See [Slack setup, privacy and loss limits](../README.md#slack-event-capture).
 
 ## Project discovery
@@ -165,6 +181,7 @@ repository code runs during discovery.
 | `send.to` | — | `TELL_SEND_TO` | `--to` |
 | `send.from` | `tell-automation` | `TELL_SEND_FROM` | `--from` |
 | `listen.slack.app_token_env` | — | — | — |
+| `listen.routes` | — | — | — |
 | `mcp.agent_targets` | `false` | `TELL_MCP_AGENT_TARGETS` | `--mcp-agent-targets` |
 
 A full personal config (user config, `.git/tell.yaml`, or explicitly selected `--config`/`TELL_CONFIG`, never `tell.yaml`):
@@ -224,7 +241,7 @@ and `-u`/`--user` and `-l`/`--local` for `init`. `-h`/`--help` and `-v`/`--versi
 Global flags are `--project`, `--config`, `--json`, `--no-color`, and `--timeout` (plus
 help/version). Put all other flags after the command:
 
-- `listen`: `--all`, `--print` (no short aliases); source `slack` only.
+- `listen`: `--all`, `--print`, `--dry-run` (no short aliases); source `slack` only.
 - `notify`: `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`,
   `--herdr-session`, `--title`, `--type`.
 - `send`: `--send-via`, `--to`, `--from`, `--herdr-session`, `--intent`.

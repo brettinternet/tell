@@ -20,6 +20,19 @@ import (
 	urfave "github.com/urfave/cli/v3"
 )
 
+type secondSignalKey struct{}
+
+// WithSecondSignal gives live listeners a second process signal to cancel
+// running actions after the first signal begins graceful shutdown.
+func WithSecondSignal(ctx context.Context, signals <-chan os.Signal) context.Context {
+	return context.WithValue(ctx, secondSignalKey{}, signals)
+}
+
+func shutdownSignal(ctx context.Context) <-chan os.Signal {
+	signals, _ := ctx.Value(secondSignalKey{}).(<-chan os.Signal)
+	return signals
+}
+
 func init() {
 	urfave.HelpPrinter = printHelp
 	urfave.VersionPrinter = func(cmd *urfave.Command) {

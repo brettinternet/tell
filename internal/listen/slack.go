@@ -20,6 +20,8 @@ type SlackOptions struct {
 	Token    string
 	Timeout  time.Duration
 	Out, Err io.Writer
+	OnEvent  func(Envelope, func(route, outcome, reason string))
+	OnStop   func()
 }
 type transport struct {
 	endpoint      string
@@ -81,12 +83,26 @@ func run(ctx context.Context, opts SlackOptions, tr transport) error {
 		}
 	}
 	receipt := func(e Envelope, outcome string) {
+		queueDiagnostic := func(line string) {
+			select {
+			case diagnostics <- []byte(line):
+			default:
+				fail(errors.New("listener diagnostic output busy"))
+			}
+		}
 		line := fmt.Sprintf("tell listen: source=slack outcome=%s\n", outcome)
 		if e.ID != "" {
 			line = fmt.Sprintf("tell listen: source=slack id=%q type=%q outcome=%s\n", e.ID, e.Type, outcome)
 		}
+		queueDiagnostic(line)
+	}
+	actionReceipt := func(e Envelope, route, outcome, reason string) {
+		line := fmt.Sprintf("tell listen: source=slack id=%q type=%q route=%q outcome=%s", e.ID, e.Type, route, outcome)
+		if reason != "" {
+			line += " reason=" + reason
+		}
 		select {
-		case diagnostics <- []byte(line):
+		case diagnostics <- []byte(line + "\n"):
 		default:
 			fail(errors.New("listener diagnostic output busy"))
 		}
@@ -94,7 +110,16 @@ func run(ctx context.Context, opts SlackOptions, tr transport) error {
 	outputCtx, stopOutput := context.WithCancel(context.Background())
 	defer stopOutput()
 	outputDone := make(chan struct{}, 2)
-	go func() { output(outputCtx, opts.Out, a.events, tr.outputTimeout, fail); outputDone <- struct{}{} }()
+	eventsDone := make(chan struct{})
+	if opts.OnEvent == nil {
+		go func() { output(outputCtx, opts.Out, a.events, tr.outputTimeout, fail); outputDone <- struct{}{} }()
+	} else {
+		go func() {
+			handleEvents(a.events, opts.OnEvent, actionReceipt, fail)
+			close(eventsDone)
+			outputDone <- struct{}{}
+		}()
+	}
 	go func() { output(outputCtx, opts.Err, diagnostics, tr.outputTimeout, fail); outputDone <- struct{}{} }()
 	sourceDone := make(chan error, 1)
 	go func() { sourceDone <- receive(ctx, opts, tr, a, receipt) }()
@@ -118,6 +143,12 @@ func run(ctx context.Context, opts SlackOptions, tr transport) error {
 		receipt(Envelope{}, "failed reason="+strconv.Quote(result.Error()))
 	}
 	close(a.events)
+	if opts.OnEvent != nil {
+		<-eventsDone
+		if opts.OnStop != nil {
+			opts.OnStop()
+		}
+	}
 	close(diagnostics)
 	<-outputDone
 	<-outputDone
@@ -130,6 +161,17 @@ func run(ctx context.Context, opts SlackOptions, tr transport) error {
 	}
 	return result
 }
+func handleEvents(queue <-chan []byte, handler func(Envelope, func(route, outcome, reason string)), report func(Envelope, string, string, string), fail func(error)) {
+	for data := range queue {
+		var event Envelope
+		if json.Unmarshal(data, &event) != nil {
+			fail(errors.New("listener event queue contained invalid data"))
+			return
+		}
+		handler(event, func(route, outcome, reason string) { report(event, route, outcome, reason) })
+	}
+}
+
 func output(ctx context.Context, writer io.Writer, queue <-chan []byte, timeout time.Duration, fail func(error)) {
 	// A dedicated writer bounds the number of blocked Writes, even for arbitrary
 	// io.Writers without deadlines. Never spawn another after a timeout.

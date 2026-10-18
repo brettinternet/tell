@@ -24,6 +24,7 @@ Start with a visible personal route, for example `notify.via: desktop` in
 | Example | Scenario | Level | Also uses |
 | --- | --- | --- | --- |
 | [command-routes](command-routes/README.md) | Your own provider: phone via ntfy, quiet hours, audit log, tmux, speech | intermediate | curl, ntfy |
+| [listen](listen/README.md) | Match Slack events to bounded local commands or a truthful Noon handoff | advanced | Python, Noon (handoff only) |
 | [apprise](apprise/README.md) | Phone, Slack, and Discord with per-message audience tags | intermediate | Apprise |
 | [github-actions](github-actions/README.md) | Post failed nightly runs to a team channel | intermediate | GitHub Actions, Apprise |
 

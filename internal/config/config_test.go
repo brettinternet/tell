@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,7 +34,7 @@ func fixture(t *testing.T) config.Input {
 
 // Shared files and literal credentials cannot cross the inbound trust boundary.
 func TestListenPersonalConfig(t *testing.T) {
-	for _, data := range []string{"listen: {}\n", "listen:\n  slack:\n    app_token_env: TEST_SLACK_TOKEN\n"} {
+	for _, data := range []string{"listen: {}\n", "listen:\n  slack:\n    app_token_env: TEST_SLACK_TOKEN\n", "listen: {routes: []}\n"} {
 		input := fixture(t)
 		writeFile(t, filepath.Join(input.CWD, "tell.yaml"), data)
 		if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal") {
@@ -44,7 +45,6 @@ func TestListenPersonalConfig(t *testing.T) {
 		"listen: {slack: {}}\n",
 		"listen: {slack: {app_token_env: 'private-token-value'}}\n",
 		"listen: {slack: {app_token_env: TOKEN, api_url: 'http://private'}}\n",
-		"listen: {routes: []}\n",
 	} {
 		input := fixture(t)
 		file := filepath.Join(input.CWD, "personal.yaml")
@@ -65,6 +65,57 @@ func TestListenPersonalConfig(t *testing.T) {
 	}
 	if got := cfg.ChildEnv([]string{"SECOND_TOKEN=secret", "KEEP=value", "SECOND_TOKEN=again"}); !reflect.DeepEqual(got, []string{"KEEP=value"}) {
 		t.Fatalf("credential leak: %q", got)
+	}
+}
+
+// Routes replace as a whole-list setting and retain scalar types without
+// converting large integer predicates through float64.
+func TestListenRoutesConfig(t *testing.T) {
+	input := fixture(t)
+	user := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
+	writeFile(t, user, "listen:\n  slack: {app_token_env: TOKEN}\n  routes:\n    - {name: old-route, source: slack, type: event, run: [/bin/true]}\n")
+	local := filepath.Join(input.CWD, "..", "worktree-metadata", "tell.yaml")
+	writeFile(t, local, "listen:\n  routes:\n    - name: exact-id\n      source: slack\n      type: pull_request\n      match:\n        repository.id: 1234567890123456789012345678901234567890\n        action: opened\n        event.name: {prefix: inc-}\n      run: [/absolute/wrapper, 'two words']\n")
+	cfg, err := config.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Listen.Routes) != 1 || cfg.Listen.Routes[0].Name != "exact-id" || cfg.Values()["listen.routes"] != "1" {
+		t.Fatalf("route list was not replaced: %+v", cfg.Listen.Routes)
+	}
+	if got := cfg.Listen.Routes[0].Match["repository.id"].Value; got != json.Number("1234567890123456789012345678901234567890") {
+		t.Fatalf("large scalar lost precision or type: %T %v", got, got)
+	}
+	if cfg.Listen.Routes[0].Match["event.name"].Prefix == nil || *cfg.Listen.Routes[0].Match["event.name"].Prefix != "inc-" {
+		t.Fatalf("prefix predicate not parsed: %+v", cfg.Listen.Routes[0].Match)
+	}
+
+	for _, routes := range []string{
+		"- {name: dup, source: slack, type: e, run: [/bin/true]}\n  - {name: dup, source: slack, type: e, run: [/bin/true]}\n",
+		"- {name: Bad, source: slack, type: e, run: [/bin/true]}\n",
+		"- {name: bad-path, source: slack, type: e, match: {'event..id': x}, run: [/bin/true]}\n",
+		"- {name: no-run, source: slack, type: e}\n",
+		"- {name: empty-run, source: slack, type: e, run: []}\n",
+		"- {name: blank-executable, source: slack, type: e, run: ['   ']}\n",
+		"- {name: typed-argv, source: slack, type: e, run: [true]}\n",
+		"- {name: nul-argv, source: slack, type: e, run: [\"bad\\0arg\"]}\n",
+		"- {name: null-match, source: slack, type: e, match: {id: null}, run: [/bin/true]}\n",
+		"- {name: bad-prefix, source: slack, type: e, match: {id: {prefix: 1}}, run: [/bin/true]}\n",
+		"- {name: bad-action, source: slack, type: e, notify: {message: body}}\n",
+		"- {name: bad-source, source: github, type: e, run: [/bin/true]}\n",
+	} {
+		file := filepath.Join(input.CWD, "routes.yaml")
+		writeFile(t, file, "listen:\n  slack: {app_token_env: TOKEN}\n  routes:\n"+routes)
+		input.File = &file
+		if _, err := config.Load(input); err == nil {
+			t.Errorf("accepted invalid route list %q", routes)
+		}
+	}
+	file := filepath.Join(input.CWD, "unconfigured-source.yaml")
+	writeFile(t, file, "listen:\n  routes:\n    - {name: route, source: slack, type: event, run: [/bin/true]}\n")
+	input.File = &file
+	if _, err := config.Load(input); err == nil {
+		t.Fatal("accepted a route for an unconfigured Slack source")
 	}
 }
 

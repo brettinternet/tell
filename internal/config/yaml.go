@@ -2,9 +2,12 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -13,6 +16,7 @@ import (
 type fileValue struct {
 	key, text string
 	argv      []string
+	routes    []Route
 	line      int
 }
 
@@ -72,6 +76,12 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
 			}
+		case "listen.routes":
+			routes, err := parseRoutes(value)
+			if err != nil {
+				return err
+			}
+			*values = append(*values, fileValue{key: name, routes: routes, line: value.Line})
 		case "notify", "apprise", "herdr", "send", "secrets", "mcp":
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
@@ -113,4 +123,138 @@ func prefixName(prefix string) string {
 		return "configuration"
 	}
 	return prefix[:len(prefix)-1]
+}
+
+var yamlJSONNumber = regexp.MustCompile(`^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
+
+func parseRoutes(node *yaml.Node) ([]Route, error) {
+	if node.Kind != yaml.SequenceNode || node.Tag != "!!seq" || node.Anchor != "" {
+		return nil, fmt.Errorf("line %d: listen.routes must be a list", node.Line)
+	}
+	routes := make([]Route, 0, len(node.Content))
+	for _, item := range node.Content {
+		if item.Anchor != "" || item.Kind == yaml.AliasNode || item.Kind != yaml.MappingNode || item.Tag != "!!map" {
+			return nil, fmt.Errorf("line %d: each listen route must be a mapping without aliases", item.Line)
+		}
+		route, err := parseRoute(item)
+		if err != nil {
+			return nil, err
+		}
+		routes = append(routes, route)
+	}
+	if err := validateRouteSyntax(routes); err != nil {
+		return nil, fmt.Errorf("line %d: %w", node.Line, err)
+	}
+	return routes, nil
+}
+
+func parseRoute(node *yaml.Node) (Route, error) {
+	var route Route
+	seen := map[string]bool{}
+	for i := 0; i < len(node.Content); i += 2 {
+		key, value := node.Content[i], node.Content[i+1]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" || seen[key.Value] {
+			return Route{}, fmt.Errorf("line %d: route keys must be unique strings", key.Line)
+		}
+		seen[key.Value] = true
+		if value.Anchor != "" || value.Kind == yaml.AliasNode {
+			return Route{}, fmt.Errorf("line %d: route aliases are not supported", value.Line)
+		}
+		switch key.Value {
+		case "name", "source", "type":
+			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" || strings.ContainsAny(value.Value, "\x00\x1b\r\n") {
+				return Route{}, fmt.Errorf("line %d: route %s must be a string without controls", value.Line, key.Value)
+			}
+			switch key.Value {
+			case "name":
+				route.Name = value.Value
+			case "source":
+				route.Source = value.Value
+			case "type":
+				route.Type = value.Value
+			}
+		case "match":
+			match, err := parseRouteMatch(value)
+			if err != nil {
+				return Route{}, err
+			}
+			route.Match = match
+		case "run":
+			if value.Kind != yaml.SequenceNode || value.Tag != "!!seq" || len(value.Content) == 0 {
+				return Route{}, fmt.Errorf("line %d: route run must be a non-empty argv list", value.Line)
+			}
+			route.Run = make([]string, len(value.Content))
+			for i, arg := range value.Content {
+				if arg.Kind != yaml.ScalarNode || arg.Tag != "!!str" || arg.Anchor != "" || strings.ContainsRune(arg.Value, 0) {
+					return Route{}, fmt.Errorf("line %d: route run arguments must be strings without NUL, anchors, or aliases", arg.Line)
+				}
+				route.Run[i] = arg.Value
+			}
+		default:
+			return Route{}, fmt.Errorf("line %d: unknown route field %q", key.Line, key.Value)
+		}
+	}
+	return route, nil
+}
+
+func parseRouteMatch(node *yaml.Node) (map[string]Predicate, error) {
+	if node.Kind != yaml.MappingNode || node.Tag != "!!map" || node.Anchor != "" {
+		return nil, fmt.Errorf("line %d: route match must be a mapping", node.Line)
+	}
+	match := make(map[string]Predicate, len(node.Content)/2)
+	for i := 0; i < len(node.Content); i += 2 {
+		key, value := node.Content[i], node.Content[i+1]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" || strings.ContainsAny(key.Value, "\x00\x1b\r\n") {
+			return nil, fmt.Errorf("line %d: predicate path must be a string", key.Line)
+		}
+		if _, exists := match[key.Value]; exists {
+			return nil, fmt.Errorf("line %d: duplicate predicate path", key.Line)
+		}
+		if value.Anchor != "" || value.Kind == yaml.AliasNode {
+			return nil, fmt.Errorf("line %d: predicate aliases are not supported", value.Line)
+		}
+		predicate, err := parsePredicate(value)
+		if err != nil {
+			return nil, err
+		}
+		match[key.Value] = predicate
+	}
+	return match, nil
+}
+
+func parsePredicate(node *yaml.Node) (Predicate, error) {
+	if node.Kind == yaml.MappingNode {
+		if node.Tag != "!!map" || node.Anchor != "" || len(node.Content) != 2 {
+			return Predicate{}, fmt.Errorf("line %d: predicate object must contain only prefix", node.Line)
+		}
+		key, value := node.Content[0], node.Content[1]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Value != "prefix" || key.Anchor != "" || value.Kind != yaml.ScalarNode || value.Tag != "!!str" || value.Anchor != "" || strings.ContainsAny(value.Value, "\x00\x1b\r\n") {
+			return Predicate{}, fmt.Errorf("line %d: predicate prefix must be a string", node.Line)
+		}
+		prefix := value.Value
+		return Predicate{Prefix: &prefix}, nil
+	}
+	if node.Kind != yaml.ScalarNode {
+		return Predicate{}, fmt.Errorf("line %d: predicate must be a string, number, boolean, or prefix object", node.Line)
+	}
+	switch node.Tag {
+	case "!!str":
+		if strings.ContainsAny(node.Value, "\x00\x1b\r\n") {
+			return Predicate{}, fmt.Errorf("line %d: predicate string contains controls", node.Line)
+		}
+		return Predicate{Value: node.Value}, nil
+	case "!!bool":
+		value, err := strconv.ParseBool(node.Value)
+		if err != nil {
+			return Predicate{}, fmt.Errorf("line %d: predicate boolean must be true or false", node.Line)
+		}
+		return Predicate{Value: value}, nil
+	case "!!int", "!!float":
+		if !yamlJSONNumber.MatchString(node.Value) {
+			return Predicate{}, fmt.Errorf("line %d: predicate number must be a finite JSON number", node.Line)
+		}
+		return Predicate{Value: json.Number(node.Value)}, nil
+	default:
+		return Predicate{}, fmt.Errorf("line %d: predicate must be a string, number, boolean, or prefix object", node.Line)
+	}
 }

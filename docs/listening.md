@@ -1,11 +1,11 @@
 # Local event integrations
 
-**Implemented:** Slack inspection and explicit `--print` capture (TELL-26),
-personal credential references, bounded admission/dedup/output, and connection
-recovery. **Planned:** routing/dry-run (TELL-27), native actions (TELL-28), and
-GitHub webhooks (TELL-29). The sections below retain their agreed future contract;
-planned examples are not accepted by the current binary. The backlog remains
-the work queue. This refines decision-1; outbound commands retain their behavior.
+**Implemented:** Slack inspection, explicit `--print` capture, personal
+`run` routes and body-free `--dry-run` matching (TELL-26/27), bounded
+ingress/dedup/action queues, and connection recovery. **Planned:** native
+`notify`/`send` actions (TELL-28) and GitHub webhooks (TELL-29). Examples below
+use only shipped Slack/command behavior unless labeled planned. This refines
+decision-1; outbound commands retain their behavior.
 
 Tell is a local integrations layer: receive external events, match personal
 rules, and notify a person, inform an agent, or invoke a bounded local command.
@@ -20,16 +20,16 @@ Connection recovery is allowed; action retries and durable replay are not.
 | --- | --- |
 | `tell listen` | Inspect configured sources and route names; exit without network, binding sockets, reading stdin, or running actions |
 | `tell --json listen` | The same inspection as one body-free JSON object with `schema_version: 1` |
-| `tell listen slack` | Exit 1 with a print-mode hint; dispatch is planned in TELL-27 |
+| `tell listen slack` | Start the foreground Slack listener and dispatch matching personal `run` routes |
 | `tell listen github` (planned) | Start only GitHub's loopback HTTP source |
 | `tell listen slack github` (planned) | Start those sources in one foreground process |
 | `tell listen --print --all` | Explicitly capture every configured source (currently Slack only) |
 | `tell listen --print slack` | Receive and acknowledge events; print NDJSON envelopes, but never run actions |
-| `tell listen --dry-run slack` (planned) | Receive and acknowledge events; report matching routes without actions or payload output |
+| `tell listen --dry-run slack` | Receive and acknowledge events; report matching routes without actions or payload output |
 
 `--all`, `--print`, and `--dry-run` are listen-only flags, with no short aliases.
-`--dry-run` arrives with TELL-27. Require source names or `--all` for either live
-preview mode: `tell listen --print` is a usage error, not an implicit start-all.
+Require source names or `--all` for either preview mode: `tell listen --print`
+is a usage error, not an implicit start-all.
 `--all` cannot accompany source names; repeated/unknown names, conflicting modes,
 and `--json` on any live invocation are usage errors (exit 2). Live output is a
 stream, not the existing single-result JSON API. `--print` is not a JSON flag
@@ -47,35 +47,30 @@ structure before opening anything; check credential values only for selected
 sources. Known but unconfigured sources, missing/empty selected credentials,
 `--all` with no sources, and dispatch/dry-run with no route for any selected
 source fail before I/O (exit 1). Every selected source needs at least one route
-in those modes. Print mode needs none and does not evaluate routes. TELL-26
-therefore supports inspection and print mode, and rejects dispatch with a hint
-until routing ships; it must not offer a successful dispatch stub.
+in those modes. Print mode needs none and does not evaluate routes. Route and
+credential validation happens before opening the provider connection.
 
-Graceful SIGINT/SIGTERM exits 0, meaning the listener stopped, not that actions
-succeeded. Fatal source, bind, or output errors stop all sources and exit 1;
-per-event/action failures are receipts, not process exits. Existing outbound
+The first SIGINT/SIGTERM stops sources, drops queued events/actions, and lets
+running actions drain within their per-action deadlines; a second signal cancels
+running children as uncertain. Graceful stop exits 0, not proof that actions
+succeeded. Fatal source or output errors use the same bounded shutdown and exit
+1; per-event/action failures are receipts, not process exits. Existing outbound
 exit codes and MCP tools are unchanged. No new MCP listener tool.
 
 ## Configuration and inspection
 
-All `listen` keys are personal-only. Currently only `listen.slack.app_token_env`
-is supported; routes and other transport settings below are planned. Use
-user config, `.git/tell.yaml`, or an explicit `--config` file. Shared `tell.yaml`
-rejects them even if overridden. Keep the existing strict YAML rules and source
-origins. Source fields merge by field; `listen.routes` and other lists replace
-whole (an empty routes list explicitly disables inherited routes).
+All `listen` keys are personal-only. `listen.slack.app_token_env` selects the
+Slack credential variable; `listen.routes` is a whole-list replacement (an
+empty list disables inherited routes). Use user config, `.git/tell.yaml`, or an
+explicit `--config` file. Shared `tell.yaml` rejects them even if overridden.
+Keep the existing strict YAML rules and source origins.
 
 ```yaml
-# Personal config; this example is NOT supported by the current binary.
+# Personal config; run commands are trusted local executables.
 version: 1
 listen:
   slack:
     app_token_env: TELL_SLACK_APP_TOKEN
-  http:
-    addr: 127.0.0.1:8787
-  github:
-    secret_env: TELL_GITHUB_WEBHOOK_SECRET
-    repository_ids: [123456789]
   routes:
     - name: incident-kickoff
       source: slack
@@ -83,16 +78,6 @@ listen:
       match:
         event.channel.name: {prefix: "inc-"}
       run: [/Users/me/.local/bin/incident-to-noon]
-    - name: pr-opened
-      source: github
-      type: pull_request
-      match:
-        action: opened
-        repository.id: 123456789
-      notify:
-        via: desktop
-        title: "Pull request opened"
-        message: "Review ${data.pull_request.html_url}"
 ```
 
 A source is configured by its provider block. Credential references must be
@@ -180,12 +165,13 @@ events/scopes (for example `channel_created`/`channels:read`), and app installat
 Run one listener per Slack app: Slack distributes deliveries among connections,
 not a copy to every listener. Sleep/disconnection can lose events.
 
-## Planned: matching and command actions — TELL-27
+## Route matching and command actions — TELL-27
 
-Each route has a unique `name` matching `[a-z0-9][a-z0-9_-]*`, one configured
-`source`, exact `type`, optional `match`, and exactly one action. Initially the
-only action is `run`; native `notify` and `send` extend that union later. Reject
-unknown keys and multiple actions; no action lists or implicit fallback.
+Each route has a unique `name` matching `[a-z0-9][a-z0-9_-]*`, a configured
+`source`, exact `type`, optional `match`, and exactly one action. The only shipped
+action is `run`; native `notify` and `send` may extend that union later. Unknown
+keys and multiple actions fail config validation; there are no action lists or
+implicit fallbacks.
 
 `match` maps dot-separated object paths inside `data` to scalar equality
 (string, finite JSON number, boolean; same type) or `{prefix: STRING}`. All
@@ -198,8 +184,10 @@ expressions, or implicit string conversion.
 Every matching route is admitted in config order to the shared action executor:
 4 running actions, 64 waiting, overflow `not_sent/busy`. This is admission order,
 not a promise of subprocess start, completion, or side-effect order. One route's
-failure does not block siblings. Actions never retry. Dry-run reports matches
-without resolving executables, probing destinations, or using action slots.
+failure does not block siblings. Actions never retry. Duplicate source/ID events
+are suppressed after event admission, so a failed action never replays successful
+siblings. Dry-run reports matches without resolving executables, probing
+destinations, or using action slots.
 
 `run` is a nonempty literal argv list using existing `notify.command` validation.
 No shell, interpolation, or appended args. CWD is the invocation CWD (not changed
@@ -219,12 +207,19 @@ drops waiting events/actions with body-free receipts, and lets running actions
 finish within their remaining timeout; a second signal cancels them. Fatal
 source errors perform the same bounded shutdown but exit 1.
 
-A scheduler example may use a personal wrapper with
-`noon run incident-kickoff --detach --key "$TELL_EVENT_SOURCE:$TELL_EVENT_ID" --data -`
-and a job configured with `requests: each`. Noon wraps this envelope as its own
-`data`; the formats are not interchangeable. No Noon-specific parsing in Tell.
-Document Noon's payload/key limits; the wrapper validates/maps oversized keys
-or payloads and must not claim success if handoff fails.
+A Noon handoff can use the supplied `examples/listen/noon-handoff.py` as the
+trusted route executable and a job configured with `requests: each`. It uses
+`source:id` as the key when it fits Noon's 1–200 ASCII character limit
+(`[A-Za-z0-9._:-]`), otherwise maps it to a stable SHA-256 key. The Tell
+envelope is at most 256 KiB and Noon accepts `--data` up to 256 KiB; Noon
+validates that limit itself and rejects oversized data. The wrapper `exec`s
+Noon and propagates failure, never truncates or claims success on a failed
+handoff. Noon stores the Tell envelope as its own event `data`; the formats are
+not interchangeable. `requests: each` preserves each payload but caps a job at
+20 queued due-now runs and cannot be combined with `cooldown`. Noon's idempotency
+keys are retained only for its
+newest 50 finished runs per job; Tell adds no durable replay guarantee. No
+Noon-specific parsing is implemented in Tell.
 
 ## Planned: native notification and agent actions — TELL-28
 

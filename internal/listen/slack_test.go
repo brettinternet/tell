@@ -9,12 +9,15 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/brettinternet/tell/internal/config"
 	"github.com/coder/websocket"
 )
 
@@ -129,6 +132,102 @@ func TestSlackProtocol(t *testing.T) {
 		if strings.Contains(diag.text(), secret) {
 			t.Fatalf("diagnostic leaked %s", secret)
 		}
+	}
+}
+
+// A duplicated admitted envelope must not repeat either successful sibling action.
+func TestDuplicateEventDoesNotRepeatMatchingActions(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var server *httptest.Server
+	ready := make(chan struct{})
+	eventFrame := `{"envelope_id":"ack","type":"events_api","payload":{"type":"event_callback","event_id":"same-id","event":{"type":"channel_created","channel":{"id":"C1","name":"inc-api"},"text":"private-event-body"}}}`
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/open" {
+			fmt.Fprintf(w, `{"ok":true,"url":%q}`, "ws"+strings.TrimPrefix(server.URL, "http")+"/socket")
+			return
+		}
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		for range 2 {
+			if err := conn.Write(ctx, websocket.MessageText, []byte(eventFrame)); err != nil {
+				t.Error(err)
+				return
+			}
+			if _, _, err := conn.Read(ctx); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+		close(ready)
+		<-ctx.Done()
+	}))
+	defer server.Close()
+
+	recordDir := t.TempDir()
+	startDir := t.TempDir()
+	release := filepath.Join(t.TempDir(), "release")
+	t.Setenv("FIXTURE_RECORD_DIR", recordDir)
+	t.Setenv("FIXTURE_START_DIR", startDir)
+	t.Setenv("FIXTURE_RELEASE_FILE", release)
+	prefix := "inc-"
+	cfg := config.Config{
+		Project: "/project", Timeout: "3s",
+		Listen: config.Listen{Slack: &config.Slack{AppTokenEnv: "LISTENER_CREDENTIAL"}},
+	}
+	cfg.Listen.Routes = []config.Route{
+		{Name: "first", Source: "slack", Type: "channel_created", Match: map[string]config.Predicate{"event.channel.name": {Prefix: &prefix}}, Run: []string{os.Args[0], "-test.run=^TestCommandFixtureProcess$", "--", "--fixture-child"}},
+		{Name: "second", Source: "slack", Type: "channel_created", Match: map[string]config.Predicate{"event.channel.id": {Value: "C1"}}, Run: []string{os.Args[0], "-test.run=^TestCommandFixtureProcess$", "--", "--fixture-child"}},
+	}
+	executor := NewExecutor(cfg, currentDirectory(t))
+	var out, diag capture
+	opts := SlackOptions{Token: "fixture-token", Timeout: time.Second, Out: &out, Err: &diag}
+	opts.OnEvent = func(event Envelope, report func(route, outcome, reason string)) {
+		for _, route := range Matches(cfg.Listen.Routes, event) {
+			if !executor.Submit(route, event, report) {
+				report(route.Name, "not_sent", "busy")
+			}
+		}
+	}
+	opts.OnStop = func() { executor.Stop(); executor.Wait() }
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, opts, fixtureTransport(server)) }()
+	select {
+	case <-ready:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Slack fixture did not acknowledge both deliveries")
+	}
+	waitFor(t, func() bool {
+		entries, err := os.ReadDir(startDir)
+		return err == nil && len(entries) == 2
+	})
+	if _, err := os.Stat(release); !os.IsNotExist(err) {
+		t.Fatal("slow actions were released before both event acknowledgments")
+	}
+	if err := os.WriteFile(release, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("listener did not drain action results")
+	}
+	for _, name := range []string{"first", "second"} {
+		data, err := os.ReadFile(filepath.Join(recordDir, name))
+		if err != nil || strings.Count(string(data), "called") != 1 {
+			t.Fatalf("route %s executed other than once: %q %v", name, data, err)
+		}
+	}
+	if strings.Contains(diag.text(), "private-event-body") {
+		t.Fatal("event body escaped into diagnostics")
 	}
 }
 

@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -58,13 +59,92 @@ type Send struct {
 }
 
 type Listen struct {
-	Slack *Slack `json:"slack,omitempty"`
+	Slack  *Slack  `json:"slack,omitempty"`
+	Routes []Route `json:"-"`
 }
 type Slack struct {
 	AppTokenEnv string `json:"app_token_env"`
 }
 
+type Route struct {
+	Name   string               `json:"-"`
+	Source string               `json:"-"`
+	Type   string               `json:"-"`
+	Match  map[string]Predicate `json:"-"`
+	Run    []string             `json:"-"`
+}
+
+type Predicate struct {
+	Value  any
+	Prefix *string
+}
+
 var environmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var routeName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+var matchPath = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$`)
+var jsonNumber = regexp.MustCompile(`^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
+
+func validateRouteSyntax(routes []Route) error {
+	names := make(map[string]bool, len(routes))
+	for _, route := range routes {
+		if !routeName.MatchString(route.Name) {
+			return errors.New("listen.routes names must match [a-z0-9][a-z0-9_-]*")
+		}
+		if names[route.Name] {
+			return errors.New("listen.routes names must be unique")
+		}
+		names[route.Name] = true
+		if route.Source != "slack" || route.Type == "" || len(route.Type) > 128 || strings.ContainsFunc(route.Type, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+			return errors.New("listen.routes source must be slack and type must be a nonempty safe value")
+		}
+		if len(route.Run) == 0 || strings.TrimSpace(route.Run[0]) == "" {
+			return errors.New("listen.routes require one nonempty run argv action")
+		}
+		for _, arg := range route.Run {
+			if strings.ContainsRune(arg, 0) {
+				return errors.New("listen.routes run arguments must not contain NUL")
+			}
+		}
+		for path, predicate := range route.Match {
+			if !matchPath.MatchString(path) {
+				return errors.New("listen.routes match paths must be dot-separated object paths")
+			}
+			if predicate.Prefix != nil {
+				if predicate.Value != nil || strings.ContainsFunc(*predicate.Prefix, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+					return errors.New("listen.routes prefix predicates require a safe string")
+				}
+				continue
+			}
+			switch value := predicate.Value.(type) {
+			case string, bool:
+			case json.Number:
+				if !jsonNumber.MatchString(string(value)) {
+					return errors.New("listen.routes numeric predicates must be finite JSON numbers")
+				}
+			default:
+				return errors.New("listen.routes predicates must be strings, finite numbers, booleans, or prefixes")
+			}
+		}
+	}
+	return nil
+}
+
+func validateRoutes(listen Listen) error {
+	if err := validateRouteSyntax(listen.Routes); err != nil {
+		return err
+	}
+	for _, route := range listen.Routes {
+		switch route.Source {
+		case "slack":
+			if listen.Slack == nil {
+				return errors.New("listen.routes reference slack, but listen.slack is not configured")
+			}
+		default:
+			return errors.New("listen.routes reference an unconfigured source")
+		}
+	}
+	return nil
+}
 
 type MCP struct {
 	AgentTargets bool `json:"agent_targets"`
@@ -140,6 +220,9 @@ func Load(input Input) (Config, error) {
 	if cfg.Listen.Slack != nil && cfg.Listen.Slack.AppTokenEnv == "" {
 		return Config{}, errors.New("listen.slack.app_token_env is required")
 	}
+	if err := validateRoutes(cfg.Listen); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
 }
 
@@ -156,6 +239,7 @@ func (cfg Config) Values() map[string]string {
 		"send.via": cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
 		"mcp.agent_targets":          fmt.Sprint(cfg.MCP.AgentTargets),
 		"listen.slack.app_token_env": cfg.SlackTokenEnv(),
+		"listen.routes":              strconv.Itoa(len(cfg.Listen.Routes)),
 	}
 }
 
@@ -290,6 +374,11 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 		}
 		if value.key == "notify.command" {
 			cfg.Notify.Command = value.argv
+			cfg.Origins[value.key] = path
+			continue
+		}
+		if value.key == "listen.routes" {
+			cfg.Listen.Routes = append([]Route{}, value.routes...)
 			cfg.Origins[value.key] = path
 			continue
 		}

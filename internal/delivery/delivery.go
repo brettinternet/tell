@@ -153,16 +153,26 @@ func RunProcess(ctx context.Context, timeout time.Duration, route, name string, 
 	return runProcess(ctx, timeout, route, name, args, nil, nil)
 }
 
+// RunCommand executes trusted literal argv with caller-supplied stdin, environment,
+// and working directory. Output is discarded through the shared process path.
+func RunCommand(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string, dir string) (int, *Result) {
+	return processDir(ctx, timeout, route, name, args, stdin, env, nil, nil, dir)
+}
+
 func runProcess(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string) (int, *Result) {
 	return process(ctx, timeout, route, name, args, stdin, env, nil, nil)
 }
 
 func process(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string, stdout, stderr io.Writer) (int, *Result) {
+	return processDir(ctx, timeout, route, name, args, stdin, env, stdout, stderr, "")
+}
+
+func processDir(ctx context.Context, timeout time.Duration, route, name string, args []string, stdin io.Reader, env []string, stdout, stderr io.Writer, dir string) (int, *Result) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	cmd.Stdin, cmd.Env = stdin, childEnv(ctx, env)
+	cmd.Stdin, cmd.Env, cmd.Dir = stdin, childEnv(ctx, env), dir
 	// Bound stdin copying even if a descendant retains the pipe after exit.
 	cmd.WaitDelay = 100 * time.Millisecond
 	// Nil output streams use the null device; captured provider text is never printed.

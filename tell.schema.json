@@ -64,7 +64,7 @@
       }
     },
     "listen": {
-      "description": "Personal-only inbound configuration. Slack inspection and explicit --print capture are supported; routes are not yet supported.",
+      "description": "Personal-only inbound configuration. Slack capture, body-free dry-run matching, and literal run argv routes are supported. Route lists replace whole lists.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -77,6 +77,45 @@
               "type": "string",
               "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
               "description": "Environment variable name holding a connections:write app token, never the token itself. Removed from every Tell child environment."
+            }
+          }
+        },
+        "routes": {
+          "type": "array",
+          "description": "Whole-list replacement. Matching routes run literal argv commands; Tell bounds execution and discards child output.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "source", "type", "run"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+              "source": { "const": "slack" },
+              "type": { "allOf": [{ "$ref": "#/definitions/nonBlankString" }], "maxLength": 128 },
+              "match": {
+                "type": "object",
+                "description": "AND of exact typed scalar equality or {prefix: STRING} predicates on paths inside event data.",
+                "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(?:\\.[A-Za-z_][A-Za-z0-9_-]*)*$" },
+                "additionalProperties": {
+                  "oneOf": [
+                    { "$ref": "#/definitions/string" },
+                    { "type": "number" },
+                    { "type": "boolean" },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["prefix"],
+                      "properties": { "prefix": { "$ref": "#/definitions/string" } }
+                    }
+                  ]
+                }
+              },
+              "run": {
+                "description": "Literal argv; no shell or interpolation. Envelope JSON is stdin, child output is discarded.",
+                "type": "array",
+                "minItems": 1,
+                "items": [{ "$ref": "#/definitions/nonBlankString" }],
+                "additionalItems": { "$ref": "#/definitions/string" }
+              }
             }
           }
         }
