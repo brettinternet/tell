@@ -5,9 +5,10 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-17 21:02'
-updated_date: '2026-10-18 01:48'
+updated_date: '2026-10-18 02:39'
 labels:
   - listen
+  - reviewed
 dependencies:
   - TELL-27
 documentation:
@@ -87,6 +88,8 @@ AC1: real Apprise/hcom provider fixtures and strict config tests verify static/i
 Single independent review found three concrete issues: uncancellable repeated rendering, stderr enqueue acknowledged before write, and outbound selector flags invalidating dormant listener routes. All fixed with regressions: context-aware/cached rendering, bounded serialized acknowledged stderr writes, and listener validation isolated from one-shot flags. Parent checked corrected paths. No further general review. Delivery/integration pending.
 
 Delivery: implementation commit 7c2d9ea7cff9f034d750abf0ad58d110b22ff3b6 fast-forward merged into main. Staged Gitleaks initially flagged synthetic test secrets; changed fixture construction to the existing split-literal pattern without changing runtime values, reran affected tests and task check:staged successfully. Worktrunk removed the receipt-verified session-owned checkout/branch; matching Herdr workspace wGB was closed by its hook. No retained checkout or remaining blocker. No push. Worklease release follows task-state commit.
+
+Implementation review: inspected exclusive action validation, static selectors, bounded single-pass templates and cache, preparation/provenance, native provider dispatch, credential stripping, safe inspection/dry-run, and mixed-action executor tests. No additional native-action-specific defect found. The shared P2 fatal-shutdown admission defect recorded on TELL-27 also affects notify/send: capture.go:162-166 drains event handlers before stopping action admission, allowing queued native actions to start after a fatal error. Existing focused race tests, task smoke, go test ./..., and go vet ./... passed. Review does not claim live provider verification; implementation unchanged.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

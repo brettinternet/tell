@@ -5,9 +5,10 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-17 21:01'
-updated_date: '2026-10-18 01:05'
+updated_date: '2026-10-18 02:39'
 labels:
   - listen
+  - reviewed
 dependencies:
   - TELL-26
 documentation:
@@ -79,6 +80,8 @@ After claiming, extend TELL-26's fixtures and reuse existing subprocess outcome/
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented in 7c9da10; integrated current main in 9dbe1cf and fast-forward merged locally. Verification: go test -race ./internal/listen ./internal/config ./internal/cli ./internal/delivery ./cmd/tell passed; task ci passed before and after integration (security, vet, staticcheck, full unit/race, build, smoke). task check:staged passed before each commit. LSP routes_test diagnostics clean; schema JSON/Python syntax and diff checks passed. Independent verifier passed AC1/3/4/5 and reported signed zero for AC2; parent inspected canonicalNumber (already normalizes zero sign) and added a passing public Matches regression for -0 versus 0, disproving the finding without source changes. Matching/config fixtures cover exact large integers, typed AND predicates and whole-list replacement; executor/Slack fixtures cover argv/stdin/CWD/env isolation, outcomes, 4+64 capacity, duplicates and prompt acks; CLI fixtures cover preview safety and two-stage shutdown. Noon limits independently confirmed against sibling docs/triggers.md, store retention and key validation. Worklease expired during delayed tool return; user explicitly authorized recovery, all agents stopped, and same-loop claim reacquired. Owned worktree and branch removed by Worktrunk after receipt/list verification; associated workspace cleanup hook ran. No blockers or remaining implementation steps.
+
+Implementation review: inspected strict route parsing/replacement, exact typed matching, literal argv/stdin/CWD/environment isolation, bounded executor, outcomes, and CLI lifecycle. P2 finding (shared by TELL-28/29): internal/listen/capture.go:162-166 waits for event dispatch to drain before OnStop stops the executor. Fatal source/output errors cancel only sourceCtx, not the CLI caller context, so queued events/actions may start new side effects during fatal shutdown rather than being dropped. Stop action admission before draining ingress; preserve diagnostics until running actions finish. A temporary TestReviewFatalSourceStopsBeforeDispatchDrain probe failed as expected, confirming dispatch remains enabled after fatal source failure; probe removed after review. Existing focused race tests, task smoke, go test ./..., and go vet ./... passed. Finding recorded only; implementation unchanged.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -5,11 +5,12 @@ status: Done
 assignee:
   - '@brett'
 created_date: '2026-10-17 21:02'
-updated_date: '2026-10-18 02:29'
+updated_date: '2026-10-18 02:42'
 labels:
   - listen
   - github
   - webhooks
+  - reviewed
 dependencies:
   - TELL-27
 references:
@@ -93,6 +94,8 @@ After prerequisites and claim, recheck linked GitHub/Cloudflare contracts, exten
 Implemented signed GitHub repository webhook ingress, strict personal configuration and loopback binding, shared multi-source capture, atomic ID/body-digest suppression, schemas, CLI inspection/completion, and user-managed cloudflared documentation. Verification: go test -race ./internal/config ./internal/listen ./internal/cli ./internal/delivery passed; independent verifier reran focused package tests and task ci successfully (security scans, vet, staticcheck, unit/race suites, build and smoke). git diff --check and JSON schema parsing passed; LSP clean for GitHub handler, capture coordinator, configuration and CLI source selection. AC1: signed envelope/command/ping/no-bind CLI fixtures. AC2: signature/tampering/header/JSON/status/body/header-limit tests. AC3: concurrent admission, source identity, digest TTL/eviction/restart/full-buffer tests. AC4: prompt 202 under slow dispatch, bounded readers, shutdown tests and existing race/signal smoke coverage. AC5: unsafe bind/allowlist/secret/shared-config rejection, bind-failure and credential-isolation fixtures. AC6: schemas/help/completion/docs/examples plus task ci. One independent acceptance pass found no concrete defect; its primary-file access restriction was resolved by parent confirming task scope and criteria are unchanged in the reviewed worktree copy. Parent rechecked GitHub signature/header/redelivery contracts via gh api and Cloudflare published-application docs. Live tunnel verification was not performed or claimed. Executor timed out after its successful CI; verifier validated resulting work, including the final test edit. Next: commit source, merge locally, finalize task and remove owned worktree.
 
 Delivery complete: implementation commit fc8856626895820d3685fdabc75b4b032b3e97ba passed task check:staged and was fast-forward merged into main. Session-owned tell-29-github worktree and branch removed using Worktrunk; associated Herdr workspace wGD disappearance verified. No retained task checkout/workspace and no push. No remaining blocker or resumable implementation step.
+
+Implementation review: independent read-only security review plus parent inspection of HMAC-before-parse, signed repository allowlist, header/JSON validation, bounded admission/dedup, loopback lifecycle, and local fixture coverage. P2 finding: internal/listen/github.go:202-205 releases the body-reader semaphore when the handler returns, but Go net/http subsequently drains unread request bodies in reqBody.Close outside that semaphore, even with keep-alives disabled. Parent reproduced with 24 real loopback HTTP/1.1 connections sending valid content-type/event/delivery headers, Content-Length: 1, no signature, and withholding the body: all received 401 while runtime stacks showed 24 concurrent net/http body.Close drains, exceeding the limit of 16. Temporary TestReviewRejectedRequestsBodyReaderBound failed as expected and was removed. Prevent post-handler draining on rejection (including paths before semaphore acquisition), then verify with real sockets rather than only ResponseRecorder. Shared P2 fatal-shutdown admission finding on TELL-27 also applies (capture.go:162-166). No additional authentication/authorization or diagnostic-secret disclosure defects found. Existing focused race tests, task smoke, go test ./..., and go vet ./... passed. No live GitHub/cloudflared testing; findings recorded without implementation fixes.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
