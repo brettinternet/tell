@@ -5,8 +5,9 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-17 02:02'
-updated_date: '2026-10-17 02:08'
-labels: []
+updated_date: '2026-10-18 00:27'
+labels:
+  - reviewed
 dependencies:
   - TELL-15
 modified_files:
@@ -54,6 +55,15 @@ Non-goals: trust or approval stores; walking above the project to find a Git dir
 <!-- SECTION:NOTES:BEGIN -->
 Implemented in current checkout as 23343fa. User direction: ignore .tell.yaml entirely (no compatibility warnings); removed compatibility-only doc/test mentions, kept the TELL-15 committed-.tell.yaml smoke regression. Pointer files (.git, commondir) must be regular files and at most 4 KiB so a FIFO cannot hang Tell. Verification: go test ./internal/... passed; task smoke passed, including a real git worktree where init --local from the worktree created the main checkout .git/tell.yaml with mode 0600 and notify then ran the personal command; TestRepositoryPersonalConfig covers main/worktree precedence (user, then tell.yaml, then .git/tell.yaml, then flags), --config isolation, and malformed .git; CLI test covers init --local outside Git (exit 1, points to --user) and --local/--user conflict (exit 2). Direct built-binary check in a temp repo: init --local/-l from worktree created then kept the file; tell config in worktree and main showed herdr.session from .git/tell.yaml; outside Git exit 1. task ci passed (gofmt, vet, staticcheck, gitleaks, govulncheck no reachable symbols, tests, race, smoke); task check:staged passed; LSP clean.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-10-18 00:27
+---
+Review: ACs verified with built binary in a temp repo + linked worktree: init --local from worktree created main .git/tell.yaml mode 0600; worktree config loads it (herdr.session/notify.command origins); --config isolates it; repeat init keeps file; -u -l exit 2; outside Git exit 1; malformed .git file errors but --config bypasses. Pointer reads bounded and regular-file only. Fixed: init --local in a subdirectory whose committed tell.yaml makes it the project said 'is not a Git checkout' (misleading inside a repo); message now says the project has no .git so .git/tell.yaml would not load there. Documented limitation, not changed: a committed sub/tell.yaml (monorepo package) drops the repo's .git/tell.yaml layer for that subtree.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 
