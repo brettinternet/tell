@@ -164,24 +164,12 @@ func templateValue(event Envelope, path string) (string, bool) {
 	if raw, ok := envelopeValue(event, path); ok {
 		return scalarTemplateValue(raw)
 	}
-	parts := strings.Split(path, ".")
-	if len(parts) < 2 || parts[0] != "data" {
+	if !strings.HasPrefix(path, "data.") {
 		return "", false
 	}
-	value := json.RawMessage(nil)
-	for i, part := range parts[1:] {
-		if i == 0 {
-			value = event.Data[part]
-		} else {
-			var object map[string]json.RawMessage
-			if json.Unmarshal(value, &object) != nil || object == nil {
-				return "", false
-			}
-			value = object[part]
-		}
-		if value == nil {
-			return "", false
-		}
+	value, ok := pathValue(event.Data, strings.TrimPrefix(path, "data."))
+	if !ok {
+		return "", false
 	}
 	return scalarTemplateValue(value)
 }
