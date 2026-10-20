@@ -1,10 +1,11 @@
 ---
 id: TELL-30
 title: Cascade notify through ordered fallback routes per environment
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@pi'
 created_date: '2026-10-20 19:35'
-updated_date: '2026-10-20 19:53'
+updated_date: '2026-10-20 20:24'
 labels:
   - notify
 dependencies: []
@@ -61,13 +62,33 @@ Use existing local provider fixtures (fake apprise/herdr/command executables), n
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A list notify.via (bare-name and single-key map steps; repeated apprise steps with different tags/configs) parses with strict validation: unknown keys, multi-key steps, empty lists, uncertain/config/usage in fallback_on, fallback options with a string via, and a list in shared tell.yaml are config errors reported before any delivery. A string via behaves exactly as before.
-- [ ] #2 Against local fixtures, a step with not_sent (Apprise exit 3 no_match, missing executable, missing Herdr session, unsupported platform, missing Apprise config file) advances to the next step; accepted stops; failed stops unless fallback_on includes failed; uncertain always stops. Exit code and top-level JSON reflect the last attempted step; all not_sent gives exit 3.
-- [ ] #3 Step options override top-level apprise/herdr settings; tag/config/format/session flags, TELL_* env, and MCP agent overrides apply to every step of that route; a via override runs only that route with no cascade. Precedence is covered by tests.
-- [ ] #4 A missing effective apprise.config file yields not_sent/missing_config without running Apprise, for both cascade steps and single-route apprise, and doctor reports it.
-- [ ] #5 --timeout bounds the whole cascade; exhaustion before a step starts yields not_sent/timeout_budget and runs no further steps.
-- [ ] #6 fallback_notice none sends unchanged text; title prefixes later-step titles with the first step label and reason through normal preparation. JSON includes an attempts array (route, label, outcome, reason) and never message text; human output is silent about skipped steps on success and lists attempt reasons on failure.
-- [ ] #7 doctor lists cascade steps in order, labels unready steps as unavailable here, and exits 0 when any step is ready, without sending. Listener notify actions without static via inherit the cascade within the per-action timeout; dry-run probes nothing; MCP notify returns attempts. send behavior is unchanged.
-- [ ] #8 Schemas, README, docs/design.md (replacing the no-fallback-routes statement for notify), docs/configuration.md, docs/listening.md, and examples/fallback document the cascade, advance rules, Apprise-tag cascading, and why send has no fallback. Focused tests and task ci pass with recorded evidence.
-- [ ] #9 A urls_env step runs the fake Apprise with APPRISE_URLS set to the named variable value and without --config, --tag, or URL arguments; an unset or empty variable yields not_sent/missing_urls without running Apprise and advances the cascade; urls_env with config or tag (including via overrides) is a config error. Tagged apprise steps and tagged single-route apprise run without an inherited APPRISE_URLS. URL values never appear in argv, human/JSON output, doctor, or config inspection.
+- [x] #1 A list notify.via (bare-name and single-key map steps; repeated apprise steps with different tags/configs) parses with strict validation: unknown keys, multi-key steps, empty lists, uncertain/config/usage in fallback_on, fallback options with a string via, and a list in shared tell.yaml are config errors reported before any delivery. A string via behaves exactly as before.
+- [x] #2 Against local fixtures, a step with not_sent (Apprise exit 3 no_match, missing executable, missing Herdr session, unsupported platform, missing Apprise config file) advances to the next step; accepted stops; failed stops unless fallback_on includes failed; uncertain always stops. Exit code and top-level JSON reflect the last attempted step; all not_sent gives exit 3.
+- [x] #3 Step options override top-level apprise/herdr settings; tag/config/format/session flags, TELL_* env, and MCP agent overrides apply to every step of that route; a via override runs only that route with no cascade. Precedence is covered by tests.
+- [x] #4 A missing effective apprise.config file yields not_sent/missing_config without running Apprise, for both cascade steps and single-route apprise, and doctor reports it.
+- [x] #5 --timeout bounds the whole cascade; exhaustion before a step starts yields not_sent/timeout_budget and runs no further steps.
+- [x] #6 fallback_notice none sends unchanged text; title prefixes later-step titles with the first step label and reason through normal preparation. JSON includes an attempts array (route, label, outcome, reason) and never message text; human output is silent about skipped steps on success and lists attempt reasons on failure.
+- [x] #7 doctor lists cascade steps in order, labels unready steps as unavailable here, and exits 0 when any step is ready, without sending. Listener notify actions without static via inherit the cascade within the per-action timeout; dry-run probes nothing; MCP notify returns attempts. send behavior is unchanged.
+- [x] #8 Schemas, README, docs/design.md (replacing the no-fallback-routes statement for notify), docs/configuration.md, docs/listening.md, and examples/fallback document the cascade, advance rules, Apprise-tag cascading, and why send has no fallback. Focused tests and task ci pass with recorded evidence.
+- [x] #9 A urls_env step runs the fake Apprise with APPRISE_URLS set to the named variable value and without --config, --tag, or URL arguments; an unset or empty variable yields not_sent/missing_urls without running Apprise and advances the cascade; urls_env with config or tag (including via overrides) is a config error. Tagged apprise steps and tagged single-route apprise run without an inherited APPRISE_URLS. URL values never appear in argv, human/JSON output, doctor, or config inspection.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extend strict personal configuration and effective-step resolution while preserving scalar routing and one-shot override precedence. 2. Implement shared-budget notify cascading and Apprise preflight/environment handling in shared delivery operations. 3. Integrate safe attempts and ordered readiness into CLI, MCP, and listener inheritance; update schemas and documentation. 4. Verify critical parsing, duplicate-prevention, credential isolation, precedence, and timeout paths with local fixtures; run task ci. 5. Perform one independent scoped review, resolve concrete defects, commit, merge main, record evidence and complete task, release claim and clean up owned worktree.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implementation is complete in .worktrees/tell-30-notify-fallback. Parent independently ran mise exec -- task ci successfully: gitleaks, govulncheck, formatting, vet, Staticcheck, changelog generation, unit tests, race tests, build, and smoke. Critical regressions cover strict parsing/precedence, advance/stop outcomes, no-delivery invalid configuration, missing config/URLs, child environment isolation, fallback title/attempt receipts, doctor, listener and MCP inheritance, and timeout-budget safety. Independent scoped review is in progress; no acceptance criteria checked yet.
+
+Final verification: focused go test ./internal/config ./internal/cli ./internal/delivery ./internal/listen ./internal/mcp passed. task ci passed again after both review corrections, including full race suite. AC1/3: TestNotifyCascadeConfigAndPrecedence, StrictValidation, ViaOverrideDisablesCascade and InvalidConfigDoesNotDeliver. AC2/5/6: OutcomeRules, UnavailableStepsAdvance, NoticeAndURLsEnvironment, HumanAttemptSummary and delivery TimeoutBudgetBeforeFirstStep/TimeoutPreservesUnsafeFailure. AC4/9: AppriseMissingConfigIsNotSent, SingleRouteAppriseTagStripsInheritedURLs, NoticeAndURLsEnvironment, config inspection secrecy and strict inherited URLs conflicts. AC7: DoctorCascadeReadiness, native listener inheritance/dry-run and MCP protocol tests. AC8: schemas parsed; required docs/examples updated; full CI passed. Independent reviewer found two concrete defects: shared listener Origins mutation/race and suppressed inherited urls_env conflicts. Both fixed; added sequential/concurrent listener isolation regression and inherited-tag/config conflict cases. LSP diagnostics clean on corrected source/tests. Real binary now rejects the previously accepted inherited URLs conflict. Implementation committed as 3145da1 and fast-forward merged into main. task check:staged passed before commit. Owned worktree and branch removed with Worktrunk; exact Herdr workspace wJ9 disappearance verified. No push. No remaining blocker or resumable implementation work.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented ordered personal notify cascades with safe fallback outcomes, shared deadlines, per-step Apprise/Herdr selectors and URL environment isolation, attempt receipts, doctor readiness, and listener/MCP inheritance. Send remains single-route. Updated schemas/docs/examples. Focused tests and task ci passed after fixing both independent review findings. Commit 3145da1 merged to main; owned worktree, branch and workspace cleaned up. No push.
+<!-- SECTION:FINAL_SUMMARY:END -->
