@@ -36,7 +36,7 @@
         }
       },
       "allOf": [
-        { "if": { "anyOf": [{ "required": ["fallback_on"] }, { "required": ["fallback_notice"] }] }, "then": { "required": ["via"], "properties": { "via": { "type": "array" } } } }
+        { "if": { "anyOf": [{ "required": ["fallback_on"] }, { "required": ["fallback_notice"] }] }, "then": { "properties": { "via": { "type": "array" } } } }
       ]
     },
     "apprise": {

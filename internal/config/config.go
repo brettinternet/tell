@@ -497,7 +497,7 @@ func Load(input Input) (Config, error) {
 
 func validateNotify(cfg Config, requireCommands bool) error {
 	if len(cfg.Notify.Steps) == 0 {
-		if (cfg.Notify.FallbackOnSet || cfg.Notify.NoticeSet) && !isOneShot(cfg.Origins["notify.via"]) {
+		if cfg.Notify.FallbackOnSet || cfg.Notify.NoticeSet {
 			return errors.New("notify.fallback_on and notify.fallback_notice require a list notify.via")
 		}
 		return nil
@@ -676,10 +676,14 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		case "stderr", "desktop", "apprise", "herdr", "command":
 			cfg.Notify.Via = value
 			cfg.Notify.Steps = nil
-			if isOneShot(source) {
-				cfg.Notify.FallbackOn, cfg.Notify.FallbackNotice = nil, ""
-				cfg.Notify.FallbackOnSet, cfg.Notify.NoticeSet = false, false
+			// A single route replaces any lower cascade with its fallback settings;
+			// settings from the same file stay and fail validation.
+			if cfg.Origins["notify.fallback_on"] != source {
+				cfg.Notify.FallbackOn, cfg.Notify.FallbackOnSet = nil, false
 				cfg.Origins["notify.fallback_on"] = "default"
+			}
+			if cfg.Origins["notify.fallback_notice"] != source {
+				cfg.Notify.FallbackNotice, cfg.Notify.NoticeSet = "", false
 				cfg.Origins["notify.fallback_notice"] = "default"
 			}
 		default:

@@ -72,6 +72,14 @@ herdr: {session: default-session}
 		t.Fatalf("higher list layer did not replace lower list: %+v", cfg.Notify)
 	}
 
+	// A higher string via replaces the cascade and its inherited fallback settings
+	// instead of making every command in that repository a config error.
+	writeFile(t, repository, "notify: {via: stderr}\n")
+	cfg, err = config.Load(input)
+	if err != nil || cfg.Notify.Via != "stderr" || len(cfg.Notify.Steps) != 0 || len(cfg.Notify.FallbackOn) != 0 || cfg.Notify.FallbackNotice != "" {
+		t.Fatalf("higher string layer did not replace lower cascade: %+v %v", cfg.Notify, err)
+	}
+
 	// A via override deliberately converts the cascade to one selected route.
 	input.Overrides = map[string]config.Value{"notify.via": {Text: "desktop", Source: "flag:--via"}}
 	cfg, err = config.Load(input)

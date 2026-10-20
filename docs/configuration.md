@@ -120,7 +120,9 @@ argv is passed literally; see [command delivery](design.md#command-delivery).
 `XDG_CONFIG_HOME` must be absolute when set.
 
 An ordered personal notify cascade can use the same provider with different
-Apprise tags or configs. Each list replaces a lower list wholesale:
+Apprise tags or configs. Each list replaces a lower list wholesale, and a
+higher-layer string `via` replaces a lower cascade along with its inherited
+`fallback_on` and `fallback_notice`:
 
 ```yaml
 notify:

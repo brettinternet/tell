@@ -185,7 +185,7 @@ func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut i
 			if _, err = fmt.Fprintf(out, "%s %s%s\n", label, status, count); err != nil {
 				break
 			}
-			if !route.Ready && !(r.Cascade && readinessIn(route, r.Steps)) {
+			if !route.Ready {
 				if _, err = fmt.Fprintf(out, "  %s\n", humanReason(route.Route, route.Reason, "")); err != nil {
 					break
 				}
