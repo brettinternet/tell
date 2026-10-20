@@ -18,6 +18,8 @@ type doctorReport struct {
 	Selected      string               `json:"selected"`
 	SelectedSend  string               `json:"selected_send,omitempty"`
 	Ready         bool                 `json:"ready"`
+	Cascade       bool                 `json:"cascade,omitempty"`
+	Steps         []delivery.Readiness `json:"steps"`
 	Routes        []delivery.Readiness `json:"routes"`
 }
 
@@ -32,7 +34,16 @@ func doctor(ctx context.Context, cmd *urfave.Command) error {
 		return err
 	}
 	routes := delivery.Doctor(ctx, cfg)
-	ready := routes[0].Ready
+	stepCount := len(cfg.Notify.Steps)
+	if stepCount == 0 {
+		stepCount = 1
+	}
+	stepCount = min(stepCount, len(routes))
+	steps := append([]delivery.Readiness(nil), routes[:stepCount]...)
+	ready := false
+	for _, step := range steps {
+		ready = ready || step.Ready
+	}
 	selectedSend := ""
 	if cfg.Send.Via != "" || cfg.Send.To != "" {
 		selectedSend = "send/" + cfg.Send.Via
@@ -52,7 +63,7 @@ func doctor(ctx context.Context, cmd *urfave.Command) error {
 		}
 		routes = append(routes, inbound)
 	}
-	return &doctorReport{SchemaVersion: 1, Selected: cfg.Notify.Via, SelectedSend: selectedSend, Ready: ready, Routes: routes}
+	return &doctorReport{SchemaVersion: 1, Selected: cfg.Notify.Via, SelectedSend: selectedSend, Ready: ready, Cascade: len(cfg.Notify.Steps) > 0, Steps: steps, Routes: routes}
 }
 
 // humanReason adds CLI-only guidance without changing structured provider results.
@@ -106,6 +117,10 @@ func humanReason(route, reason, fallback string) string {
 		return "the provider returned an invalid readiness response; check its version and setup"
 	case "no_services":
 		return "Apprise matched no services; check its provider config and apprise.tag"
+	case "missing_config":
+		return "the configured Apprise config file was not found; choose an available file or another route"
+	case "missing_urls":
+		return "the configured Apprise URLs environment variable is unset or empty; set it or choose another route"
 	case "probe_failed", "provider_failure":
 		return "the provider readiness check failed; check its setup"
 	case "session_not_running":
@@ -123,6 +138,15 @@ func humanReason(route, reason, fallback string) string {
 	}
 }
 
+func readinessIn(route delivery.Readiness, steps []delivery.Readiness) bool {
+	for _, step := range steps {
+		if route.Route == step.Route && route.Label == step.Label {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut io.Writer) int {
 	var err error
 	if jsonRequested(root, args) {
@@ -131,7 +155,7 @@ func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut i
 		style := newOutputStyle(out, boolRequested(root, args, "no-color"))
 		for _, route := range r.Routes {
 			selected := ""
-			if route.Route == r.Selected || route.Route == r.SelectedSend {
+			if route.Route == r.Selected || route.Route == r.SelectedSend || readinessIn(route, r.Steps) {
 				selected = " (selected)"
 			}
 			count := ""
@@ -141,21 +165,27 @@ func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut i
 			if route.Services != nil {
 				count = fmt.Sprintf("; services: %d", *route.Services)
 			}
-			label := route.Route + selected + ":"
+			routeName := route.Route
+			if route.Label != "" {
+				routeName = route.Label
+			}
+			label := routeName + selected + ":"
 			if selected != "" {
 				label = style.bold(label)
 			}
 			status := style.success("ready")
 			if !route.Ready {
 				status = "not ready"
-				if selected != "" {
+				if r.Cascade && readinessIn(route, r.Steps) {
+					status = "unavailable here"
+				} else if selected != "" {
 					status = style.failure(status)
 				}
 			}
 			if _, err = fmt.Fprintf(out, "%s %s%s\n", label, status, count); err != nil {
 				break
 			}
-			if !route.Ready {
+			if !route.Ready && !(r.Cascade && readinessIn(route, r.Steps)) {
 				if _, err = fmt.Fprintf(out, "  %s\n", humanReason(route.Route, route.Reason, "")); err != nil {
 					break
 				}

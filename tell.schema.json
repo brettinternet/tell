@@ -17,7 +17,16 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "via": { "enum": ["stderr", "desktop", "apprise", "herdr", "command"], "default": "stderr" },
+        "via": {
+          "description": "One route retains single-route behavior. A list runs in order and advances only on not_sent by default.",
+          "default": "stderr",
+          "oneOf": [
+            { "enum": ["stderr", "desktop", "apprise", "herdr", "command"] },
+            { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/notifyStep" } }
+          ]
+        },
+        "fallback_on": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["not_sent", "failed"] }, "default": ["not_sent"], "description": "Advance only for these outcomes. failed is an explicit duplicate-risk opt-in; uncertain never advances." },
+        "fallback_notice": { "enum": ["none", "title"], "default": "none", "description": "Optionally prefix later titles with the first route label and reason." },
         "command": {
           "description": "Literal executable and arguments; body is sent on stdin. Personal files only.",
           "type": "array",
@@ -25,7 +34,10 @@
           "items": [{ "type": "string", "pattern": "\\S", "not": { "pattern": "\u0000" } }],
           "additionalItems": { "type": "string", "not": { "pattern": "\u0000" } }
         }
-      }
+      },
+      "allOf": [
+        { "if": { "anyOf": [{ "required": ["fallback_on"] }, { "required": ["fallback_notice"] }] }, "then": { "required": ["via"], "properties": { "via": { "type": "array" } } } }
+      ]
     },
     "apprise": {
       "type": "object",
@@ -64,7 +76,7 @@
       }
     },
     "listen": {
-      "description": "Personal-only inbound configuration. Slack Socket Mode and signed GitHub repository webhooks support literal run argv and native notify/send actions with single-pass scalar envelope templates. Route lists replace whole lists.",
+      "description": "Personal-only inbound configuration. Slack Socket Mode and signed GitHub repository webhooks support literal run argv and native notify/send actions with single-pass scalar envelope templates. Route lists replace whole lists. Notify actions without static via inherit notify cascades; send stays single-route.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -155,7 +167,7 @@
                   "message": { "$ref": "#/definitions/templateString", "description": "Message with single-pass ${path} envelope scalar placeholders; $${ escapes a literal opener." },
                   "title": { "type": "string", "description": "Optional title with the same envelope placeholder grammar; empty explicitly suppresses the default project title." },
                   "type": { "enum": ["info", "success", "warning", "failure"], "default": "info" },
-                  "via": { "enum": ["stderr", "desktop", "apprise", "herdr", "command"], "description": "Static override; otherwise inherit effective notify.via." },
+                  "via": { "enum": ["stderr", "desktop", "apprise", "herdr", "command"], "description": "Static single-route override; otherwise inherit effective notify.via, including its cascade." },
                   "herdr_session": { "$ref": "#/definitions/staticSelector", "description": "Static session override; otherwise inherit herdr.session." },
                   "apprise_tag": { "$ref": "#/definitions/staticSelector", "description": "Static Apprise tag override; otherwise inherit apprise.tag." }
                 }
@@ -186,11 +198,42 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "agent_targets": { "type": "boolean", "default": false, "description": "Allow MCP agents to override routes and recipients, not executable paths or policy." }
+        "agent_targets": { "type": "boolean", "default": false, "description": "Allow MCP agents to choose routes/recipients and Apprise or Herdr selectors, not executables, URLs environment names, or delivery policy." }
       }
     }
   },
   "definitions": {
+    "notifyStep": {
+      "oneOf": [
+        { "enum": ["stderr", "desktop", "apprise", "herdr", "command"] },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "properties": {
+            "apprise": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "config": { "allOf": [{ "$ref": "#/definitions/nonBlankString" }], "not": { "pattern": "://" }, "description": "Local Apprise config path relative to this file." },
+                "tag": { "$ref": "#/definitions/nonBlankString" },
+                "format": { "enum": ["text", "markdown", "html"] },
+                "urls_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Environment variable name holding Apprise URLs; Tell passes its value only via APPRISE_URLS, never argv or diagnostics. Cannot combine with config or tag." }
+              },
+              "allOf": [
+                { "if": { "required": ["urls_env"] }, "then": { "not": { "anyOf": [{ "required": ["config"] }, { "required": ["tag"] }] } } }
+              ]
+            },
+            "herdr": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "session": { "$ref": "#/definitions/nonBlankString" } }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "string": { "type": "string", "not": { "pattern": "[\u0000\u001b\r\n]" } },
     "nonBlankString": { "allOf": [{ "$ref": "#/definitions/string" }, { "pattern": "\\S" }] },
     "templateString": { "type": "string", "minLength": 1, "pattern": "\\S" },

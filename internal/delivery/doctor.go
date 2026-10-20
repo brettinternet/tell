@@ -18,6 +18,7 @@ import (
 // Readiness contains only fixed diagnostics, never provider output or settings.
 type Readiness struct {
 	Route    string `json:"route"`
+	Label    string `json:"label,omitempty"`
 	Ready    bool   `json:"ready"`
 	Reason   string `json:"reason"`
 	Services *int   `json:"services,omitempty"`
@@ -27,7 +28,21 @@ type Readiness struct {
 // It never delivers, starts services, or executes a personal command.
 func Doctor(ctx context.Context, cfg config.Config) []Readiness {
 	ctx = childContext(ctx, cfg)
-	routes := []string{cfg.Notify.Via}
+	steps, err := config.EffectiveNotifySteps(cfg)
+	if err != nil || len(steps) == 0 {
+		steps = []config.NotifyStep{{Via: cfg.Notify.Via}}
+	}
+	results := make([]Readiness, 0, len(steps)+3)
+	present := make(map[string]bool)
+	for _, step := range steps {
+		result := checkNotifyStep(ctx, cfg, step, runtime.GOOS)
+		result.Label = config.NotifyStepLabel(step)
+		if result.Label == result.Route {
+			result.Label = ""
+		}
+		results = append(results, result)
+		present[step.Via] = true
+	}
 	for _, entry := range []struct {
 		route      string
 		configured bool
@@ -36,13 +51,9 @@ func Doctor(ctx context.Context, cfg config.Config) []Readiness {
 		{"herdr", cfg.Herdr.Session != ""},
 		{"command", len(cfg.Notify.Command) > 0},
 	} {
-		if entry.configured && entry.route != cfg.Notify.Via {
-			routes = append(routes, entry.route)
+		if entry.configured && !present[entry.route] {
+			results = append(results, checkRoute(ctx, cfg, entry.route, runtime.GOOS))
 		}
-	}
-	results := make([]Readiness, 0, len(routes))
-	for _, route := range routes {
-		results = append(results, checkRoute(ctx, cfg, route, runtime.GOOS))
 	}
 	if cfg.Send.Via != "" || cfg.Send.To != "" {
 		_, failure := probeSend(ctx, cfg)
@@ -55,11 +66,40 @@ func Doctor(ctx context.Context, cfg config.Config) []Readiness {
 	return results
 }
 
+func checkNotifyStep(ctx context.Context, cfg config.Config, step config.NotifyStep, platform string) Readiness {
+	cfg.Notify.Via = step.Via
+	cfg.Notify.Steps = nil
+	if step.Via == "apprise" {
+		cfg.Apprise.Config, cfg.Apprise.Tag, cfg.Apprise.Format = step.Config, step.Tag, step.Format
+	}
+	if step.Via == "herdr" {
+		cfg.Herdr.Session = step.Session
+	}
+	return checkRouteWithEnv(ctx, cfg, step.Via, platform, step.UrlsEnv)
+}
+
 func checkRoute(ctx context.Context, cfg config.Config, route, platform string) Readiness {
+	return checkRouteWithEnv(ctx, cfg, route, platform, "")
+}
+
+func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, urlsEnv string) Readiness {
 	result := Readiness{Route: route, Reason: "ready"}
 	finish := func(reason string) Readiness { result.Reason = reason; result.Ready = reason == "ready"; return result }
 	if ctx.Err() != nil {
 		return finish("cancelled")
+	}
+	if route == "apprise" {
+		if cfg.Apprise.Config != "" {
+			if _, err := os.Stat(cfg.Apprise.Config); errors.Is(err, os.ErrNotExist) {
+				return finish("missing_config")
+			}
+		}
+		if urlsEnv != "" {
+			value, ok := os.LookupEnv(urlsEnv)
+			if !ok || value == "" {
+				return finish("missing_urls")
+			}
+		}
 	}
 	var name string
 	switch route {
@@ -102,6 +142,7 @@ func checkRoute(ctx context.Context, cfg config.Config, route, platform string) 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	args := []string{"session", "list", "--json"}
+	var env []string
 	if route == "apprise" {
 		args = []string{"--dry-run"}
 		for _, option := range []struct{ flag, value string }{
@@ -111,11 +152,18 @@ func checkRoute(ctx context.Context, cfg config.Config, route, platform string) 
 				args = append(args, option.flag, option.value)
 			}
 		}
+		if urlsEnv != "" {
+			value, _ := os.LookupEnv(urlsEnv)
+			env = replaceEnvironment(os.Environ(), "APPRISE_URLS", value)
+		} else if cfg.Apprise.Tag != "" {
+			env = removeEnvironment(os.Environ(), "APPRISE_URLS")
+		}
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	if route == "herdr" {
-		cmd.Env = herdrEnv()
+		env = herdrEnv()
 	}
+	cmd.Env = env
 	cmd.Env = childEnv(ctx, cmd.Env)
 	cmd.WaitDelay = 100 * time.Millisecond
 	output := &probeOutput{}

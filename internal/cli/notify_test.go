@@ -157,6 +157,9 @@ func TestAppriseArguments(t *testing.T) {
 	if err := os.Mkdir(project, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(base, "provider.yaml"), []byte("urls: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, kind := range []string{"", "info", "success", "warning", "failure"} {
 		args := []string{"--json", "-C", project, "notify", "--via", "apprise"}
 		expected := []string{"--title", "selected-project", "--body", "body-sentinel ; $(no-shell)\nnext", "--notification-type", "info"}

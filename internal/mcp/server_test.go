@@ -116,6 +116,7 @@ fi
 exit 1
 `)
 	t.Setenv("PATH", providerDir)
+	t.Setenv("APPRISE_URLS", "")
 	t.Setenv("MCP_APPRISE_LOG", appriseLog)
 	t.Setenv("MCP_HCOM_LOG", hcomLog)
 	t.Setenv("MCP_HERDR_LOG", herdrLog)
@@ -255,7 +256,7 @@ exit 1
 		tools[tool.Name] = tool
 	}
 	for name, required := range map[string][]string{
-		"notify": {"via", "herdr_session", "apprise_tag"},
+		"notify": {"via", "herdr_session", "apprise_tag", "apprise_config", "apprise_format"},
 		"send":   {"via", "to", "herdr_session"},
 	} {
 		properties := toolProperties(t, tools[name])
@@ -266,6 +267,18 @@ exit 1
 		}
 	}
 
+	writeConfig(t, configPath, "mcp: {agent_targets: true}\nnotify:\n  via:\n    - apprise: {tag: mcp-first}\n    - stderr\nsend:\n  via: hcom\n  to: reviewer\n  from: automation\n")
+	serverStderr.Reset()
+	t.Setenv("MCP_APPRISE_EXIT", "3")
+	cascadeNotify := callTool(t, client, "notify", map[string]any{"message": "cascade-body-sentinel"})
+	assertDelivery(t, cascadeNotify, "stderr", "accepted", "", "")
+	attempts, ok := structured(t, cascadeNotify)["attempts"].([]any)
+	if !ok || len(attempts) != 2 || !strings.Contains(serverStderr.String(), "cascade-body-sentinel\n") {
+		t.Fatalf("MCP notify did not return cascade receipts: %+v stderr=%q", structured(t, cascadeNotify), serverStderr.String())
+	}
+	assertNoMessageOrProviderOutput(t, cascadeNotify, "cascade-body-sentinel")
+	t.Setenv("MCP_APPRISE_EXIT", "0")
+	writeConfig(t, configPath, configText)
 	overriddenNotify := callTool(t, client, "notify", map[string]any{"message": "override-notify-body", "via": "apprise", "apprise_tag": "mcp-selected"})
 	assertDelivery(t, overriddenNotify, "apprise", "accepted", "", "")
 	assertNoMessageOrProviderOutput(t, overriddenNotify, "override-notify-body")

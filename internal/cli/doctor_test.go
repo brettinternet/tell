@@ -14,12 +14,12 @@ import (
 func TestDoctorHumanMissingExecutable(t *testing.T) {
 	environment(t)
 	t.Setenv("PATH", t.TempDir())
-	code, out, diag := run("doctor", "--apprise-tag", "private-tag")
+	code, out, diag := run("doctor", "--apprise-tag", "selected-tag")
 	if code != 0 || diag != "" || out != "stderr (selected): ready\napprise: not ready\n  apprise was not found on PATH; install it or choose another route\n" {
 		t.Fatalf("%d %q %q", code, out, diag)
 	}
-	code, out, diag = run("--json", "doctor", "--apprise-tag", "private-tag")
-	if code != 0 || diag != "" || !strings.Contains(out, `"reason":"missing_executable"`) || strings.Contains(out, "private-tag") {
+	code, out, diag = run("--json", "doctor", "--apprise-tag", "selected-tag")
+	if code != 0 || diag != "" || !strings.Contains(out, `"reason":"missing_executable"`) || strings.Contains(out, "selected-tag") {
 		t.Fatalf("%d %q %q", code, out, diag)
 	}
 	code, out, diag = run("notify", "--via", "apprise", "body-sentinel")
@@ -59,8 +59,11 @@ printf '%s' "$FIXTURE_SESSIONS"
 	t.Setenv("HERDR_SOCKET_PATH", "private-socket")
 	t.Setenv("FIXTURE_SESSIONS", `{"sessions":[{"name":"private-session","running":true,"socket_path":"private-path"}]}`)
 	t.Setenv("LISTENER_SECRET", "private-app-credential")
-	cfg := "listen: {slack: {app_token_env: LISTENER_SECRET}}\nnotify: {via: apprise, command: [" + filepath.Join(dir, "personal") + ", private-argument]}\napprise: {config: private-config, tag: private-tag, format: markdown}\nherdr: {session: private-session}\n"
+	cfg := "listen: {slack: {app_token_env: LISTENER_SECRET}}\nnotify: {via: apprise, command: [" + filepath.Join(dir, "personal") + ", private-argument]}\napprise: {config: private-config, tag: selected-tag, format: markdown}\nherdr: {session: private-session}\n"
 	writeUserConfig(t, cfg)
+	if err := os.WriteFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tell", "private-config"), []byte("urls: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, route := range []string{"apprise", "herdr", "command", "desktop", "stderr"} {
 		code, out, diagnostics := run("--json", "doctor", "--via", route)
 		var report struct {
@@ -95,7 +98,7 @@ printf '%s' "$FIXTURE_SESSIONS"
 		t.Fatal("executed desktop or personal command")
 	}
 	got, err := os.ReadFile(record + ".apprise")
-	want := strings.Join([]string{"--dry-run", "--config", filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tell", "private-config"), "--tag", "private-tag", "--input-format", "markdown", ""}, "\x00")
+	want := strings.Join([]string{"--dry-run", "--config", filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tell", "private-config"), "--tag", "selected-tag", "--input-format", "markdown", ""}, "\x00")
 	if err != nil || string(got) != want {
 		t.Fatalf("dry run argv: %q %v", got, err)
 	}
@@ -127,7 +130,7 @@ func TestDoctorFailures(t *testing.T) {
 			t.Setenv("FIXTURE_OUTPUT", tc.body)
 			t.Setenv("FIXTURE_EXIT", tc.exit)
 			for _, selected := range []string{tc.route, "stderr"} {
-				code, out, diagnostics := run("--json", "doctor", "--via", selected, "--apprise-tag", "private-tag", "--herdr-session", "target")
+				code, out, diagnostics := run("--json", "doctor", "--via", selected, "--apprise-tag", "selected-tag", "--herdr-session", "target")
 				want := 1
 				if selected == "stderr" {
 					want = 0

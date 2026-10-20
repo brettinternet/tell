@@ -33,9 +33,119 @@ type Input struct {
 }
 
 type Notify struct {
-	Via string `json:"via"`
+	Via            string       `json:"-"`
+	Steps          []NotifyStep `json:"-"`
+	FallbackOn     []string     `json:"fallback_on,omitempty"`
+	FallbackNotice string       `json:"fallback_notice,omitempty"`
+	FallbackOnSet  bool         `json:"-"`
+	NoticeSet      bool         `json:"-"`
 	// Command is trusted personal argv, never exposed in inspection output.
 	Command []string `json:"-"`
+}
+
+// NotifyStep selects one notification provider. Provider settings are references,
+// never parsed or expanded by Tell.
+type NotifyStep struct {
+	Via     string `json:"-"`
+	Config  string `json:"config,omitempty"`
+	Tag     string `json:"tag,omitempty"`
+	Format  string `json:"format,omitempty"`
+	UrlsEnv string `json:"urls_env,omitempty"`
+	Session string `json:"session,omitempty"`
+}
+
+func (n Notify) MarshalJSON() ([]byte, error) {
+	var via any = n.Via
+	fallbackOn, fallbackNotice := n.FallbackOn, n.FallbackNotice
+	if len(n.Steps) > 0 {
+		via = n.Steps
+		if len(fallbackOn) == 0 {
+			fallbackOn = []string{"not_sent"}
+		}
+		if fallbackNotice == "" {
+			fallbackNotice = "none"
+		}
+	}
+	return json.Marshal(struct {
+		Via            any      `json:"via"`
+		FallbackOn     []string `json:"fallback_on,omitempty"`
+		FallbackNotice string   `json:"fallback_notice,omitempty"`
+	}{via, fallbackOn, fallbackNotice})
+}
+
+func (n *Notify) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Via            json.RawMessage `json:"via"`
+		FallbackOn     []string        `json:"fallback_on"`
+		FallbackNotice string          `json:"fallback_notice"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var notify Notify
+	notify.FallbackOn = raw.FallbackOn
+	notify.FallbackNotice = raw.FallbackNotice
+	if len(raw.Via) == 0 {
+		*n = notify
+		return nil
+	}
+	if err := json.Unmarshal(raw.Via, &notify.Via); err == nil {
+		*n = notify
+		return nil
+	}
+	if err := json.Unmarshal(raw.Via, &notify.Steps); err != nil {
+		return err
+	}
+	if len(notify.Steps) > 0 {
+		notify.Via = notify.Steps[0].Via
+	}
+	*n = notify
+	return nil
+}
+
+func (s *NotifyStep) UnmarshalJSON(data []byte) error {
+	var route string
+	if err := json.Unmarshal(data, &route); err == nil {
+		s.Via = route
+		return nil
+	}
+	var options map[string]json.RawMessage
+	if err := json.Unmarshal(data, &options); err != nil || len(options) != 1 {
+		return errors.New("invalid notify step")
+	}
+	for route, raw := range options {
+		s.Via = route
+		var values map[string]string
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return err
+		}
+		s.Config, s.Tag, s.Format = values["config"], values["tag"], values["format"]
+		s.UrlsEnv, s.Session = values["urls_env"], values["session"]
+	}
+	return nil
+}
+
+func (s NotifyStep) MarshalJSON() ([]byte, error) {
+	options := make(map[string]string)
+	if s.Config != "" {
+		options["config"] = s.Config
+	}
+	if s.Tag != "" {
+		options["tag"] = s.Tag
+	}
+	if s.Format != "" {
+		options["format"] = s.Format
+	}
+	if s.UrlsEnv != "" {
+		options["urls_env"] = s.UrlsEnv
+	}
+	if s.Session != "" {
+		options["session"] = s.Session
+	}
+	if len(options) == 0 {
+		return json.Marshal(s.Via)
+	}
+	return json.Marshal(map[string]any{s.Via: options})
 }
 
 type Secrets struct {
@@ -332,6 +442,11 @@ func Load(input Input) (Config, error) {
 			}
 		}
 	}
+	// Validate the merged file snapshot before one-shot selectors can disable a
+	// cascade; invalid file-level fallback settings are still configuration errors.
+	if err := validateNotify(cfg, false); err != nil {
+		return Config{}, err
+	}
 	// Invocation flags select outbound sends; dormant listener routes validate
 	// against configured defaults rather than those one-shot selectors.
 	listenerCfg := cfg
@@ -371,10 +486,95 @@ func Load(input Input) (Config, error) {
 			return Config{}, err
 		}
 	}
+	if err := validateNotify(cfg, true); err != nil {
+		return Config{}, err
+	}
 	if err := validateRoutes(listenerCfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func validateNotify(cfg Config, requireCommands bool) error {
+	if len(cfg.Notify.Steps) == 0 {
+		if (cfg.Notify.FallbackOnSet || cfg.Notify.NoticeSet) && !isOneShot(cfg.Origins["notify.via"]) {
+			return errors.New("notify.fallback_on and notify.fallback_notice require a list notify.via")
+		}
+		return nil
+	}
+	if len(cfg.Notify.FallbackOn) > 0 {
+		seen := make(map[string]bool, len(cfg.Notify.FallbackOn))
+		for _, outcome := range cfg.Notify.FallbackOn {
+			if (outcome != "not_sent" && outcome != "failed") || seen[outcome] {
+				return errors.New("notify.fallback_on may contain not_sent and failed only, without duplicates")
+			}
+			seen[outcome] = true
+		}
+	}
+	if cfg.Notify.FallbackNotice != "" && cfg.Notify.FallbackNotice != "none" && cfg.Notify.FallbackNotice != "title" {
+		return errors.New("notify.fallback_notice must be none or title")
+	}
+	steps, err := EffectiveNotifySteps(cfg)
+	if err != nil {
+		return err
+	}
+	for _, step := range steps {
+		if requireCommands && step.Via == "command" && len(cfg.Notify.Command) == 0 {
+			return errors.New("notify.command is required for a command step")
+		}
+	}
+	return nil
+}
+
+// EffectiveNotifySteps resolves per-step settings against top-level settings and
+// invocation overrides, without consulting provider environment values.
+func EffectiveNotifySteps(cfg Config) ([]NotifyStep, error) {
+	steps := cfg.Notify.Steps
+	if len(steps) == 0 {
+		steps = []NotifyStep{{Via: cfg.Notify.Via}}
+	} else {
+		steps = append([]NotifyStep(nil), steps...)
+	}
+	for i := range steps {
+		step := &steps[i]
+		if step.Via == "apprise" {
+			if step.Config == "" || isOneShot(cfg.Origins["apprise.config"]) {
+				step.Config = cfg.Apprise.Config
+			}
+			if step.Tag == "" || isOneShot(cfg.Origins["apprise.tag"]) {
+				step.Tag = cfg.Apprise.Tag
+			}
+			if step.Format == "" || isOneShot(cfg.Origins["apprise.format"]) {
+				step.Format = cfg.Apprise.Format
+			}
+			if step.UrlsEnv != "" && (step.Config != "" || step.Tag != "") {
+				return nil, errors.New("apprise urls_env cannot be combined with effective apprise.config or apprise.tag")
+			}
+		}
+		if step.Via == "herdr" && (step.Session == "" || isOneShot(cfg.Origins["herdr.session"])) {
+			step.Session = cfg.Herdr.Session
+		}
+	}
+	return steps, nil
+}
+
+func isOneShot(origin string) bool {
+	return strings.HasPrefix(origin, "flag:") || strings.HasPrefix(origin, "env:") || strings.HasPrefix(origin, "mcp:")
+}
+
+func NotifyStepLabel(step NotifyStep) string {
+	switch step.Via {
+	case "apprise":
+		switch {
+		case step.Tag != "":
+			return "apprise:" + step.Tag
+		case step.Config != "":
+			return "apprise:" + filepath.Base(step.Config)
+		case step.UrlsEnv != "":
+			return "apprise:" + step.UrlsEnv
+		}
+	}
+	return step.Via
 }
 
 // Values returns non-secret settings for config inspection, never raw command argv.
@@ -383,8 +583,24 @@ func (cfg Config) Values() map[string]string {
 	if len(cfg.Notify.Command) > 0 {
 		command = "[configured]"
 	}
+	via := cfg.Notify.Via
+	if len(cfg.Notify.Steps) > 0 {
+		encoded, _ := json.Marshal(cfg.Notify.Steps)
+		via = string(encoded)
+	}
+	fallbackOn := strings.Join(cfg.Notify.FallbackOn, ",")
+	fallbackNotice := cfg.Notify.FallbackNotice
+	if len(cfg.Notify.Steps) > 0 {
+		if fallbackOn == "" {
+			fallbackOn = "not_sent"
+		}
+		if fallbackNotice == "" {
+			fallbackNotice = "none"
+		}
+	}
 	return map[string]string{
-		"timeout": cfg.Timeout, "notify.via": cfg.Notify.Via, "notify.command": command,
+		"timeout": cfg.Timeout, "notify.via": via, "notify.fallback_on": fallbackOn,
+		"notify.fallback_notice": fallbackNotice, "notify.command": command,
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
 		"send.via": cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
@@ -459,9 +675,22 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		switch value {
 		case "stderr", "desktop", "apprise", "herdr", "command":
 			cfg.Notify.Via = value
+			cfg.Notify.Steps = nil
+			if isOneShot(source) {
+				cfg.Notify.FallbackOn, cfg.Notify.FallbackNotice = nil, ""
+				cfg.Notify.FallbackOnSet, cfg.Notify.NoticeSet = false, false
+				cfg.Origins["notify.fallback_on"] = "default"
+				cfg.Origins["notify.fallback_notice"] = "default"
+			}
 		default:
-			return errors.New("notify.via must be stderr, desktop, apprise, herdr, or command")
+			return errors.New("notify.via must be stderr, desktop, apprise, herdr, command, or an ordered route list")
 		}
+	case "notify.fallback_notice":
+		if value != "none" && value != "title" {
+			return errors.New("notify.fallback_notice must be none or title")
+		}
+		cfg.Notify.FallbackNotice = value
+		cfg.Notify.NoticeSet = true
 	case "apprise.config":
 		if strings.Contains(value, "://") {
 			return errors.New("apprise.config must be a local path, not a URL")
@@ -546,12 +775,25 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 			switch value.key {
 			case "secrets.policy", "notify.command":
 				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .git/tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
-			case "notify.via", "apprise.config", "herdr.session", "send.via", "send.to", "send.from", "mcp.agent_targets":
+			case "notify.via", "notify.fallback_on", "notify.fallback_notice", "apprise.config", "herdr.session", "send.via", "send.to", "send.from", "mcp.agent_targets":
 				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .git/tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
 			}
 		}
 		if value.key == "notify.command" {
 			cfg.Notify.Command = value.argv
+			cfg.Origins[value.key] = path
+			continue
+		}
+		if value.key == "notify.via" && value.steps != nil {
+			steps := resolveNotifySteps(value.steps, filepath.Dir(path))
+			cfg.Notify.Steps = steps
+			cfg.Notify.Via = steps[0].Via
+			cfg.Origins[value.key] = path
+			continue
+		}
+		if value.key == "notify.fallback_on" {
+			cfg.Notify.FallbackOn = append([]string{}, value.strings...)
+			cfg.Notify.FallbackOnSet = true
 			cfg.Origins[value.key] = path
 			continue
 		}

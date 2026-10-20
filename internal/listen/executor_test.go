@@ -1,6 +1,8 @@
 package listen
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -8,6 +10,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -154,6 +157,90 @@ func TestExecutorCommandIsolationAndLiteralArgv(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(record.Args, " "), "CHILD-STDOUT-SENTINEL") {
 		t.Fatal("child output appeared in argv receipt")
+	}
+}
+
+func TestNativeNotifyInheritsCascadeAndDryRunDoesNotProbe(t *testing.T) {
+	providerDir := t.TempDir()
+	t.Setenv("PATH", providerDir)
+	t.Setenv("APPRISE_URLS", "")
+	record := filepath.Join(t.TempDir(), "provider-called")
+	if err := os.WriteFile(filepath.Join(providerDir, "apprise"), []byte("#!/bin/sh\nprintf called > "+record+"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{
+		Project: "/project", Timeout: "1s", Secrets: config.Secrets{Policy: "redact"},
+		Notify: config.Notify{Via: "apprise", Steps: []config.NotifyStep{{Via: "apprise"}, {Via: "stderr"}}},
+	}
+	route := config.Route{Name: "cascade", Notify: &config.NotifyAction{Message: "listener cascade"}}
+	event := Envelope{Source: "slack", Type: "event", ID: "event-1", Data: map[string]json.RawMessage{}}
+	if outcome, reason := ValidateAction(context.Background(), cfg, route, event); outcome != "dry_run" || reason != "" {
+		t.Fatalf("dry run: %s %s", outcome, reason)
+	}
+	if _, err := os.Stat(record); !os.IsNotExist(err) {
+		t.Fatal("dry run probed the provider")
+	}
+
+	t.Setenv("PATH", t.TempDir())
+	var stderr bytes.Buffer
+	results := make(chan [3]string, 1)
+	executor := NewExecutor(cfg, currentDirectory(t))
+	if !executor.SubmitWithWriter(route, event, func(route, outcome, reason string) { results <- [3]string{route, outcome, reason} }, &stderr) {
+		t.Fatal("native cascade was not admitted")
+	}
+	select {
+	case result := <-results:
+		if result != [3]string{"cascade", "accepted", ""} {
+			t.Fatalf("native cascade receipt: %v", result)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("native cascade did not finish")
+	}
+	executor.Stop()
+	executor.Wait()
+	if stderr.String() != "listener cascade\n" {
+		t.Fatalf("notify action did not inherit the cascade: %q", stderr.String())
+	}
+	if _, err := os.Stat(record); !os.IsNotExist(err) {
+		t.Fatal("unavailable first step unexpectedly ran provider")
+	}
+
+	static := config.Route{Name: "static", Notify: &config.NotifyAction{Message: "one route", Via: "stderr"}}
+	rendered, reason := renderAction(context.Background(), cfg, static, event)
+	if reason != "" || len(rendered.cfg.Notify.Steps) != 0 || rendered.cfg.Notify.Via != "stderr" {
+		t.Fatalf("static via retained inherited cascade: %+v %s", rendered.cfg.Notify, reason)
+	}
+}
+
+// Action-local selectors must not alter later events or race between executor workers.
+func TestNativeNotifyOverridesDoNotMutateSharedOrigins(t *testing.T) {
+	cfg := config.Config{
+		Project: "/project", Secrets: config.Secrets{Policy: "redact"},
+		Notify:  config.Notify{Via: "apprise", Steps: []config.NotifyStep{{Via: "apprise", Tag: "step-tag"}, {Via: "herdr", Session: "step-session"}}},
+		Origins: map[string]string{"apprise.tag": "personal.yaml", "herdr.session": "personal.yaml"},
+	}
+	wantOrigins := map[string]string{"apprise.tag": "personal.yaml", "herdr.session": "personal.yaml"}
+	override := config.Route{Notify: &config.NotifyAction{Message: "hello", AppriseTag: "action-tag", HerdrSession: "action-session"}}
+	inherited := config.Route{Notify: &config.NotifyAction{Message: "hello"}}
+	check := func() {
+		for _, route := range []config.Route{override, inherited} {
+			if outcome, reason := ValidateAction(context.Background(), cfg, route, Envelope{}); outcome != "dry_run" || reason != "" {
+				t.Errorf("validation: %s %s", outcome, reason)
+			}
+		}
+		steps, err := config.EffectiveNotifySteps(cfg)
+		if err != nil || steps[0].Tag != "step-tag" || steps[1].Session != "step-session" {
+			t.Errorf("action changed inherited routing: %+v %v", steps, err)
+		}
+	}
+	check()
+	var workers sync.WaitGroup
+	for range 4 {
+		workers.Go(check)
+	}
+	workers.Wait()
+	if !reflect.DeepEqual(cfg.Origins, wantOrigins) {
+		t.Fatalf("shared origins mutated: %v", cfg.Origins)
 	}
 }
 

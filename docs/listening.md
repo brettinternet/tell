@@ -185,8 +185,11 @@ not a copy to every listener. Sleep/disconnection can lose events.
 Each route has a unique `name` matching `[a-z0-9][a-z0-9_-]*`, a configured
 `source`, exact `type`, optional `match`, and exactly one `run`, `notify`, or
 `send` action. Unknown keys, null/empty actions, and multiple actions fail
-config validation; there are no action lists or implicit fallbacks. Multiple
-matching routes are explicit fan-out in config order.
+config validation; listener routes have no action lists or implicit route
+fallback. Multiple matching routes are explicit fan-out in config order. A
+native notify action without static `via` inherits the configured notify
+cascade; an explicit static `via` selects one route. Tell's notify-only fallback
+rules are documented in [design](design.md#notify-fallback-cascades).
 
 `match` maps dot-separated object paths inside `data` to scalar equality
 (string, finite JSON number, boolean; same type) or `{prefix: STRING}`. All
@@ -241,7 +244,10 @@ Noon-specific parsing is implemented in Tell.
 Native actions reuse in-process delivery and message-preparation APIs; they do
 not spawn `tell` recursively or duplicate transports. Each route action has a
 required nonblank `message`. `notify` accepts optional `title`, `type` (default
-`info`), `via`, `herdr_session`, and `apprise_tag`. `send` accepts optional
+`info`), `via`, `herdr_session`, and `apprise_tag`. With no static `via`, it
+inherits the personal notify cascade, `fallback_on`, and `fallback_notice`; its
+per-action timeout bounds the whole cascade. A static `via` remains one route.
+Dry-run renders and validates but never probes providers. `send` accepts optional
 static `via`, exact `to`, `herdr_session`, and `intent: inform` (the default and
 only allowed intent). Omitted selectors inherit effective personal outbound
 configuration; the project directory name supplies notify's default title.
@@ -265,7 +271,8 @@ provenance, and truncation pipeline. Secret-policy rejection/scanner failure is
 the existing per-action config outcome, not fatal to the listener. Receipts never
 contain rendered text. Send always uses `inform` and adds fixed provenance with
 the external source and event ID plus an explicit warning that event content is
-untrusted. This does not grant event authors authority to instruct the agent.
+untrusted. Send stays single-route: a duplicated request can start duplicate
+agent work. This does not grant event authors authority to instruct the agent.
 Prefer IDs and links over raw user-authored text. `inform` is not a
 prompt-injection sandbox. Dry-run performs template and preparation validation
 without dispatch or destination probes and reports only body-free outcomes; it

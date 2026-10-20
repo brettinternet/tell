@@ -17,6 +17,8 @@ type fileValue struct {
 	key, text string
 	argv      []string
 	routes    []Route
+	steps     []NotifyStep
+	strings   []string
 	repoIDs   []int64
 	line      int
 }
@@ -89,6 +91,24 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return err
 			}
 			*values = append(*values, fileValue{key: name, repoIDs: repositoryIDs, line: value.Line})
+		case "notify.via":
+			if value.Kind == yaml.SequenceNode {
+				steps, err := parseNotifySteps(value)
+				if err != nil {
+					return err
+				}
+				*values = append(*values, fileValue{key: name, steps: steps, line: value.Line})
+			} else if value.Kind == yaml.ScalarNode && value.Tag == "!!str" {
+				*values = append(*values, fileValue{key: name, text: value.Value, line: value.Line})
+			} else {
+				return fmt.Errorf("line %d: notify.via must be a route string or an ordered route list", value.Line)
+			}
+		case "notify.fallback_on":
+			fallback, err := parseStringList(value, "notify.fallback_on")
+			if err != nil {
+				return err
+			}
+			*values = append(*values, fileValue{key: name, strings: fallback, line: value.Line})
 		case "notify", "apprise", "herdr", "send", "secrets", "mcp":
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
@@ -108,7 +128,7 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return fmt.Errorf("line %d: notify.command executable must not be empty", value.Line)
 			}
 			*values = append(*values, fileValue{key: name, argv: argv, line: value.Line})
-		case "listen.slack.app_token_env", "listen.github.secret_env", "listen.http.addr", "secrets.policy", "timeout", "notify.via", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "send.via", "send.to", "send.from":
+		case "listen.slack.app_token_env", "listen.github.secret_env", "listen.http.addr", "secrets.policy", "timeout", "notify.fallback_notice", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "send.via", "send.to", "send.from":
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 				return fmt.Errorf("line %d: %s must be a string", value.Line, name)
 			}
@@ -123,6 +143,119 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 		}
 	}
 	return nil
+}
+
+func parseStringList(node *yaml.Node, field string) ([]string, error) {
+	if node.Kind != yaml.SequenceNode || node.Tag != "!!seq" || node.Anchor != "" || len(node.Content) == 0 {
+		return nil, fmt.Errorf("line %d: %s must be a non-empty list of strings", node.Line, field)
+	}
+	values := make([]string, 0, len(node.Content))
+	for _, item := range node.Content {
+		if item.Kind != yaml.ScalarNode || item.Tag != "!!str" || item.Anchor != "" || strings.TrimSpace(item.Value) == "" || strings.ContainsAny(item.Value, "\x00\x1b\r\n") {
+			return nil, fmt.Errorf("line %d: %s entries must be non-empty strings without controls", item.Line, field)
+		}
+		values = append(values, item.Value)
+	}
+	return values, nil
+}
+
+func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
+	if node.Tag != "!!seq" || node.Anchor != "" || len(node.Content) == 0 {
+		return nil, fmt.Errorf("line %d: notify.via route list must not be empty", node.Line)
+	}
+	steps := make([]NotifyStep, 0, len(node.Content))
+	for _, item := range node.Content {
+		if item.Anchor != "" || item.Kind == yaml.AliasNode {
+			return nil, fmt.Errorf("line %d: notify.via steps must not use aliases", item.Line)
+		}
+		if item.Kind == yaml.ScalarNode && item.Tag == "!!str" {
+			step := NotifyStep{Via: item.Value}
+			if !validNotifyRoute(step.Via) || strings.ContainsAny(step.Via, "\x00\x1b\r\n") {
+				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, apprise, herdr, or command", item.Line)
+			}
+			steps = append(steps, step)
+			continue
+		}
+		if item.Kind != yaml.MappingNode || item.Tag != "!!map" || len(item.Content) != 2 {
+			return nil, fmt.Errorf("line %d: notify.via step must be a route name or a single-key route options mapping", item.Line)
+		}
+		key, options := item.Content[0], item.Content[1]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" || !validNotifyRoute(key.Value) {
+			return nil, fmt.Errorf("line %d: notify.via step has an unknown route", key.Line)
+		}
+		if options.Anchor != "" || options.Kind == yaml.AliasNode || options.Kind != yaml.MappingNode || options.Tag != "!!map" {
+			return nil, fmt.Errorf("line %d: notify.via %s options must be a mapping without aliases", options.Line, key.Value)
+		}
+		step := NotifyStep{Via: key.Value}
+		if err := parseNotifyStepOptions(options, &step); err != nil {
+			return nil, err
+		}
+		steps = append(steps, step)
+	}
+	return steps, nil
+}
+
+func validNotifyRoute(route string) bool {
+	switch route {
+	case "stderr", "desktop", "apprise", "herdr", "command":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
+	seen := map[string]bool{}
+	for i := 0; i < len(node.Content); i += 2 {
+		key, value := node.Content[i], node.Content[i+1]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" || seen[key.Value] {
+			return fmt.Errorf("line %d: notify.via step options must be unique strings", key.Line)
+		}
+		seen[key.Value] = true
+		if value.Anchor != "" || value.Kind == yaml.AliasNode || value.Kind != yaml.ScalarNode || value.Tag != "!!str" || strings.TrimSpace(value.Value) == "" || strings.ContainsAny(value.Value, "\x00\x1b\r\n") {
+			return fmt.Errorf("line %d: notify.via step option %s must be a non-empty string without controls", value.Line, key.Value)
+		}
+		if step.Via == "apprise" {
+			switch key.Value {
+			case "config":
+				if strings.Contains(value.Value, "://") {
+					return fmt.Errorf("line %d: apprise step config must be a local path, not a URL", value.Line)
+				}
+				step.Config = value.Value
+			case "tag":
+				step.Tag = value.Value
+			case "format":
+				if value.Value != "text" && value.Value != "markdown" && value.Value != "html" {
+					return fmt.Errorf("line %d: apprise step format must be text, markdown, or html", value.Line)
+				}
+				step.Format = value.Value
+			case "urls_env":
+				if !environmentName.MatchString(value.Value) {
+					return fmt.Errorf("line %d: apprise step urls_env must be an environment variable name", value.Line)
+				}
+				step.UrlsEnv = value.Value
+			default:
+				return fmt.Errorf("line %d: unknown apprise step option %q", key.Line, key.Value)
+			}
+		} else if step.Via == "herdr" && key.Value == "session" {
+			step.Session = value.Value
+		} else if step.Via == "herdr" {
+			return fmt.Errorf("line %d: unknown herdr step option %q", key.Line, key.Value)
+		} else {
+			return fmt.Errorf("line %d: route %s does not accept step options", key.Line, step.Via)
+		}
+	}
+	return nil
+}
+
+func resolveNotifySteps(steps []NotifyStep, base string) []NotifyStep {
+	resolved := append([]NotifyStep(nil), steps...)
+	for i := range resolved {
+		if resolved[i].Config != "" {
+			resolved[i].Config = resolvePath(base, resolved[i].Config)
+		}
+	}
+	return resolved
 }
 
 func prefixName(prefix string) string {

@@ -50,7 +50,7 @@ Start with a visible personal route, for example `notify.via: desktop` in
 | [ci-to-agent](ci-to-agent/README.md) | Hand failed PR checks to a fixer agent; tell you whether it was reached | advanced | gh, jq, hcom |
 | [pr-review-queue](pr-review-queue/README.md) | First-pass reviews of newly requested PRs, sent once each | advanced | gh, Noon |
 | [eval-regression](eval-regression/README.md) | Catch prompt/model quality drops; ask an agent to find the cause | advanced | jq, any eval harness |
-| [fallback](fallback/README.md) | Try a Herdr pane, then hcom, then a person, only when safe | advanced | Herdr, hcom, jq |
+| [fallback](fallback/README.md) | Ordered notify cascades plus caller-owned single-route send fallback | advanced | Herdr, hcom, Apprise, jq |
 
 ## Patterns used throughout
 

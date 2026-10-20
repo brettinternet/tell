@@ -12,8 +12,10 @@ tell send --intent request "Triage PRs; report blockers"   # agent: hcom mailbox
 Tell is a CLI for terminals, scripts, and scheduler hooks. Your scheduler
 (cron, launchd, CI, Noon) owns schedules, retries, and history. Your scripts
 decide what is worth saying. Tell routes one message and reports what happened.
-Outbound delivery has no retries. Tell has no installed daemon, durable queue,
-or database. Explicit foreground Slack/GitHub listeners own bounded in-memory
+Outbound delivery has no same-route retries. Notify can use an explicit
+ordered fallback cascade; send remains one-shot because duplicate agent work is
+unsafe. Tell has no installed daemon, durable queue, or database. Explicit
+foreground Slack/GitHub listeners own bounded in-memory
 ingress, duplicate suppression, and action slots; local command actions never
 retry and do not create durable work.
 
@@ -382,6 +384,35 @@ and [editor schemas](docs/configuration.md#editor-schemas) for YAML completion a
 `-t`/`--title` defaults to the project directory name. `-n`/`--type` is `info` (default),
 `success`, `warning`, or `failure`.
 
+### Ordered notify fallback
+
+Set a personal `notify.via` list to try routes in order. Tell advances only on
+`not_sent` by default; `failed` can be opted in, but `uncertain` never advances
+because a slow provider may already have delivered. Accepted stops the cascade.
+One `--timeout` budget covers the whole cascade. A higher-priority `--via`,
+`TELL_NOTIFY_VIA`, or MCP route override selects one route and disables the list.
+
+```yaml
+notify:
+  via:
+    - apprise: {tag: phone}
+    - apprise: {tag: chat}
+    - desktop
+  fallback_notice: title
+```
+
+Apprise tag steps are ordered alternatives, not Apprise's comma-separated OR
+fan-out. Tagged steps suppress inherited `APPRISE_URLS`, so Apprise honors the
+tag. To select URLs supplied by the environment without storing them in Tell,
+use `apprise: {urls_env: TELL_PHONE_APPRISE_URLS}`; Tell passes the variable's
+value only in the Apprise child environment, never argv or diagnostics. Keep
+`urls_env` separate from step `config` and `tag`. `tell doctor` reports cascade
+readiness without sending. See [the full fallback contract](docs/design.md#notify-fallback-cascades)
+and [examples](examples/fallback/README.md).
+
+`send` intentionally has no fallback: delivering a request twice can cause two
+agents to do the same work. Keep agent handoff decisions in the caller.
+
 The command route runs your executable with the body on stdin:
 
 ```yaml
@@ -444,8 +475,10 @@ MCP agents cannot select routes or recipients by default. To let agents select
 among your already configured routes and one exact recipient, enable the
 personal-only setting `mcp.agent_targets: true` in user config,
 `.git/tell.yaml`, an explicit `--config` file, environment, or flags.
-This delegates destination choice, not executable paths, provider config,
-sender identity, timeouts, or secret policy. Do not enable it in shared
+This delegates destination choice and Apprise config/tag/format or Herdr
+session selection, not command executables, `urls_env`, provider credentials,
+sender identity, timeouts, or secret policy. Notify uses the configured cascade
+unless the agent supplies one-route `via`; send remains single-route. Do not enable it in shared
 `tell.yaml`.
 
 ```yaml

@@ -26,7 +26,7 @@ func NewServer(input config.Input, version string, stderr io.Writer) *protocol.S
 	cfg, err := config.Load(input)
 	allowTargets := err == nil && cfg.MCP.AgentTargets
 
-	addTool(server, "notify", "Deliver one notification using Tell's configured route.", notifySchema(allowTargets), func(ctx context.Context, req *protocol.CallToolRequest) *protocol.CallToolResult {
+	addTool(server, "notify", "Deliver one notification using Tell's configured route or fallback cascade.", notifySchema(allowTargets), func(ctx context.Context, req *protocol.CallToolRequest) *protocol.CallToolResult {
 		cfg, err := config.Load(input)
 		if err != nil {
 			return deliveryResult("notify", delivery.NewResult("", "config", "invalid_config", "could not load notification configuration; run tell config check"))
@@ -94,13 +94,22 @@ func NewServer(input config.Input, version string, stderr io.Writer) *protocol.S
 			return doctorFailureResult("config", "could not load configuration; run tell config check")
 		}
 		routes := delivery.Doctor(ctx, cfg)
-		ready := len(routes) > 0 && routes[0].Ready
+		stepCount := len(cfg.Notify.Steps)
+		if stepCount == 0 {
+			stepCount = 1
+		}
+		stepCount = min(stepCount, len(routes))
+		steps := append([]delivery.Readiness(nil), routes[:stepCount]...)
+		ready := false
+		for _, step := range steps {
+			ready = ready || step.Ready
+		}
 		selectedSend := ""
 		if cfg.Send.Via != "" || cfg.Send.To != "" {
 			selectedSend = "send/" + cfg.Send.Via
 			ready = ready && routes[len(routes)-1].Ready
 		}
-		report := doctorReport{SchemaVersion: 1, Selected: cfg.Notify.Via, SelectedSend: selectedSend, Ready: ready, Routes: routes}
+		report := doctorReport{SchemaVersion: 1, Selected: cfg.Notify.Via, SelectedSend: selectedSend, Ready: ready, Steps: steps, Routes: routes}
 		return &protocol.CallToolResult{
 			Content:           []protocol.Content{&protocol.TextContent{Text: doctorSummary(report)}},
 			StructuredContent: report,
@@ -140,6 +149,7 @@ type doctorReport struct {
 	Selected      string               `json:"selected"`
 	SelectedSend  string               `json:"selected_send,omitempty"`
 	Ready         bool                 `json:"ready"`
+	Steps         []delivery.Readiness `json:"steps"`
 	Routes        []delivery.Readiness `json:"routes"`
 }
 
@@ -155,9 +165,11 @@ func addTool(server *protocol.Server, name, description string, schema map[strin
 
 var (
 	notifyOverrideFields = map[string]string{
-		"via":           "notify.via",
-		"herdr_session": "herdr.session",
-		"apprise_tag":   "apprise.tag",
+		"via":            "notify.via",
+		"herdr_session":  "herdr.session",
+		"apprise_tag":    "apprise.tag",
+		"apprise_config": "apprise.config",
+		"apprise_format": "apprise.format",
 	}
 	sendOverrideFields = map[string]string{
 		"via":           "send.via",
@@ -196,6 +208,8 @@ func notifySchema(allowTargets bool) map[string]any {
 		properties["via"] = enumProperty("Optional configured notification route", "stderr", "desktop", "apprise", "command", "herdr")
 		properties["herdr_session"] = objectProperty("Optional Herdr session selector")
 		properties["apprise_tag"] = objectProperty("Optional Apprise tag selector")
+		properties["apprise_config"] = objectProperty("Optional local Apprise config file selector")
+		properties["apprise_format"] = enumProperty("Optional Apprise body format selector", "text", "markdown", "html")
 	}
 	return objectSchema(properties, []string{"message"})
 }

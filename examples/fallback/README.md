@@ -1,9 +1,33 @@
-# Fallback chains: try another route only when it's safe
+# Safe fallback chains
 
-Tell has no fallback routes on purpose: whether trying elsewhere is safe
-depends on the outcome. Exit 3 (`not_sent`) promises nothing was delivered;
-exit 4 or 5 means it may have arrived. [deliver.sh](deliver.sh) builds the
-chain in the caller, where that decision belongs.
+Notify supports an ordered fallback cascade; `send` deliberately remains
+single-route because a repeated request can make two agents do the same work.
+The safety rule is outcome-based: exit 3 (`not_sent`) promises nothing was
+delivered; exit 4 (`failed`) may have reached some destinations; exit 5
+(`uncertain`) may have arrived. `failed` is an explicit notify opt-in, and
+`uncertain` never advances. [deliver.sh](deliver.sh) demonstrates caller-owned
+send fallback, where it can decide which handoff semantics are safe.
+
+Configure personal notify fallback in `~/.config/tell/config.yaml`:
+
+```yaml
+notify:
+  via:
+    - apprise: {tag: phone}
+    - apprise: {tag: chat}
+    - desktop
+  fallback_on: [not_sent]
+  fallback_notice: title
+```
+
+The steps run in order and share one `--timeout` budget. Apprise tag steps are
+ordered alternatives, not comma-separated OR fan-out. A tagged step strips an
+inherited `APPRISE_URLS` so Apprise honors the tag. To select URLs held by an
+environment variable instead, use `apprise: {urls_env: PHONE_APPRISE_URLS}`;
+Tell forwards the value only in the Apprise child environment, never argv or
+output. Do not combine `urls_env` with a step's effective config or tag. Use
+`fallback_notice: title` to prefix later titles with the first step label and
+reason; `none` is the silent default.
 
 ```console
 $ examples/fallback/deliver.sh "Review feat/rate-limit at 3f9c2e1; blockers first."

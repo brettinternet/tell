@@ -12,7 +12,7 @@ outside Tell.
 person / script / scheduler hook / MCP client
           │
          tell  (outbound one-shot; explicit foreground capture; MCP client-owned session)
-          ├── notify → stderr | desktop | Herdr | Apprise → services | your command
+          ├── notify → one route or an ordered safe fallback cascade
           ├── send   → hcom mailbox | idle Herdr agent pane
           ├── listen slack/github → matched bounded local/native actions
           ├── listen --dry-run SOURCE → body-free match/preparation receipts
@@ -35,12 +35,15 @@ invocations, only the caller knows whether a message repeats, and a dropped
 alert costs more than a duplicate. A hook that notifies only on status change
 is the caller's job (see [examples/noon](../examples/noon/README.md)).
 
-There are no action retries, fallback routes, agent spawning, or plugin
-registry. Multiple listener routes provide explicit fan-out; each matching route
-uses one action. `tell mcp` is a client-owned stdio process, not a daemon; each tool call
-uses the same one-shot delivery and readiness operations as the CLI. It exposes
-only `notify`, `send`, and read-only `doctor`, with no resources, prompts, HTTP,
-or MCP-specific retry behavior.
+There are no same-step retries, agent spawning, or plugin registry. Notify may
+use its explicit ordered fallback cascade; `send` remains one route because a
+duplicated request can start duplicate agent work. Multiple listener routes
+provide explicit fan-out; each matching route uses one action, while a native
+notify action without static `via` inherits the configured notify cascade.
+`tell mcp` is a client-owned stdio process, not a daemon; each tool call uses
+the same delivery and readiness operations as the CLI. It exposes only
+`notify`, `send`, and read-only `doctor`, with no resources, prompts, HTTP, or
+MCP-specific retry behavior.
 
 ## Commands
 
@@ -50,13 +53,56 @@ personal cases with no extra runtime. Apprise fans out to external services.
 The command route runs one personal executable with a fixed contract.
 
 `send` gives an existing agent information (`--intent inform`) or an
-instruction (`--intent request`). Event-driven routes are deliberately
+instruction (`--intent request`). It always uses one transport and recipient;
+Tell never falls a send request through to another agent. Event-driven routes are deliberately
 restricted to `inform`; their fixed external-event warning and source/ID
 provenance identify event text as untrusted but do not make it safe to follow.
 Prefer IDs and links over raw user-authored event content. Instructions are
 legitimate when a person or their scheduled job wrote them. Tell never waits
 for a reply or for the work to finish. Tracked agent work belongs to the
 scheduler's agent jobs (such as Noon's); ask-and-wait belongs to Unharness.
+
+## Notify fallback cascades
+
+`notify.via` can stay a route string or be an ordered list. A list may repeat
+routes with different per-step options, including separate Apprise tags/configs
+or Herdr sessions. A per-step option overrides the matching top-level provider
+setting; invocation flags, `TELL_*` environment selectors, and permitted MCP
+overrides take precedence for every step of that provider. A one-shot `via`
+override selects just that route and disables the configured cascade. Higher
+configuration layers replace the entire list.
+
+Accepted stops. By default Tell advances only on `not_sent`, which promises no
+delivery; `failed` is an explicit opt-in because partial/provider failure may
+have delivered. `uncertain` always stops: a slow provider may have delivered,
+and continuing could duplicate the alert. Each step runs at most once, all
+steps share one `--timeout` budget, and there is no retry of the same step. If
+time is exhausted before the next step starts after safe failures, the result is
+`not_sent/timeout_budget`.
+
+`fallback_notice: title` optionally prefixes later titles with the first step's
+safe label and reason. Labels use the Apprise tag, config basename, or
+`urls_env` variable name, never destination URLs; the title passes through the
+normal message-preparation pipeline and body text is unchanged. JSON notify
+receipts include ordered `{route, label, outcome, reason}` attempts without
+message text. Human output does not narrate skipped steps on acceptance and
+lists attempt reasons for non-accepted cascades.
+
+Apprise tags are ordered alternatives, not comma-separated OR fan-out. When an
+effective tag is present, Tell removes inherited `APPRISE_URLS` from the child
+so the tag is honored (also for single-route Apprise). `apprise.urls_env` stores
+only an environment variable name; Tell checks it is nonempty and passes its
+value only as child `APPRISE_URLS`, never argv, logs, config inspection, or
+readiness output. It cannot combine with effective config/tag. Missing URLs or
+config is `not_sent`, so the cascade can safely continue. Tell never reads or
+parses Apprise config/URL contents.
+
+`tell doctor` displays selected steps in order and treats unavailable steps as
+local capability gaps; readiness succeeds if any selected step is ready. A
+listener native notify action without static `via` inherits this cascade and
+its fallback policy within that action's timeout. Static `via` remains one
+route. Dry-run probes no provider. MCP notify uses the same operation and
+returns its attempt receipts.
 
 ## Slack capture and routes
 

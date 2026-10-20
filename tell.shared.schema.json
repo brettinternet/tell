@@ -8,7 +8,7 @@
     {
       "properties": {
         "listen": false,
-        "notify": { "properties": { "via": false, "command": false } },
+        "notify": { "properties": { "via": false, "fallback_on": false, "fallback_notice": false, "command": false } },
         "apprise": { "properties": { "config": false } },
         "herdr": { "properties": { "session": false } },
         "send": { "properties": { "via": false, "to": false, "from": false } },

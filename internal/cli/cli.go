@@ -194,6 +194,15 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 					prefix = style.warning("tell:")
 				}
 				fmt.Fprintf(errOut, "%s %s\n", prefix, humanReason(result.Route, result.Failure.Reason, result.Error()))
+				if commandRequested(root, args, "notify") && len(result.Attempts) > 1 {
+					for _, attempt := range result.Attempts {
+						fmt.Fprintf(errOut, "  %s: %s", attempt.Label, attempt.Outcome)
+						if attempt.Reason != "" {
+							fmt.Fprintf(errOut, " (%s)", attempt.Reason)
+						}
+						fmt.Fprintln(errOut)
+					}
+				}
 			}
 			return result.ExitCode()
 		}
@@ -333,7 +342,7 @@ func showConfig(_ context.Context, cmd *urfave.Command) error {
 		fmt.Fprintf(cmd.Writer, "  %s\n", displayValue(source))
 	}
 	if cmd.Name == "tell" {
-		fmt.Fprintf(cmd.Writer, "%s %s (%s)\n", style.bold("Notify:"), cfg.Notify.Via, displayOrigin(cfg.Origins["notify.via"]))
+		fmt.Fprintf(cmd.Writer, "%s %s (%s)\n", style.bold("Notify:"), notifySummary(cfg), displayOrigin(cfg.Origins["notify.via"]))
 		if cfg.Send.Via == "" || cfg.Send.To == "" {
 			fmt.Fprintf(cmd.Writer, "%s not configured\n", style.bold("Send:"))
 		} else {
@@ -375,6 +384,21 @@ func displayValue(value string) string {
 		return strconv.Quote(value)
 	}
 	return value
+}
+
+func notifySummary(cfg config.Config) string {
+	if len(cfg.Notify.Steps) == 0 {
+		return cfg.Notify.Via
+	}
+	steps, err := config.EffectiveNotifySteps(cfg)
+	if err != nil {
+		return cfg.Notify.Via
+	}
+	labels := make([]string, len(steps))
+	for i, step := range steps {
+		labels[i] = config.NotifyStepLabel(step)
+	}
+	return strings.Join(labels, " → ")
 }
 
 func displayOrigin(origin string) string {

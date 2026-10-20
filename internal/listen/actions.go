@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ type renderedAction struct {
 func renderAction(ctx context.Context, cfg config.Config, route config.Route, event Envelope) (renderedAction, string) {
 	var rendered renderedAction
 	rendered.cfg = cfg
+	rendered.cfg.Origins = maps.Clone(cfg.Origins)
 	used := 0
 	values := make(map[string]templateValueResult)
 	if reason := contextReason(ctx); reason != "" {
@@ -53,12 +55,21 @@ func renderAction(ctx context.Context, cfg config.Config, route config.Route, ev
 		}
 		if action.Via != "" {
 			rendered.cfg.Notify.Via = action.Via
+			rendered.cfg.Notify.Steps = nil
 		}
 		if action.HerdrSession != "" {
 			rendered.cfg.Herdr.Session = action.HerdrSession
+			if rendered.cfg.Origins == nil {
+				rendered.cfg.Origins = make(map[string]string)
+			}
+			rendered.cfg.Origins["herdr.session"] = "flag:listen-action"
 		}
 		if action.AppriseTag != "" {
 			rendered.cfg.Apprise.Tag = action.AppriseTag
+			if rendered.cfg.Origins == nil {
+				rendered.cfg.Origins = make(map[string]string)
+			}
+			rendered.cfg.Origins["apprise.tag"] = "flag:listen-action"
 		}
 		rendered.notify = deliverypkg.Message{Title: title, Body: message, Type: kind}
 	case route.Send != nil:

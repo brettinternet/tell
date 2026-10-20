@@ -31,7 +31,9 @@ Lowest to highest priority:
 | 5 | `TELL_*` environment | yes |
 | 6 | Flags | yes |
 
-Settings merge by field. `notify.command` is replaced whole, never merged.
+Settings merge by field. `notify.command` and a list-valued `notify.via` are
+replaced whole, never merged. A scalar `notify.via` keeps its existing single-route
+behavior; an ordered list enables notify fallback.
 
 The repository-personal file lives in the project's common Git directory:
 `.git/tell.yaml` in a normal checkout. Linked worktrees resolve their `.git`
@@ -44,7 +46,8 @@ Without `.git` in the project directory there is no repository-personal layer.
 
 `tell config` and `tell config show` show aligned key, value, and
 origin columns. Empty or whitespace-significant values are quoted; origins
-are `default`, a file path, `env NAME`, or `flag --name`. JSON output is unchanged.
+are `default`, a file path, `env NAME`, or `flag --name`. JSON includes the same
+effective settings and origins; cascade inspection exposes `urls_env` names only.
 For example (selected rows):
 
 ```console
@@ -73,7 +76,8 @@ HOME and XDG_CONFIG_HOME are not read, so it works for services without HOME.
 ### Personal routing
 
 These fields choose where messages go, so shared `tell.yaml` rejects them:
-`notify.via`, `notify.command`, `apprise.config`, `herdr.session`, `send.via`,
+`notify.via`, `notify.fallback_on`, `notify.fallback_notice`, `notify.command`,
+`apprise.config`, `herdr.session`, `send.via`,
 `send.to`, `send.from`, `secrets.policy`, `mcp.agent_targets`, and the entire `listen` block (even empty).
 
 #### MCP agent target overrides
@@ -81,10 +85,11 @@ These fields choose where messages go, so shared `tell.yaml` rejects them:
 MCP agents cannot choose routes or recipients by default. The personal-only
 `mcp.agent_targets` setting defaults to `false`; set it to `true` in user
 config, `.git/tell.yaml`, explicit `--config`/`TELL_CONFIG`, environment, or flags to permit
-overrides for the notify route, Herdr session, Apprise tag, send route, and one
-exact recipient. This does not let agents choose `notify.command`, `apprise.config`,
-`send.from`, `timeout`, or `secrets.policy`. Shared `tell.yaml` cannot grant
-this authority.
+overrides for the notify route, Herdr session, Apprise config/tag/format, send
+route, and one exact recipient. A `via` override selects only that route, while
+Apprise and Herdr selectors apply to every matching step. This does not let
+agents choose `notify.command`, `send.from`, `timeout`, or `secrets.policy`.
+Shared `tell.yaml` cannot grant this authority.
 The setting also accepts `TELL_MCP_AGENT_TARGETS` and
 `--mcp-agent-targets`; `tell config` shows its value and winning origin. Use
 `tell mcp --mcp-agent-targets=false` to revoke the opt-in for one server process.
@@ -109,9 +114,30 @@ apprise:
   config: ../apprise/apprise.yaml   # → ~/.config/apprise/apprise.yaml
 ```
 
-`notify.command` argv is passed literally; see
-[command delivery](design.md#command-delivery). `XDG_CONFIG_HOME` must be
-absolute when set.
+Cascade step `config` paths resolve relative to the declaring file; flags and
+environment paths resolve relative to the current directory. `notify.command`
+argv is passed literally; see [command delivery](design.md#command-delivery).
+`XDG_CONFIG_HOME` must be absolute when set.
+
+An ordered personal notify cascade can use the same provider with different
+Apprise tags or configs. Each list replaces a lower list wholesale:
+
+```yaml
+notify:
+  via:
+    - apprise: {tag: phone}
+    - apprise: {tag: chat}
+    - desktop
+  fallback_on: [not_sent]
+  fallback_notice: title
+```
+
+`not_sent` (including no matching Apprise services or a missing provider) is
+safe to advance; `failed` advances only when explicitly included. `uncertain`
+never advances. A whole-cascade `--timeout` budget prevents later steps from
+starting after time is exhausted. The `--via`, `TELL_NOTIFY_VIA`, or MCP `via`
+override selects one route and disables the cascade. `send` remains single-route
+because a duplicated agent request can cause two agents to do the same work.
 
 ### Inbound listeners
 
@@ -278,7 +304,9 @@ Values:
 | Field | Accepts |
 | --- | --- |
 | `timeout` | Positive Go duration. `0s` is refused. |
-| `notify.via` | `stderr`, `desktop`, `apprise`, `command`, `herdr` |
+| `notify.via` | One route (`stderr`, `desktop`, `apprise`, `command`, `herdr`) or a nonempty ordered list. Steps may be route names, `apprise: {config, tag, format, urls_env}`, or `herdr: {session}`. A step option overrides the top-level provider setting; one-shot selectors override every matching step. |
+| `notify.fallback_on` | Nonempty list of `not_sent` and/or `failed`; default `[not_sent]`. `uncertain`, config, and usage never advance. Cascade-only. |
+| `notify.fallback_notice` | `none` (default) or `title`; cascade-only. `title` prefixes later titles with the first step label and reason. |
 | `notify.command` | Non-empty argv list; non-blank executable; no NUL. Personal files only. |
 | `secrets.policy` | `redact` (replace with `[REDACTED]`) or `reject` (exit 1, `secret_detected`). Personal files only. |
 | `apprise.config` | Local file path, not a URL. Tell never opens it. |
@@ -292,7 +320,16 @@ Values:
 
 `send.to` refuses whitespace, lists, wildcards, tag selectors ending in `-`,
 remote hcom targets, and `self`. A missing or invalid recipient is `not_sent`;
-there is no broadcast fallback.
+there is no broadcast or route fallback for send.
+
+For an Apprise step, `urls_env` is the name of an environment variable holding
+URLs; Tell never reads or prints the value, and passes it to Apprise only as
+`APPRISE_URLS`. An unset or empty variable is `not_sent/missing_urls`. Do not
+combine it with effective `config` or `tag`; Apprise would ignore one source.
+A tagged Apprise step removes inherited `APPRISE_URLS` before the child starts,
+including for legacy single-route `notify.via: apprise`, so its `--tag` works
+instead of silently notifying every inherited URL. Apprise config files and URL
+values remain provider-owned and are never parsed by Tell.
 
 Optional settings are unset until supplied. An explicitly empty value is an
 error (except `send.to`); omit the key instead. A flag replaces an environment
@@ -359,9 +396,11 @@ $ tell --json doctor
 {"schema_version":1,"selected":"stderr","ready":true,"routes":[{"route":"stderr","ready":true,"reason":"ready"}]}
 ```
 
-It checks the selected route, then every explicitly configured one (any Apprise
-setting, `herdr.session`, `notify.command`), plus `send/hcom` or `send/herdr`
-when `send.via`/`send.to` are set. Defaults alone add nothing; use
+It checks every selected notify step in order, then explicitly configured
+routes not already represented (Apprise settings, `herdr.session`,
+`notify.command`), plus `send/hcom` or `send/herdr` when `send.via`/`send.to`
+are set. A cascade step that is unavailable here is informational; notify is
+ready when any step is ready. Defaults alone add nothing; use
 `tell doctor --via desktop` to check desktop.
 
 | Route | Check | Does not verify |
@@ -369,21 +408,23 @@ when `send.via`/`send.to` are set. Defaults alone add nothing; use
 | stderr | nothing needed | — |
 | desktop | `osascript` (macOS) or `notify-send` (Linux) on PATH | permissions, D-Bus, Focus, visible banners |
 | command | executable resolves and is executable; never run | interpreter, the command's own config |
-| apprise | `apprise --dry-run` with effective config/tag/format; ≥1 matching service | credentials, reachability |
+| apprise | `apprise --dry-run` with effective config/tag/format or `APPRISE_URLS`; ≥1 matching service | credentials, reachability |
 | herdr | `herdr session list --json` has the exact session running | — |
 | send/hcom | `hcom list --json` has one exact active name | — |
 | send/herdr | `herdr agent get` reports idle or done | state at send time |
 
-Zero Apprise matches or a failed dry run is not ready. Working/unknown agents
-are busy; dialogs are blocked. Each probe uses the configured timeout. Output
+A missing Apprise config is `missing_config`; an unset `urls_env` variable is
+`missing_urls`. Zero matches or a failed dry run is not ready. Working/unknown
+agents are busy; dialogs are blocked. Each probe uses the configured timeout. Output
 is capped at 1 MiB; oversized or malformed output fails closed. No URLs, raw
 config, or provider diagnostics are printed. Inherited `HERDR_*` variables are
 removed.
 
-JSON adds `selected_send` when agent messaging is configured, and `services`
-for Apprise when collected. Exit 0 means the selected notify route and any
-configured send route are ready, even if another route is not. Exit 1 means one
-is not ready, or configuration/output failed. Exit 2 is a usage error.
+JSON adds ordered `steps`, `selected_send` when agent messaging is configured,
+and `services` for Apprise when collected. Exit 0 means at least one selected
+notify step and any configured send route are ready, even if another step is
+unavailable. Exit 1 means none is ready, or configuration/output failed.
+Exit 2 is a usage error.
 
 ## Editor schemas
 
