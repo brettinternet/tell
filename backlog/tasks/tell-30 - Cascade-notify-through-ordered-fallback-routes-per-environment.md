@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pi'
 created_date: '2026-10-20 19:35'
-updated_date: '2026-10-20 20:24'
+updated_date: '2026-10-20 20:31'
 labels:
   - notify
 dependencies: []
@@ -85,6 +85,8 @@ Use existing local provider fixtures (fake apprise/herdr/command executables), n
 Implementation is complete in .worktrees/tell-30-notify-fallback. Parent independently ran mise exec -- task ci successfully: gitleaks, govulncheck, formatting, vet, Staticcheck, changelog generation, unit tests, race tests, build, and smoke. Critical regressions cover strict parsing/precedence, advance/stop outcomes, no-delivery invalid configuration, missing config/URLs, child environment isolation, fallback title/attempt receipts, doctor, listener and MCP inheritance, and timeout-budget safety. Independent scoped review is in progress; no acceptance criteria checked yet.
 
 Final verification: focused go test ./internal/config ./internal/cli ./internal/delivery ./internal/listen ./internal/mcp passed. task ci passed again after both review corrections, including full race suite. AC1/3: TestNotifyCascadeConfigAndPrecedence, StrictValidation, ViaOverrideDisablesCascade and InvalidConfigDoesNotDeliver. AC2/5/6: OutcomeRules, UnavailableStepsAdvance, NoticeAndURLsEnvironment, HumanAttemptSummary and delivery TimeoutBudgetBeforeFirstStep/TimeoutPreservesUnsafeFailure. AC4/9: AppriseMissingConfigIsNotSent, SingleRouteAppriseTagStripsInheritedURLs, NoticeAndURLsEnvironment, config inspection secrecy and strict inherited URLs conflicts. AC7: DoctorCascadeReadiness, native listener inheritance/dry-run and MCP protocol tests. AC8: schemas parsed; required docs/examples updated; full CI passed. Independent reviewer found two concrete defects: shared listener Origins mutation/race and suppressed inherited urls_env conflicts. Both fixed; added sequential/concurrent listener isolation regression and inherited-tag/config conflict cases. LSP diagnostics clean on corrected source/tests. Real binary now rejects the previously accepted inherited URLs conflict. Implementation committed as 3145da1 and fast-forward merged into main. task check:staged passed before commit. Owned worktree and branch removed with Worktrunk; exact Herdr workspace wJ9 disappearance verified. No push. No remaining blocker or resumable implementation work.
+
+Post-completion review (90f4587): a higher-layer string notify.via now replaces a lower cascade with its inherited fallback_on/fallback_notice instead of making the repository a config error; same-file conflicts still fail. Doctor human output now shows reasons for unavailable cascade steps (missing_config/missing_urls/no_services). Schema no longer requires via in a layer that only sets fallback options. Verified with a real binary against a fake apprise and task ci passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
