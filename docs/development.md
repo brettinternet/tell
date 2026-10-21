@@ -1,6 +1,6 @@
 # Development
 
-Go 1.27.2, urfave/cli v3, and strict YAML, matching Noon. Tooling follows the
+Go 1.27.3, urfave/cli v3, and strict YAML, matching Noon. Tooling follows the
 sibling hum, bump, and project repositories, trimmed to a Go-only CLI.
 
 ## Setup
