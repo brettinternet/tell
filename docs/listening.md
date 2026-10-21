@@ -1,338 +1,282 @@
 # Local event integrations
 
-**Implemented:** Slack Socket Mode and signed GitHub repository webhooks, safe
-inspection, personal `run`, `notify`, and `send` routes with body-free `--dry-run`
-validation, bounded ingress/dedup/action queues, and Slack connection recovery
-(TELL-26/27/28/29). This refines decision-1; outbound commands retain their behavior.
-
-Tell is a local integrations layer: receive external events, match personal
-rules, and notify a person, inform an agent, or invoke a bounded local command.
-It need not involve a scheduler. Durable, retried, scheduled, or long-running
-work still belongs to callers such as Noon. Tell owns transient connections,
-bounded buffers, and duplicate suppression, not a database or workflow engine.
-Connection recovery is allowed; action retries and durable replay are not.
+Tell receives Slack Socket Mode events and signed GitHub repository webhooks,
+matches personal routes, and runs one bounded action per match: a local
+command, a notification, or an inform-only agent message (TELL-26 through
+TELL-29). It owns transient connections, in-memory buffers, and duplicate
+suppression. Durable, retried, scheduled, or long-running work belongs to
+callers such as Noon. Connections recover; actions never retry or replay.
 
 ## CLI
 
-| Invocation | Behavior |
+| Invocation | Network | Actions | Output |
+| --- | --- | --- | --- |
+| `tell listen` | none | none | inspection summary |
+| `tell --json listen` | none | none | one body-free JSON object (`schema_version: 1`) |
+| `tell listen slack` / `github` / `slack github` | selected sources | run | stderr receipts |
+| `tell listen --dry-run SOURCE…` | selected sources | match and validate only | `dry_run` receipts |
+| `tell listen --print SOURCE…` | selected sources | none, no matching | NDJSON envelopes on stdout |
+| `tell listen --print --all` | every configured source | none | NDJSON envelopes |
+
+| Exit | When |
 | --- | --- |
-| `tell listen` | Inspect configured sources and route names; exit without network, binding sockets, reading stdin, or running actions |
-| `tell --json listen` | The same inspection as one body-free JSON object with `schema_version: 1` |
-| `tell listen slack` | Start the foreground Slack listener and dispatch matching personal route actions |
-| `tell listen github` | Start only GitHub's loopback HTTP source and dispatch matching personal route actions |
-| `tell listen slack github` | Start both selected sources in one foreground process |
-| `tell listen --print --all` | Explicitly capture every configured source |
-| `tell listen --print github` | Receive and acknowledge GitHub events; print NDJSON envelopes, but never run actions |
-| `tell listen --dry-run github` | Receive and acknowledge GitHub events; validate matching templates/preparation without dispatch or payload output |
-| `tell listen --print slack` | Receive and acknowledge Slack events; print NDJSON envelopes, but never run actions |
-| `tell listen --dry-run slack` | Receive and acknowledge Slack events; validate matching templates/preparation without dispatch or payload output |
+| 2 | `--print`/`--dry-run` without sources or `--all`; `--all` with names; repeated or unknown names; conflicting modes; `--json` on a live run |
+| 1 | selected source unconfigured or its credential unset/empty; `--all` with no sources; dispatch or dry-run with no route for a selected source; bind failure; fatal source or output error |
+| 0 | graceful stop (not proof that actions succeeded) |
 
-`--all`, `--print`, and `--dry-run` are listen-only flags, with no short aliases.
-Require source names or `--all` for either preview mode: `tell listen --print`
-is a usage error, not an implicit start-all.
-`--all` cannot accompany source names; repeated/unknown names, conflicting modes,
-and `--json` on any live invocation are usage errors (exit 2). Source names are
-`slack` and `github`; `--all` chooses only configured sources. Live output is a
-stream, not the existing single-result JSON API. `--print` is not a JSON flag
-alias: it explicitly releases sensitive event data. No `start`, `stop`, daemon,
-service-install, tunnel, or provider-credential flags.
+All checks above run before any network I/O. Configuration loads once; restart
+after edits. `--timeout` bounds each setup request and each action, not the
+listener's lifetime. Outbound flags (`--via`, `--to`, `--intent`) do not apply.
+There are no `start`/`stop`, daemon, service-install, tunnel, or MCP listener
+commands.
 
-Global `--project`/`-C`, `--config`/`-c`, `--timeout`, and `--no-color` retain their
-scope. `--timeout` bounds each network setup request and action, not the whole
-listener lifetime; transport-specific limits below still apply. Outbound flags
-such as `--via`, `--to`, and `--intent` do not apply to listen. Help and shell
-completion show only flags and sources supported in the installed version.
+| Signal | Effect |
+| --- | --- |
+| first SIGINT/SIGTERM | stop sources, drop queued events and actions, let running actions finish within their timeout |
+| second | cancel running actions as `uncertain` |
 
-Load configuration once, requiring restart after edits. Validate all configured
-structure before opening anything; check credential values only for selected
-sources. Known but unconfigured sources, missing/empty selected credentials,
-`--all` with no sources, and dispatch/dry-run with no route for any selected
-source fail before I/O (exit 1). Every selected source needs at least one route
-in those modes. Print mode needs none and does not evaluate routes. Route and
-credential validation happens before opening the provider connection.
+## Configuration
 
-The first SIGINT/SIGTERM stops sources, drops queued events/actions, and lets
-running actions drain within their per-action deadlines; a second signal cancels
-running children as uncertain. Graceful stop exits 0, not proof that actions
-succeeded. Fatal source or output errors use the same bounded shutdown and exit
-1; per-event/action failures are receipts, not process exits. Existing outbound
-exit codes and MCP tools are unchanged. No new MCP listener tool.
-
-## Configuration and inspection
-
-All `listen` keys are personal-only. `listen.slack.app_token_env` selects the
-Slack credential variable. `listen.github.secret_env` selects one webhook secret
-and `listen.github.repository_ids` is its required positive repository-ID
-allowlist. `listen.http.addr` defaults to `127.0.0.1:8787`; it accepts literal
-IPv4/IPv6 loopback IPs and a valid port only. `listen.routes` is a whole-list
-replacement (an empty list disables inherited routes). Use user config,
-`.git/tell.yaml`, or an explicit `--config` file. Shared `tell.yaml` rejects
-them even if overridden.
-Keep the existing strict YAML rules and source origins.
+All `listen` keys are personal-only; shared `tell.yaml` rejects the block.
 
 ```yaml
-# Personal config; run commands are trusted local executables.
-version: 1
 listen:
+  slack:
+    app_token_env: TELL_SLACK_APP_TOKEN
   github:
     secret_env: TELL_GITHUB_WEBHOOK_SECRET
     repository_ids: [123456789]
   http:
     addr: 127.0.0.1:8787
-  slack:
-    app_token_env: TELL_SLACK_APP_TOKEN
   routes:
     - name: opened-pr
       source: github
       type: pull_request
       match: {action: opened}
       run: [/Users/me/.local/bin/handle-pr-event]
-    - name: incident-kickoff
-      source: slack
-      type: channel_created
-      match:
-        event.channel.name: {prefix: "inc-"}
-      run: [/Users/me/.local/bin/incident-to-noon]
 ```
 
-A source is configured by its provider block. Credential references must be
-nonempty environment names (`[A-Za-z_][A-Za-z0-9_]*`), never literal credentials.
-`http` alone is not a source. `config check` validates structure, not environment
-secret availability. Bare `tell`, `listen`, and `config` show names, counts,
-safe transport settings, credential variable names, and origins, not credential
-values, action argv, templates, or rendered text. JSON has the same privacy
-boundary. Never resolve credential values into a printable config object.
+| Key | Rule |
+| --- | --- |
+| `slack.app_token_env`, `github.secret_env` | environment variable name (`[A-Za-z_][A-Za-z0-9_]*`), never the value |
+| `github.repository_ids` | required nonempty list of positive integers |
+| `http.addr` | literal loopback IPv4/IPv6 and port 1–65535; default `127.0.0.1:8787`; no DNS, wildcard, LAN, or public addresses |
+| `routes` | replaced as a whole across layers; `[]` disables inherited routes |
 
-CLI `doctor` adds local inbound readiness (selected variable set/nonempty, valid
-settings), with no inbound network requests, port binds, tunnel probes, or
-actions. These informational rows do not change its existing outbound-selected
-exit rule and do not claim provider authentication or tunnel reachability.
-Existing outbound doctor probes remain unchanged. Missing inbound credentials
-must not prevent unrelated outbound commands. Remove every credential variable
-named by the effective listen configuration from **all** Tell child environments,
-including outbound delivery/doctor children, not just listen's command actions.
+A provider block configures a source; `http` alone does not. Credential values
+are read only for selected sources and only at startup.
 
-## Events, bounds, and receipts
+Inspection (`tell`, `listen`, `config`, `config check`) shows names, counts,
+transport settings, credential variable names, and origins. It never shows
+credential values, argv, templates, or rendered text, and does not require the
+variables to be set. `tell doctor` adds informational inbound readiness
+(variable set, settings valid) without binding, connecting, or changing its
+outbound exit status.
+
+Every configured credential variable is removed from **all** Tell child
+environments: outbound delivery, doctor probes, and listener actions.
+
+## Envelope
 
 ```json
 {"schema_version":1,"source":"slack","type":"channel_created","id":"Ev0123","received_at":"2026-10-17T20:59:00.123Z","data":{"event_id":"Ev0123","event":{"type":"channel_created","channel":{"id":"C0123","name":"inc-api"}}}}
 ```
 
-`received_at` is Tell's receipt time, UTC RFC 3339 with milliseconds, not proof
-of freshness. `source`, `type`, and `id` are nonempty provider metadata; `data`
-is a JSON object. Cap raw frames/bodies at 1 MiB and the encoded envelope at
-256 KiB. Reject malformed/oversized events, duplicate JSON keys, and missing
-identity; never synthesize random IDs. Metadata used in receipts is bounded
-(type 128 bytes, ID 256 bytes), control-free, and quoted. Unknown event types
-can be printed/matched; they are not executable capabilities.
+`received_at` is local receipt time (UTC, milliseconds), not freshness proof.
+`type` (≤128 bytes) and `id` (≤256 bytes) are required, control-free provider
+metadata; Tell never synthesizes IDs. Malformed or oversized events and
+duplicate JSON keys are rejected. Unknown event types can be printed and
+matched.
 
-Suppress duplicates by `(source, id)` for 10 minutes after admission, with at
-most 10,000 entries, oldest admitted evicted first. Duplicates do not refresh
-the window. Admission and identity reservation are atomic across concurrent
-receivers. Reserve only after admission to a bounded 64-event ingress buffer;
-full ingress drops Slack events with `not_sent/busy` or rejects HTTP with 503,
-without reserving their identities. A duplicate is acknowledged but not routed
-or printed. Failed/dropped actions do not clear admitted identities: automatic
-redelivery could otherwise repeat an already successful sibling action.
-GitHub also uses a body digest as described below. No state survives restart.
+## Bounds
 
-The provider reader/ack path never waits for a command, rendering, or stdout.
-Output has a 64-event ingress queue and a separate 64-receipt diagnostic queue;
-each write has a 5-second stall budget. A broken or persistently stalled output stream
-stops the listener with exit 1 rather than growing memory or blocking acks.
-`--print` emits one complete envelope per stdout line. This is an explicit data
-export, **not diagnostics**: payloads may contain private text and secrets.
-Remove known transport credentials (Slack's legacy top-level payload `token`),
-but do not promise arbitrary payload redaction or mutate data used for matching.
+| Limit | Value |
+| --- | --- |
+| raw Slack frame / GitHub body | 1 MiB |
+| encoded envelope | 256 KiB |
+| ingress buffer (shared) | 64 events; full → Slack `not_sent/busy`, HTTP 503 |
+| duplicate suppression | `(source, id)` for 10 min after admission, 10,000 entries, oldest evicted first |
+| action executor | 4 running, 64 waiting; overflow → `not_sent/busy` |
+| diagnostic queue | 64 receipts |
+| output write stall | 5 s, then exit 1 |
+| rendered message + title | 256 KiB before preparation |
 
-Normal and dry-run stdout stay empty. Body-free stderr receipts identify source,
-event ID/type, route/action, outcome, and a bounded reason/exit code. Lifecycle
-receipts include connecting, connected, reconnecting, and stopped. Do not print
-raw provider errors, headers, URLs with tickets, payloads, argv, templates, or
-child output. Preview receipts use `dry_run`, never `accepted`. No-match,
-duplicate, and admission-drop receipts are distinguishable. Intentional message
-delivery to the configured stderr notify route is not a diagnostic; it enters
-the same bounded, single-writer output queue and uses ordinary preparation.
+The identity is reserved atomically on admission, never for dropped events.
+Duplicates are acknowledged but not routed or printed, and do not refresh the
+window. Failed actions keep their identity reserved so redelivery cannot repeat
+a successful sibling. The provider ack path never waits for actions,
+rendering, or output. Nothing survives restart.
 
-## Slack source — TELL-26
+## Output
 
-Socket Mode uses `apps.connections.open` with the named app token in the
-Authorization header, then connects to its returned URL. Ack each valid
-`envelope_id` promptly, including ignored/duplicate/invalid-payload deliveries;
-acknowledgment means transport receipt, not completed action. Only `events_api`
-with an `event_callback` object becomes an event: `type = payload.event.type`,
-`id = payload.event_id`, `data = payload` minus top-level `token`. Ack and ignore
-interactive/slash-command envelopes; handle `hello`/`disconnect` as lifecycle
-messages. Bound frame reads before decoding; malformed frames never reach routes.
+Normal and dry-run stdout stay empty. Stderr receipts carry source, event
+ID/type, route/action, outcome, and a bounded reason; lifecycle receipts show
+connecting, connected, reconnecting, and stopped. No-match, duplicate, and
+dropped receipts are distinct. Receipts never contain payloads, headers,
+ticket URLs, argv, templates, rendered text, raw provider errors, or child
+output.
 
-Reconnect with a fresh URL on loss/refresh, exponential backoff with jitter from
-1s to 60s; reset after 60s of healthy connection. Respect HTTP 429 Retry-After;
-network errors and 5xx retry connection setup, not actions. Non-retryable Slack
-auth/setup errors and `link_disabled` are fatal; log only recognized safe error
-codes (unknown codes get a fixed reason), never the raw response. All waits are
-cancellable. Use `wss` and the fixed production Slack API endpoint. Do not add a
-user-facing `api_url` merely for fixtures: use an internal test transport seam
-and local fixture server; never send Authorization to a redirected origin or
-the WebSocket connection. Production does not allow plaintext transport.
+`--print` is **sensitive data export, not diagnostics**: one full envelope per
+line, which may contain private text and secrets. Only Slack's legacy top-level
+`token` is removed. Never pipe it into an untrusted log.
 
-Document Socket Mode enablement, `connections:write` app token, subscribed bot
-events/scopes (for example `channel_created`/`channels:read`), and app installation.
-Run one listener per Slack app: Slack distributes deliveries among connections,
-not a copy to every listener. Sleep/disconnection can lose events.
+## Slack source
 
-## Route matching and actions — TELL-27/28
+1. `apps.connections.open` with the app token (Authorization header), then connect to the returned `wss` URL. The token is never sent to the WebSocket or a redirected origin.
+2. Ack every valid `envelope_id` promptly, including ignored, duplicate, and invalid deliveries. An ack means transport receipt, not action success.
+3. Only `events_api` with an `event_callback` becomes an event: `type = payload.event.type`, `id = payload.event_id`, `data = payload` minus `token`. Interactive and slash-command envelopes are acked and ignored.
+4. On loss or refresh, reconnect with a fresh URL: jittered backoff 1–60 s, reset after 60 s healthy, honoring 429 `Retry-After`. Network errors and 5xx retry; auth/setup errors and `link_disabled` are fatal. Only recognized error codes are logged.
 
-Each route has a unique `name` matching `[a-z0-9][a-z0-9_-]*`, a configured
-`source`, exact `type`, optional `match`, and exactly one `run`, `notify`, or
-`send` action. Unknown keys, null/empty actions, and multiple actions fail
-config validation; listener routes have no action lists or implicit route
-fallback. Multiple matching routes are explicit fan-out in config order. A
-native notify action without static `via` inherits the configured notify
-cascade; an explicit static `via` selects one route. Tell's notify-only fallback
-rules are documented in [design](design.md#notify-fallback-cascades).
+Run one listener per Slack app: Slack splits deliveries among connections.
+Sleep or disconnection can lose events. Tests use an internal transport seam
+and local fixtures; there is no user-facing API URL option.
 
-`match` maps dot-separated object paths inside `data` to scalar equality
-(string, finite JSON number, boolean; same type) or `{prefix: STRING}`. All
-predicates must hold; omitted/empty match accepts the selected source/type.
-Paths use nonempty `[A-Za-z_][A-Za-z0-9_-]*` segments. Missing/null values,
-non-object traversal, and type mismatches do not match. Compare numbers without
-float64 precision loss. No array indexing, escaped dotted keys, regex, jq,
-expressions, or implicit string conversion.
+## Routes
 
-Every matching route is admitted in config order to the shared action executor:
-4 running actions, 64 waiting, overflow `not_sent/busy`. This is admission order,
-not a promise of subprocess start, completion, or side-effect order. One route's
-failure does not block siblings. Actions never retry. Duplicate source/ID events
-are suppressed after event admission, so a failed action never replays successful
-siblings. Dry-run reports matches without resolving executables, probing
-destinations, or using action slots.
+```yaml
+routes:
+  - name: incident-kickoff          # unique, [a-z0-9][a-z0-9_-]*
+    source: slack                   # configured source
+    type: channel_created           # exact event type
+    match:                          # optional; all must hold
+      event.channel.name: {prefix: "inc-"}
+      event.channel.is_private: false
+    run: [/Users/me/.local/bin/incident-to-noon]   # exactly one of run | notify | send
+```
 
-`run` is a nonempty literal argv list using existing `notify.command` validation.
-No shell, interpolation, or appended args. CWD is the invocation CWD (not changed
-by `--project`); bare executables use PATH and relative paths use that CWD.
-Stdin receives the envelope JSON and EOF, never the listener's stdin. Inherit
-the environment minus named inbound credentials, then override `TELL_EVENT_SOURCE`,
-`TELL_EVENT_TYPE`, `TELL_EVENT_ID`, `TELL_ROUTE`, and `TELL_PROJECT`. Discard child
-stdout/stderr as existing command delivery does; diagnostics are not a payload
-escape hatch. Users can explicitly persist output in their own trusted wrapper.
+`match` keys are dot paths inside `data` (segments `[A-Za-z_][A-Za-z0-9_-]*`).
+Values are same-type equality on a string, finite number (no float64 precision
+loss), or boolean, or `{prefix: STRING}`. Missing, null, mismatched types, and
+non-object traversal do not match. No arrays, escaped dots, regex, jq, or
+expressions.
 
-Use existing command outcomes: 0 accepted, 3 not_sent, other nonzero failed,
-missing executable not_sent/missing_executable, other start error
-not_sent/start_failed, timeout/cancellation after start uncertain. Timeout starts
-when an action starts, not while queued. Reuse direct-child cancellation limits;
-wrappers must `exec` and not background work. First SIGINT/SIGTERM stops sources,
-drops waiting events/actions with body-free receipts, and lets running actions
-finish within their remaining timeout; a second signal cancels them. Fatal
-source errors perform the same bounded shutdown but exit 1.
+Every matching route is admitted to the executor in config order; that is
+admission order, not start or side-effect order. Fan-out means adding routes.
+One failure never blocks siblings. Dry-run reports matches without resolving
+executables, probing destinations, or using action slots.
 
-A Noon handoff can use the supplied `examples/listen/noon-handoff.py` as the
-trusted route executable and a job configured with `requests: each`. It uses
-`source:id` as the key when it fits Noon's 1–200 ASCII character limit
-(`[A-Za-z0-9._:-]`), otherwise maps it to a stable SHA-256 key. The Tell
-envelope is at most 256 KiB and Noon accepts `--data` up to 256 KiB; Noon
-validates that limit itself and rejects oversized data. The wrapper `exec`s
-Noon and propagates failure, never truncates or claims success on a failed
-handoff. Noon stores the Tell envelope as its own event `data`; the formats are
-not interchangeable. `requests: each` preserves each payload but caps a job at
-20 queued due-now runs and cannot be combined with `cooldown`. Noon's idempotency
-keys are retained only for its
-newest 50 finished runs per job; Tell adds no durable replay guarantee. No
-Noon-specific parsing is implemented in Tell.
+### `run`
 
-## Native notification and agent actions — TELL-28
+Literal argv (validated like `notify.command`): no shell, interpolation, or
+appended arguments. The child gets:
 
-Native actions reuse in-process delivery and message-preparation APIs; they do
-not spawn `tell` recursively or duplicate transports. Each route action has a
-required nonblank `message`. `notify` accepts optional `title`, `type` (default
-`info`), `via`, `herdr_session`, and `apprise_tag`. With no static `via`, it
-inherits the personal notify cascade, `fallback_on`, and `fallback_notice`; its
-per-action timeout bounds the whole cascade. A static `via` remains one route.
-Dry-run renders and validates but never probes providers. `send` accepts optional
-static `via`, exact `to`, `herdr_session`, and `intent: inform` (the default and
-only allowed intent). Omitted selectors inherit effective personal outbound
-configuration; the project directory name supplies notify's default title.
-Static selector syntax is validated at config load, while readiness and target
-state remain per-action delivery outcomes. Actions cannot set executables,
-provider config paths, sender identity, timeout, or secret policy.
+| Input | Value |
+| --- | --- |
+| stdin | envelope JSON, then EOF |
+| CWD | invocation directory (not `--project`) |
+| environment | inherited, minus inbound credentials, plus `TELL_EVENT_SOURCE`, `TELL_EVENT_TYPE`, `TELL_EVENT_ID`, `TELL_ROUTE`, `TELL_PROJECT` |
+| stdout/stderr | discarded |
 
-Only message and notify title accept `${path}` placeholders rooted in the
-**Tell envelope**, for example `${data.event.channel.id}` or `${id}`. Paths use
-the matching grammar. `$${` emits literal `${`; substitution is single-pass,
-with no functions, expressions, shell, recursion, or environment lookup. Strings,
-finite JSON numbers, and booleans render as text. Missing/null/object/array
-values fail that route as `not_sent/template_value`; never silently send an empty
-value. Malformed placeholder syntax is a startup config error. Placeholders are
-rejected in selectors and enum fields. Literal command argv is never templated.
+| Child result | Outcome |
+| --- | --- |
+| exit 0 | accepted |
+| exit 3 | not_sent |
+| other nonzero | failed |
+| missing executable / other start error | not_sent/missing_executable, not_sent/start_failed |
+| timeout or cancellation after start | uncertain |
 
-Render inside the shared action budget with a 256 KiB combined pre-preparation
-cap across message and notify title; exceeding it is `not_sent/template_size`,
-without partial delivery. Then apply the existing normalization, secret policy,
-provenance, and truncation pipeline. Secret-policy rejection/scanner failure is
-the existing per-action config outcome, not fatal to the listener. Receipts never
-contain rendered text. Send always uses `inform` and adds fixed provenance with
-the external source and event ID plus an explicit warning that event content is
-untrusted. Send stays single-route: a duplicated request can start duplicate
-agent work. This does not grant event authors authority to instruct the agent.
-Prefer IDs and links over raw user-authored text. `inform` is not a
-prompt-injection sandbox. Dry-run performs template and preparation validation
-without dispatch or destination probes and reports only body-free outcomes; it
-never shows rendered previews. All action kinds share capacity, timeout,
-shutdown, credential stripping, and no-retry behavior.
+The timeout starts when the action starts, not while queued. Tell kills only
+the direct child, so wrappers should `exec` and never background work.
 
-## GitHub webhooks through cloudflared — TELL-29
+### `notify` and `send`
 
-GitHub **repository** webhooks use a separately managed Cloudflare Tunnel. One
-`listen.http.addr` (default
-`127.0.0.1:8787`) serves the fixed `/github` path only when GitHub is selected.
-Require a literal loopback IP and port 1–65535 (IPv4 or IPv6); refuse wildcard,
-LAN/public addresses and DNS names. No insecure override or per-source ports.
-No listener during inspection or Slack-only runs. Bind failure stops startup.
+```yaml
+- name: notify-channel
+  source: slack
+  type: channel_created
+  notify:
+    message: "Slack event ${id}; inspect channel ${data.event.channel.id}"   # required
+    title: "Channel ${data.event.channel.name} created"                     # default: project name
+    type: info            # optional
+    via: desktop          # optional; omit to use the notify cascade
+    # herdr_session, apprise_tag also allowed
+- name: inform-agent
+  source: slack
+  type: channel_created
+  send:
+    message: "Review Slack event ${id}; use provider tools for context."
+    via: hcom             # optional; to, herdr_session also allowed
+    to: reviewer
+    intent: inform        # the default and only allowed value
+```
 
-`listen.github.secret_env` is required, with a nonempty selected environment
-value. Require a nonempty list of positive integer `repository_ids`, checked
-against the signed body's `repository.id` before admission (including ping).
-First scope is one secret, possibly several allowed repositories; not GitHub
-Apps/organization hooks, multiple secrets, generic HMAC, or other providers.
+Native actions use the in-process delivery pipeline. Omitted selectors inherit
+personal outbound config; a notify without `via` uses the
+[cascade](design.md#notify-fallback-cascades) within the action timeout.
+Actions cannot set executables, config paths, sender, timeout, or secret policy.
 
-Accept only POST `/github`, JSON content type (optional charset), identity
-content encoding, and one each of `X-Hub-Signature-256`, `X-GitHub-Delivery`, and
-`X-GitHub-Event`. Reject ambiguous repeated/comma-joined identity/signature
-headers. Verify `sha256=` HMAC over the exact bounded raw bytes in constant time
-**before** JSON parsing, deduplication, printing, or route matching. No SHA-1
-fallback, unsigned mode, proxy-header trust, or IP-address authentication.
-Require a UUID delivery ID and an event name matching `[a-z][a-z0-9_]{0,127}`; `source = github`,
-`type = X-GitHub-Event`, `id = X-GitHub-Delivery`, `data = parsed body` unchanged.
-Headers/signatures are not copied into `data`. `ping` is verified and acknowledged
-with 204 but never dispatched; other valid event types use normal matching.
+| Template rule | Behavior |
+| --- | --- |
+| where | `message` and notify `title` only; never selectors, enums, or `run` |
+| `${path}` | envelope path (`${id}`, `${data.event.channel.id}`), single pass, no functions or env lookup |
+| `$${` | literal `${` |
+| string, number, boolean | rendered as text |
+| missing, null, object, array | `not_sent/template_value` |
+| over 256 KiB combined | `not_sent/template_size` |
+| malformed placeholder | config error at startup |
 
-Responses are fixed and body-free: 404 wrong path; 405 wrong method; 415 wrong
-content type/encoding; 413 raw/envelope size exceeded; 431 oversized headers;
-401 missing/bad signature; 400 malformed/ambiguous metadata or JSON; 403
-disallowed repository; 503 full
-ingress/shutdown. An admitted event returns 202 immediately, an already admitted
-duplicate 200. No non-2xx response reserves an identity. 2xx means verified and
-received in memory (or duplicate/ping), **not** action success or durable storage;
-action overflow can still drop work after admission. Response failure after
-admission cannot undo it. Enforce 16 KiB header limit, 5s header/body-read and
-response-write timeouts, 30s idle timeout, and at most 16 active body-reading
-handlers; reject excess with 503. Never wait for actions before responding.
+Rendered text then goes through normal [message preparation](design.md#message-preparation);
+a secret-policy rejection fails only that action. `send` adds fixed source/ID
+provenance and a warning that event content is untrusted. `inform` is not a
+prompt-injection sandbox: prefer IDs and links over raw event text. Dry-run
+validates rendering and preparation but never shows rendered text.
 
-GitHub signs the body, **not** the event/delivery headers or a timestamp. A
-10-minute ID cache is duplicate suppression, not cryptographic freshness. Also
-reserve a SHA-256 raw-body digest under the same bounded TTL for GitHub, so a
-changed unsigned delivery ID cannot bypass suppression within that window.
-Check/reserve ID and digest atomically; either duplicate suppresses dispatch.
-Identical bodies can consequently collapse distinct deliveries within the window.
-Old valid bodies can still replay after expiry, eviction, or restart, and event
-headers remain unauthenticated metadata. Do not invent an expired-request check
-or present `received_at`/payload timestamps as signed freshness. Security-sensitive
-actions must validate signed payload context and reconcile current provider state.
-Use dedicated webhook secrets and repository allowlists. A tunnel is transport,
-not authorization. GitHub does not automatically redeliver failed deliveries;
-manual redelivery/reconciliation belongs outside Tell.
+### Noon handoff
 
-A named Cloudflare Tunnel uses a stable public HTTPS hostname. Keep this
-configuration and its credential file with cloudflared, not Tell:
+[`examples/listen/noon-handoff.py`](../examples/listen/noon-handoff.py) is a
+`run` executable for a Noon job with `requests: each`. It keys requests by
+`source:id` when that fits Noon's 1–200 character `[A-Za-z0-9._:-]` limit,
+otherwise by its SHA-256. It `exec`s Noon and propagates failure. Noon caps
+`--data` at 256 KiB (matching the envelope cap), keeps 20 queued due-now runs
+per `requests: each` job (no `cooldown`), and remembers idempotency keys only
+for its newest 50 finished runs. Tell adds no durable replay.
+
+## GitHub webhooks
+
+`tell listen github` binds `listen.http.addr` and serves only `POST /github`.
+Inspection and Slack-only runs never bind. Scope is repository webhooks with
+one secret and an allowlist of repositories; no GitHub Apps, organization
+hooks, or generic HMAC.
+
+A request is accepted only with:
+
+- JSON content type (optional charset) and identity encoding;
+- exactly one `X-Hub-Signature-256`, `X-GitHub-Delivery` (UUID), and `X-GitHub-Event` (`[a-z][a-z0-9_]{0,127}`);
+- a valid `sha256=` HMAC over the raw body, checked in constant time **before** parsing;
+- a signed `repository.id` in `repository_ids` (pings included).
+
+There is no SHA-1 fallback, unsigned mode, proxy-header trust, or IP
+authentication. The envelope is `source: github`, `type` from
+`X-GitHub-Event`, `id` from `X-GitHub-Delivery`, and the unchanged body as
+`data`. Headers are not copied.
+
+| Status | Meaning |
+| --- | --- |
+| 202 | verified and admitted; actions run later |
+| 200 | verified duplicate |
+| 204 | verified `ping`; never routed |
+| 400 | malformed or ambiguous metadata/JSON |
+| 401 | missing or bad signature |
+| 403 | repository not allowed |
+| 404 / 405 | wrong path / method |
+| 413 | body or envelope too large |
+| 415 | wrong content type or encoding |
+| 431 | headers over 16 KiB |
+| 503 | ingress full, over 16 body readers, or shutting down |
+
+Responses are body-free. 2xx means received in memory, not action success or
+storage; action overflow can still drop admitted work. Only an admitted event
+reserves an identity. Header/body reads and response writes time out after
+5 s; idle connections after 30 s.
+
+GitHub signs the body but not the headers or a timestamp. Tell therefore
+deduplicates on both delivery ID and SHA-256 body digest for 10 minutes, so
+identical bodies can collapse separate deliveries. Old valid requests can
+replay after expiry, eviction, or restart. Security-sensitive actions should
+check signed payload context and current provider state. GitHub does not
+redeliver failures automatically; reconcile outside Tell.
+
+Keep the tunnel and its credentials with cloudflared:
 
 ```yaml
 # cloudflared config.yaml
@@ -345,28 +289,18 @@ ingress:
   - service: http_status:404
 ```
 
-Configure the GitHub **repository** webhook URL as
-`https://hooks.example.com/github`, choose JSON content type, enable TLS
-verification, and use the same dedicated secret as `listen.github.secret_env`.
-cloudflared must preserve raw bodies and signature headers; use no transforming
-Worker or interactive Access login on this machine-to-machine path. Tell never
-starts, installs, authenticates, or configures a tunnel. Live setup is optional
-manual verification; automated tests use local HTTP requests only.
+Point the repository webhook at `https://hooks.example.com/github` with JSON,
+TLS verification, and the same secret. Do not add a transforming Worker or an
+interactive Access login; cloudflared must pass the raw body and signature
+through. Tell never starts, installs, or configures a tunnel. Automated tests
+use local HTTP only.
 
-## Evidence and delivery gates
+## References
 
-Provider contracts checked during refinement against:
-
-- [Slack Socket Mode](https://docs.slack.dev/apis/events-api/using-socket-mode)
-  and [apps.connections.open](https://docs.slack.dev/reference/methods/apps.connections.open).
-- [GitHub signature validation](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries),
-  [headers](https://docs.github.com/en/webhooks/webhook-events-and-payloads),
-  [best practices](https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks),
-  and [redelivery](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks).
-- [Cloudflare published applications](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/).
-
-Verification uses local provider/protocol fixtures, focused Go tests, race
-tests for listener admission and shutdown, and `task ci`. Live Cloudflare Tunnel
-setup is user-managed and optional; automated tests never contact GitHub or
-Cloudflare. Help, completion, strict parsing, both editor schemas, safe
-inspection, and docs describe only implemented listener behavior.
+[Slack Socket Mode](https://docs.slack.dev/apis/events-api/using-socket-mode),
+[apps.connections.open](https://docs.slack.dev/reference/methods/apps.connections.open),
+[GitHub signature validation](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries),
+[headers](https://docs.github.com/en/webhooks/webhook-events-and-payloads),
+[best practices](https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks),
+[redelivery](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks),
+[Cloudflare published applications](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/).

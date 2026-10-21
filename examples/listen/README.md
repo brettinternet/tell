@@ -141,7 +141,7 @@ a 204 ping is never routed, and a 200 is a duplicate. Deduplication by delivery
 ID and raw-body digest is bounded to 10 minutes and does not prove freshness;
 old valid payloads can replay after expiry, eviction, or restart. GitHub does
 not automatically redeliver failed deliveries. Reconcile important provider
-state outside Tell. See [the exact contract](../../docs/listening.md#github-webhooks-through-cloudflared--tell-29).
+state outside Tell. See [the exact contract](../../docs/listening.md#github-webhooks).
 
 ## Native notification and agent actions
 
