@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bl": {
+      "command": "mise",
+      "args": ["exec", "--", "bl", "mcp"]
+    }
+  }
+}

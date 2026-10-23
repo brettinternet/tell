@@ -82,7 +82,7 @@ changes (`git-cliff --current --strip header`).
 | `internal/mcp` | MCP stdio tools over the shared config and delivery operations |
 | `integration/` | built-binary smoke tests (`smoke` build tag) |
 | `scripts/` | development checks |
-| `backlog/` | the work queue (Backlog.md) |
+| `backlog/` | the work queue (native `bl`) |
 
 Providers are plain subprocess adapters, not SDKs, plugins, or an interface
 registry. MCP uses `github.com/modelcontextprotocol/go-sdk` v1.8.0 over stdio
@@ -112,10 +112,12 @@ body, token, or ticket sentinels.
 
 ## Backlog and worktrees
 
-Use the Backlog.md CLI in the primary checkout. Claim a task before starting
-and reread it after writes. A ready task states scope, non-goals, file
-boundaries, dependencies, and executable acceptance. Record command results
-before checking criteria.
+Use `mise exec -- bl` in the primary checkout. Claim work in one step with
+`bl next --claim --start --session SESSION --json`; a status change is not a
+claim. A ready task states scope, non-goals, file boundaries, dependencies,
+and executable acceptance. Record each criterion's command and result with
+`bl ac ID check N --evidence TEXT` before finishing with `bl done ID --session
+SESSION`.
 
 Work in the current checkout unless told otherwise. Review `.config/wt.toml`
 before creating a Worktrunk worktree; its setup installs tools, modules, and

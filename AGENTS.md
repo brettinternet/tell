@@ -16,15 +16,24 @@ Read README.md and docs/development.md before changing Tell. Read AGENTS.local.m
 - Keep outbound provider credentials/configuration with the provider. Inbound sources use personal-only environment-variable references; strip those credentials from child environments. Never print message bodies, tokens, raw provider configuration, or child output in diagnostics. Explicit event export is sensitive data, not diagnostics.
 
 ## Backlog
-- `backlog/` is the only task queue. Use Backlog.md CLI, never edit task Markdown directly.
-- Read `backlog instructions overview` and the relevant creation/execution/finalization guide.
-- Claim work in the primary checkout: read the task, mark In Progress, then reread.
+- `backlog/` is this repository's native `bl` task queue. Read and change tasks
+  only through `mise exec -- bl` (CLI or MCP), never edit task Markdown directly.
+- Read `mise exec -- bl instructions overview` and `mise exec -- bl instructions workflow`
+  before acting.
+- Pick and claim work in one step, with one stable session for the whole loop:
+  `mise exec -- bl next --claim --start --session SESSION --json`. A status
+  change is not a claim. Renew with `mise exec -- bl heartbeat --session SESSION`
+  before half the TTL.
 - A ready task needs context, scope/non-goals, modified-file boundaries, dependencies, and observable acceptance.
-- Record acceptance commands/results before checking criteria. Complete only after verification and commits.
+- Record each criterion's command and result with
+  `mise exec -- bl ac ID check N --evidence TEXT`, not note lines. Complete only
+  after verification and commits, then `mise exec -- bl done ID --session SESSION`.
+- If stopping incomplete, persist progress then
+  `mise exec -- bl release ID --session SESSION`.
 - Do not implement drafts or unrelated tasks.
 
 ## Git and isolation
 - Work in the current checkout unless instructed otherwise. Preserve unrelated changes.
 - When creating a worktree, review .config/wt.toml, then use Worktrunk under .worktrees/.
 - Worktree hooks install dependencies/hooks only; no services start.
-- Keep Backlog task-state mutations in the primary checkout.
+- Keep backlog task-state mutations in the primary checkout.

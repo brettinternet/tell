@@ -1,0 +1,63 @@
+---
+id: TELL-29
+title: Receive signed GitHub webhooks through a cloudflared tunnel
+status: done
+type: feature
+priority: high
+assignees: ['@brett']
+labels: [listen, github, webhooks, reviewed]
+blocked_by: [TELL-27]
+rank: ada5a5a5a5a5a5a4b
+refs: ['https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries', 'https://docs.github.com/en/webhooks/webhook-events-and-payloads', 'https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks', 'https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks', 'https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/', backlog/decisions/decision-1 - Tell-is-the-local-integration-edge-in-both-directions-schedulers-own-background-work.md, docs/listening.md, docs/design.md, docs/configuration.md]
+files: [internal/listen/**, internal/config/**, internal/cli/**, integration/smoke_test.go, tell.schema.json, tell.shared.schema.json, README.md, docs/design.md, docs/configuration.md, docs/listening.md, internal/delivery/**, examples/listen/**, examples/README.md]
+created: 2026-10-17T21:02:00Z
+updated: 2026-10-18T02:42:00Z
+---
+
+## Context and promotion decision
+
+Promote: the user selected GitHub webhooks and a cloudflared tunnel. Original draft 4's missing provider/ingress decision is now resolved. A repository PR event should trigger local commands or communication without turning Tell into a public service manager. This task depends on TELL-27 (and transitively TELL-26), not on native notify/send actions.
+
+## Scope and settled interface
+
+Implement the GitHub section and shared ingress contract of docs/listening.md:
+- `tell listen github` selects the source; bare listen remains inspection. A shared personal listen.http.addr defaults to 127.0.0.1:8787 and permits literal loopback IPs only. POST /github is fixed; no new flags, public binding, or tunnel management.
+- Personal listen.github.secret_env and repository_ids are required. Only allowed repository webhook bodies enter the pipeline. One secret; repository events only.
+- Verify SHA-256 HMAC over bounded original bytes in constant time before decoding or routing. Reject unsigned/SHA-1-only, ambiguous metadata, invalid JSON, oversized bodies, and disallowed repositories. No raw headers/signatures enter data or logs.
+- Map GitHub event/delivery headers to envelope type/id and preserve parsed body as data. Verified ping returns 204 without routing; admitted events return 202, duplicates 200, full/shutting-down ingress 503. Neither 2xx nor a tunnel means durable processing or authorization.
+- GitHub signs no timestamp and does not authenticate delivery/event headers. Supplement ID dedup with a bounded raw-body digest; document identical-body collapse and replay after expiry/eviction/restart. Do not promise rejection of old-but-valid requests or automatic GitHub retries.
+- Bound headers, request duration, active body readers, ingress, and action execution. Reuse existing matching/run actions unchanged, with atomic concurrent admission/dedup.
+- Document a user-managed named cloudflared tunnel with a stable HTTPS hostname, /github-only ingress to loopback, catch-all 404, preserved bodies/headers, and no interactive Access challenge. Tell neither runs nor configures cloudflared.
+
+## Non-goals
+
+Other webhook providers, generic HMAC, GitHub Apps/organization hooks, secret rotation/multiple instances, TLS termination, public binds, provider registration, tunnel lifecycle, durability/replay, scheduling, or real-provider CI tests. Native actions are an independent follow-up, not a dependency.
+
+## Next action and verification
+
+After prerequisites and claim, recheck linked GitHub/Cloudflare contracts, extend source fixtures with signed loopback HTTP requests, and exercise a repository pull_request/opened route to a local command. Capture signature, duplicate/replay, overload, and no-bind inspection evidence. Record focused Go tests and task ci; live tunnel testing is optional and must not be claimed from fixtures.
+
+## Acceptance criteria
+
+- [x] Signed local repository webhook fixtures produce the common github envelope with header event/delivery metadata and unchanged parsed body, and execute a matching TELL-27 command. Verified ping returns 204 with no action; unrelated events match nothing; Slack-only runs and every inspection command never bind HTTP.
+- [x] Constant-time raw-body HMAC verification rejects unsigned, SHA-1-only, malformed or wrong signatures and tampered bytes before any print/action. Disallowed repository IDs return 403. Tests exercise ambiguous/missing headers, malformed/duplicate-key JSON, media/encoding/path/method errors, and configured body/header limits with the documented status codes and no admission.
+- [x] Concurrent identical deliveries route once; changing unsigned delivery ID cannot bypass the body-digest cache within its window. Source identities do not collide. TTL/eviction/restart allow replay as documented; payload/received timestamps are not treated as freshness proof. Verified duplicates return 200; no rejected admission reserves an identity.
+- [x] Slow actions do not delay 202 responses. Full ingress or shutdown returns 503 without admission; active body readers and deadlines remain bounded. Later action overflow/failure cannot change a prior 202 or invite automatic replay of sibling actions. Signal/fatal shutdown closes HTTP and preserves existing listener exit semantics.
+- [x] Non-loopback/DNS binds, invalid repository IDs, and missing selected secrets fail before listening; bind conflict exits 1 and stops other sources. Shared config is rejected. Config/doctor/receipts and child environments do not leak secret values, raw payloads, headers, or tunnel credentials; --print remains explicit sensitive export.
+- [x] Both schemas, help/completion, configuration/design docs, and examples/listen include GitHub repository setup plus the user-owned named cloudflared HTTPS-to-loopback recipe. Docs explain no signed timestamp/headers, no automatic GitHub redelivery, 2xx versus action success, and no durable replay. Focused local tests and task ci pass with recorded evidence.
+
+## Plan
+
+1. Extend strict personal configuration, inspection, schemas and source selection for GitHub and loopback HTTP. 2. Implement bounded signed HTTP ingress with repository authorization and atomic ID/body-digest admission using existing actions. 3. Add targeted local security/concurrency/shutdown regression fixtures, documentation and tunnel examples. 4. Run focused checks and task ci; independently verify acceptance, fix concrete defects, commit and merge locally, finalize backlog and clean owned worktree.
+
+## Notes
+
+Implemented signed GitHub repository webhook ingress, strict personal configuration and loopback binding, shared multi-source capture, atomic ID/body-digest suppression, schemas, CLI inspection/completion, and user-managed cloudflared documentation. Verification: go test -race ./internal/config ./internal/listen ./internal/cli ./internal/delivery passed; independent verifier reran focused package tests and task ci successfully (security scans, vet, staticcheck, unit/race suites, build and smoke). git diff --check and JSON schema parsing passed; LSP clean for GitHub handler, capture coordinator, configuration and CLI source selection. AC1: signed envelope/command/ping/no-bind CLI fixtures. AC2: signature/tampering/header/JSON/status/body/header-limit tests. AC3: concurrent admission, source identity, digest TTL/eviction/restart/full-buffer tests. AC4: prompt 202 under slow dispatch, bounded readers, shutdown tests and existing race/signal smoke coverage. AC5: unsafe bind/allowlist/secret/shared-config rejection, bind-failure and credential-isolation fixtures. AC6: schemas/help/completion/docs/examples plus task ci. One independent acceptance pass found no concrete defect; its primary-file access restriction was resolved by parent confirming task scope and criteria are unchanged in the reviewed worktree copy. Parent rechecked GitHub signature/header/redelivery contracts via gh api and Cloudflare published-application docs. Live tunnel verification was not performed or claimed. Executor timed out after its successful CI; verifier validated resulting work, including the final test edit. Next: commit source, merge locally, finalize task and remove owned worktree.
+
+Delivery complete: implementation commit fc8856626895820d3685fdabc75b4b032b3e97ba passed task check:staged and was fast-forward merged into main. Session-owned tell-29-github worktree and branch removed using Worktrunk; associated Herdr workspace wGD disappearance verified. No retained task checkout/workspace and no push. No remaining blocker or resumable implementation step.
+
+Implementation review: independent read-only security review plus parent inspection of HMAC-before-parse, signed repository allowlist, header/JSON validation, bounded admission/dedup, loopback lifecycle, and local fixture coverage. P2 finding: internal/listen/github.go:202-205 releases the body-reader semaphore when the handler returns, but Go net/http subsequently drains unread request bodies in reqBody.Close outside that semaphore, even with keep-alives disabled. Parent reproduced with 24 real loopback HTTP/1.1 connections sending valid content-type/event/delivery headers, Content-Length: 1, no signature, and withholding the body: all received 401 while runtime stacks showed 24 concurrent net/http body.Close drains, exceeding the limit of 16. Temporary TestReviewRejectedRequestsBodyReaderBound failed as expected and was removed. Prevent post-handler draining on rejection (including paths before semaphore acquisition), then verify with real sockets rather than only ResponseRecorder. Shared P2 fatal-shutdown admission finding on TELL-27 also applies (capture.go:162-166). No additional authentication/authorization or diagnostic-secret disclosure defects found. Existing focused race tests, task smoke, go test ./..., and go vet ./... passed. No live GitHub/cloudflared testing; findings recorded without implementation fixes.
+
+## Summary
+
+Added signed, repository-allowlisted GitHub webhooks on explicit loopback listeners, bounded admission and body-digest replay suppression, existing route actions, safe configuration/inspection, and cloudflared setup docs. All six criteria verified with local fixtures, focused/race tests and task ci; independent acceptance pass found no defects. Merged fc88566 locally; worktree/branch/workspace cleaned. Live tunnel testing remains optional and was not performed.
