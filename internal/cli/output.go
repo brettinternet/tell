@@ -53,13 +53,17 @@ func (s outputStyle) outcome(outcome string) string {
 // Let urfave lay out plain help first; ANSI bytes must not affect column widths.
 func printHelp(w io.Writer, templ string, data any) {
 	cmd, ok := data.(*urfave.Command)
-	if !ok || !bool(commandStyle(cmd, w)) {
+	if !ok {
+		urfave.DefaultPrintHelp(w, templ, data)
+		return
+	}
+	style := commandStyle(cmd, w)
+	if !bool(style) {
 		urfave.DefaultPrintHelp(w, templ, data)
 		return
 	}
 	var rendered strings.Builder
 	urfave.DefaultPrintHelp(&rendered, templ, data)
-	style := commandStyle(cmd, w)
 	for _, line := range strings.SplitAfter(rendered.String(), "\n") {
 		heading := strings.TrimSuffix(line, "\n")
 		if strings.HasSuffix(heading, ":") && !strings.HasPrefix(heading, " ") {
