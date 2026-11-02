@@ -1,12 +1,12 @@
 ---
 id: TELL-34
 title: Add built-in shoutrrr notify route
-status: todo
+status: done
 type: feature
 priority: medium
 refs: ["https://github.com/nicholas-fedor/shoutrrr"]
 created: 2026-11-02T03:15:00Z
-updated: 2026-11-02T03:15:00Z
+updated: 2026-11-02T03:32:57Z
 ---
 
 Why: Apprise is the only fan-out route to phone/chat services, and it needs a Python runtime and `apprise` on PATH. CI runners, containers, and minimal hosts often don't have either, so a cascade like `[apprise, desktop]` falls straight through to a route nobody sees. Shoutrrr (https://github.com/nicholas-fedor/shoutrrr) is a Go notification library covering most of the same services (Slack, Discord, Telegram, ntfy, Pushover, Gotify, Teams, SMTP, generic webhooks, and more). Linking it into Tell gives a built-in fan-out route that works wherever `tell` is installed, which makes it the natural fallback when Apprise is missing.
@@ -50,8 +50,17 @@ Implementer notes: record the `bin/tell` size before and after linking, and put 
 
 ## Acceptance criteria
 
-- [ ] `notify.via: shoutrrr` and cascade step `shoutrrr: {urls_env: NAME}` deliver in-process via linked github.com/nicholas-fedor/shoutrrr; no external executable needed. `shoutrrr.urls_env` / `--shoutrrr-urls-env` / `TELL_SHOUTRRR_URLS_ENV` work, shared tell.yaml rejects it, and config/schemas/MCP/listener via enums include shoutrrr.
-- [ ] Outcomes: unset/empty env → not_sent/missing_urls; invalid URL or unknown service → not_sent/invalid_config; all ok → accepted; timeout or cancel → uncertain; other send errors → failed. httptest-backed tests (generic webhook, no mocks) cover accepted, server error → failed, slow server → uncertain, invalid URL → not_sent, and a cascade where a missing apprise executable falls back to shoutrrr.
-- [ ] Tests prove the URL value (including a token) never appears in --json output, stderr, doctor output, or attempt labels, and that library logging writes nothing to stdout/stderr.
-- [ ] `tell doctor --via shoutrrr` reports ready/not-ready (env missing, URL parse failure) without sending.
-- [ ] README route table, docs/design.md (Shoutrrr delivery section), docs/configuration.md, docs/listening.md, and examples (fallback cascade, github-actions no-install variant, user-config.yaml, examples/README.md tables) are updated. Binary size before/after is recorded in the summary. `task ci` passes.
+- [x] `notify.via: shoutrrr` and cascade step `shoutrrr: {urls_env: NAME}` deliver in-process via linked github.com/nicholas-fedor/shoutrrr; no external executable needed. `shoutrrr.urls_env` / `--shoutrrr-urls-env` / `TELL_SHOUTRRR_URLS_ENV` work, shared tell.yaml rejects it, and config/schemas/MCP/listener via enums include shoutrrr.
+  Evidence: 5ede1f7: internal/delivery/shoutrrr.go links nicholas-fedor/shoutrrr v0.22.1; TestShoutrrrOutcomes/TestShoutrrrURLsEnvIsPersonal pass; manual TELL_SHOUTRRR_URLS_ENV shows origin in tell config; enums updated in config, schemas, MCP, listener
+- [x] Outcomes: unset/empty env → not_sent/missing_urls; invalid URL or unknown service → not_sent/invalid_config; all ok → accepted; timeout or cancel → uncertain; other send errors → failed. httptest-backed tests (generic webhook, no mocks) cover accepted, server error → failed, slow server → uncertain, invalid URL → not_sent, and a cascade where a missing apprise executable falls back to shoutrrr.
+  Evidence: go test ./internal/cli -run Shoutrrr: accepted, server error→failed, slow→uncertain, conn refused→failed, invalid/unknown→not_sent invalid_config, empty→missing_urls; TestShoutrrrCascadeAfterMissingApprise passes (httptest generic webhook)
+- [x] Tests prove the URL value (including a token) never appears in --json output, stderr, doctor output, or attempt labels, and that library logging writes nothing to stdout/stderr.
+  Evidence: assertNoShoutrrrLeak on json/human/doctor/labels in cli tests; integration TestShoutrrrBinaryStreams runs real bin/tell: one JSON line, empty stderr, no token; mutations (stderr logger, err text) were caught
+- [x] `tell doctor --via shoutrrr` reports ready/not-ready (env missing, URL parse failure) without sending.
+  Evidence: TestShoutrrrDoctor: ready, missing_urls, invalid_config; webhook call count 0
+- [x] README route table, docs/design.md (Shoutrrr delivery section), docs/configuration.md, docs/listening.md, and examples (fallback cascade, github-actions no-install variant, user-config.yaml, examples/README.md tables) are updated. Binary size before/after is recorded in the summary. `task ci` passes.
+  Evidence: Docs + examples updated in 5ede1f7 (fallback cascade, github-actions/notify-on-failure-shoutrrr.yaml, user-config.yaml, examples/README.md). bin/tell 26,531,986 → 30,663,218 bytes (+4.13 MB). task ci passed (govulncheck, check, test, race, smoke)
+
+## Summary
+
+Built-in shoutrrr notify route (single and cascade step) via linked nicholas-fedor/shoutrrr v0.22.1, URLs read from a named env var and never surfaced; fixed diagnostic hints only. Binary size: 26,531,986 → 30,663,218 bytes (+4.13 MB, ~15.6%). Commit 5ede1f7 fast-forwarded to main; worktree removed. Self-review: no further defects; global stdlib log discarded because library services log config text.
