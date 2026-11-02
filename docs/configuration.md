@@ -52,7 +52,7 @@ Origins are `default`, a file path, `env NAME`, or `flag --name`.
 These fields choose destinations, so shared `tell.yaml` rejects them even if a
 higher layer overrides them: `notify.via`, `notify.fallback_on`,
 `notify.fallback_notice`, `notify.command`, `apprise.config`,
-`shoutrrr.urls_env`, `herdr.session`, `send.via`, `send.to`, `send.from`, `secrets.policy`, `mcp.agent_targets`, and
+`shoutrrr.urls_env`, `imessage.to`, `herdr.session`, `send.via`, `send.to`, `send.from`, `secrets.policy`, `mcp.agent_targets`, and
 the whole `listen` block.
 
 ```console
@@ -132,6 +132,7 @@ does not change the project; no repository code runs.
 | `apprise.tag` | — | `TELL_APPRISE_TAG` | `--apprise-tag` |
 | `apprise.format` | — | `TELL_APPRISE_FORMAT` | `--apprise-format` |
 | `shoutrrr.urls_env` | — | `TELL_SHOUTRRR_URLS_ENV` | `--shoutrrr-urls-env` |
+| `imessage.to` | — | `TELL_IMESSAGE_TO` | `--imessage-to` |
 | `herdr.session` | — | `TELL_HERDR_SESSION` | `--herdr-session` |
 | `send.via` | — | `TELL_SEND_VIA` | `--send-via` |
 | `send.to` | — | `TELL_SEND_TO` | `--to` |
@@ -164,7 +165,7 @@ send:
 | Field | Accepts |
 | --- | --- |
 | `timeout` | positive Go duration (`0s` refused) |
-| `notify.via` | `stderr`, `desktop`, `apprise`, `shoutrrr`, `command`, `herdr`, or a nonempty list of those names, `apprise: {config, tag, format, urls_env}`, `shoutrrr: {urls_env}`, and `herdr: {session}` steps |
+| `notify.via` | `stderr`, `desktop`, `apprise`, `shoutrrr`, `imessage`, `command`, `herdr`, or a nonempty list of those names, `apprise: {config, tag, format, urls_env}`, `shoutrrr: {urls_env}`, `imessage: {to}`, and `herdr: {session}` steps |
 | `notify.fallback_on` | nonempty subset of `not_sent`, `failed`; cascade only |
 | `notify.fallback_notice` | `none` or `title` (prefix later titles with the first step's label and reason); cascade only |
 | `notify.command` | nonempty argv list; nonblank executable; no NUL |
@@ -173,6 +174,7 @@ send:
 | `apprise.tag` | one Apprise tag expression |
 | `apprise.format` | `text`, `markdown`, `html` |
 | `shoutrrr.urls_env` | environment variable name; required for the `shoutrrr` route unless each step sets `urls_env` |
+| `imessage.to` | one E.164 phone number (`+15551234567`) or Apple ID email; required for the `imessage` route unless each step sets `to` |
 | `herdr.session` | existing session name; `default` for the default session |
 | `send.via` | `hcom` or `herdr`; no default |
 | `send.to` | one exact hcom name (no `@`) or Herdr agent name/pane ID |
@@ -197,6 +199,11 @@ overrides `shoutrrr.urls_env`. Tell reads it at send time and never prints it;
 unset or empty is `not_sent/missing_urls`, and an unparsable URL or unknown
 service is `not_sent/invalid_config`.
 
+iMessage `to` is the recipient handle; a step's value overrides `imessage.to`.
+It is personal routing, so shared `tell.yaml` rejects it, and a missing or
+malformed handle is a config error before Messages runs. Diagnostics never
+print it.
+
 Omit optional keys rather than setting them empty (`send.to` excepted).
 Provider URLs and credentials are never accepted; keep them with the provider.
 Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
@@ -207,7 +214,7 @@ Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
 | Scope | Flags |
 | --- | --- |
 | global (before the command) | `-C`/`--project`, `-c`/`--config`, `-j`/`--json`, `--no-color`, `--timeout`, `-h`, `-v` |
-| `notify` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--herdr-session`, `-t`/`--title`, `-n`/`--type` |
+| `notify` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`, `-n`/`--type` |
 | `send` | `--send-via`, `--to`, `--from`, `--herdr-session`, `-i`/`--intent` |
 | `doctor`, `config [show\|check]`, `mcp` | every setting flag above |
 | `listen` | `--all`, `--print`, `--dry-run`; sources `slack`, `github` |
@@ -244,7 +251,7 @@ $ tell --json doctor
 ```
 
 It checks each selected notify step, other explicitly configured routes
-(Apprise settings, `shoutrrr.urls_env`, `herdr.session`, `notify.command`), and the send route when
+(Apprise settings, `shoutrrr.urls_env`, `imessage.to`, `herdr.session`, `notify.command`), and the send route when
 `send.via`/`send.to` are set. Defaults alone add nothing; use
 `tell doctor --via desktop` to check desktop.
 
@@ -255,6 +262,7 @@ It checks each selected notify step, other explicitly configured routes
 | command | executable resolves; never run | interpreter, its config |
 | apprise | `apprise --dry-run` matches ≥1 service | credentials, reachability |
 | shoutrrr | URL variable is set and every URL parses to a known service | credentials, reachability |
+| imessage | macOS, `osascript`, an enabled iMessage account, Automation allowed (reads accounts; may open Messages) | recipient reachability |
 | herdr | `herdr session list --json` shows the session running | — |
 | send/hcom | `hcom list --json` has one exact active name | — |
 | send/herdr | `herdr agent get` reports idle or done | state at send time |

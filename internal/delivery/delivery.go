@@ -236,6 +236,8 @@ func notifyStep(ctx context.Context, cfg config.Config, step config.NotifyStep, 
 		}
 	case "shoutrrr":
 		return notifyShoutrrr(ctx, timeout, step.UrlsEnv, message)
+	case "imessage":
+		return notifyIMessage(ctx, timeout, step.To, message, runtime.GOOS)
 	case "herdr":
 		return notifyHerdr(ctx, timeout, cfg.Herdr.Session, message)
 	case "desktop":

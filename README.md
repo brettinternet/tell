@@ -5,7 +5,7 @@
 Send one notification to a person, or one message to an agent, then exit.
 
 ```sh
-tell notify "Build finished"                               # person: stderr, desktop, Apprise, Shoutrrr, Herdr, or your command
+tell notify "Build finished"                               # person: stderr, desktop, Apprise, Shoutrrr, iMessage, Herdr, or your command
 tell send --intent request "Triage PRs; report blockers"   # agent: hcom mailbox or idle Herdr pane
 tell listen slack github                                   # foreground: route Slack/GitHub events to actions
 ```
@@ -47,6 +47,7 @@ Optional routes need their own executable on PATH:
 | desktop | `osascript` (macOS) or `notify-send` + desktop D-Bus (Linux) |
 | apprise | `apprise` and its own config |
 | shoutrrr | nothing (built in); URLs in an env var you name |
+| imessage | macOS Messages signed in to iMessage; `osascript` |
 | herdr | `herdr` and a running session |
 | hcom | `hcom` and a participating recipient |
 | command, listener `run` | your executable |
@@ -157,6 +158,7 @@ See [configuration](docs/configuration.md) for every key and flag, and
 | desktop | `tell notify --via desktop "Done"` (exits 3, `not_sent/unattended`, when the screen is locked) |
 | apprise | `tell notify --via apprise --apprise-tag phone "Done"` |
 | shoutrrr | `PHONE_URLS='ntfy://ntfy.sh/topic' tell notify --via shoutrrr --shoutrrr-urls-env PHONE_URLS "Done"` |
+| imessage | `tell notify --via imessage --imessage-to +15551234567 "Done"` |
 | herdr | `tell notify --via herdr --herdr-session work "Done"` |
 | command | `tell notify --via command "Done"` |
 
@@ -187,6 +189,7 @@ notify:
     - apprise: {tag: phone}
     - apprise: {urls_env: TELL_CHAT_APPRISE_URLS}   # URLs stay in the environment
     - shoutrrr: {urls_env: PHONE_SHOUTRRR_URLS}     # built in; works without Apprise
+    - imessage: {to: "+15551234567"}              # macOS Messages; no extra account
     - desktop
   fallback_notice: title    # later titles name the failed first step
 ```

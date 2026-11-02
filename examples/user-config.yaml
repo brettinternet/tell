@@ -10,5 +10,8 @@ apprise:
 # Built-in alternative to Apprise; the variable holds the Shoutrrr URLs.
 # shoutrrr:
 #   urls_env: SHOUTRRR_URLS
+# macOS Messages; one E.164 number or Apple ID email.
+# imessage:
+#   to: "+15551234567"
 herdr:
   session: main

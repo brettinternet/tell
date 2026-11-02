@@ -11,6 +11,7 @@
         "notify": { "properties": { "via": false, "fallback_on": false, "fallback_notice": false, "command": false } },
         "apprise": { "properties": { "config": false } },
         "shoutrrr": { "properties": { "urls_env": false } },
+        "imessage": { "properties": { "to": false } },
         "herdr": { "properties": { "session": false } },
         "send": { "properties": { "via": false, "to": false, "from": false } },
         "secrets": { "properties": { "policy": false } },

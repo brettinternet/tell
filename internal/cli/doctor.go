@@ -81,6 +81,9 @@ func humanReason(route, reason, fallback string) string {
 		return "choose an explicit Herdr session with herdr.session in personal config, --herdr-session, or TELL_HERDR_SESSION"
 	case "missing_executable":
 		name := strings.TrimPrefix(route, "send/")
+		if name == "imessage" {
+			name = "osascript"
+		}
 		if name == "desktop" {
 			name = "notify-send"
 			if runtime.GOOS == "darwin" {
@@ -108,7 +111,14 @@ func humanReason(route, reason, fallback string) string {
 	case "unattended":
 		return "nobody can see desktop notifications now; notify skips desktop and a cascade moves to its next step"
 	case "unsupported_platform":
+		if route == "imessage" {
+			return "iMessage requires macOS with Messages; choose another route"
+		}
 		return "desktop notifications require macOS or Linux; choose another route"
+	case "automation_denied":
+		return "allow this terminal to control Messages in System Settings > Privacy & Security > Automation"
+	case "no_account":
+		return "sign in to iMessage in Messages and enable the account"
 	case "unsupported_route":
 		return "this route is not supported; choose another route"
 	case "cancelled":

@@ -35,8 +35,8 @@ plugin registry.
 
 `notify` asks a person for attention. stderr (the default) keeps stdout and
 `--json` clean; desktop and Herdr need no extra runtime; Apprise fans out to
-services; Shoutrrr fans out in-process with no extra runtime; command runs one
-personal executable.
+services; Shoutrrr fans out in-process with no extra runtime; iMessage texts a
+phone through macOS Messages; command runs one personal executable.
 
 `send` gives one existing agent information (`--intent inform`) or an
 instruction (`--intent request`) over one transport. It never falls through to
@@ -277,6 +277,36 @@ Tell never prints library text: results carry fixed messages and fixed hints
 (TLS or connection error) chosen by error type, and all library logging is
 discarded. `tell doctor --via shoutrrr` parses the URLs without connecting or
 sending.
+
+## iMessage delivery
+
+On a Mac signed in to Messages, `imessage` texts one handle with nothing to
+install. Tell runs `osascript` with a fixed script and passes the recipient and
+text as argv, never as script source. The text is the redacted body, with the
+title as its first line when set. `accepted` means Messages took the message,
+not that it was delivered or read. Presence checks do not apply: a text should
+reach the phone when nobody is at the Mac.
+
+| Condition | Tell outcome |
+| --- | --- |
+| not macOS | not_sent/unsupported_platform |
+| `to` missing or not an E.164 number or email | config error before sending |
+| no enabled iMessage account | not_sent/no_account |
+| Automation permission denied (`-1743`) | not_sent/automation_denied |
+| Messages took the message | accepted |
+| `--timeout` exceeded, cancelled, or Apple event timeout | uncertain |
+| any other Messages error | failed/provider_failure |
+
+`not_sent` outcomes advance a cascade such as `[desktop, imessage]`. Tell keeps
+only the AppleScript error number; it never prints the recipient, body, or
+Messages error text. `tell doctor --via imessage` reads the account list without
+sending; that may open Messages and, on first use, show the Automation prompt.
+A message to your own phone number alerted the phone in testing; Apple ID
+email handles reach only devices that receive iMessage at that address.
+
+Not supported: SMS fallback, group chats, attachments, several recipients per
+step, delivery status (reading `chat.db` needs Full Disk Access), receiving
+messages, and a listener source.
 
 ## Herdr delivery
 

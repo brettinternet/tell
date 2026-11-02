@@ -52,6 +52,7 @@ type NotifyStep struct {
 	Format  string `json:"format,omitempty"`
 	UrlsEnv string `json:"urls_env,omitempty"`
 	Session string `json:"session,omitempty"`
+	To      string `json:"to,omitempty"`
 }
 
 func (n Notify) MarshalJSON() ([]byte, error) {
@@ -166,6 +167,11 @@ type Herdr struct {
 // credentials and never appear in configuration.
 type Shoutrrr struct {
 	UrlsEnv string `json:"urls_env,omitempty"`
+}
+
+// IMessage holds the personal recipient handle: an E.164 phone number or an Apple ID email.
+type IMessage struct {
+	To string `json:"to,omitempty"`
 }
 
 type Send struct {
@@ -284,9 +290,9 @@ func validateRouteSyntax(routes []Route) error {
 					return errors.New("listen.routes notify via is invalid")
 				}
 				switch route.Notify.Via {
-				case "stderr", "desktop", "apprise", "shoutrrr", "herdr", "command":
+				case "stderr", "desktop", "apprise", "shoutrrr", "imessage", "herdr", "command":
 				default:
-					return errors.New("listen.routes notify via must be stderr, desktop, apprise, shoutrrr, herdr, or command")
+					return errors.New("listen.routes notify via must be stderr, desktop, apprise, shoutrrr, imessage, herdr, or command")
 				}
 			}
 			if route.Notify.HerdrSession != "" && !validTemplateFreeSelector(route.Notify.HerdrSession) {
@@ -368,6 +374,9 @@ func validateRoutes(cfg Config) error {
 		if route.Notify != nil && route.Notify.Via == "shoutrrr" && cfg.Shoutrrr.UrlsEnv == "" {
 			return errors.New("listen.routes notify via shoutrrr requires shoutrrr.urls_env")
 		}
+		if route.Notify != nil && route.Notify.Via == "imessage" && cfg.IMessage.To == "" {
+			return errors.New("listen.routes notify via imessage requires imessage.to")
+		}
 		if route.Send != nil {
 			via := route.Send.Via
 			if via == "" {
@@ -402,6 +411,7 @@ type Config struct {
 	Apprise  Apprise           `json:"apprise"`
 	Herdr    Herdr             `json:"herdr"`
 	Shoutrrr Shoutrrr          `json:"shoutrrr"`
+	IMessage IMessage          `json:"imessage"`
 	Send     Send              `json:"send"`
 	MCP      MCP               `json:"mcp"`
 	Listen   Listen            `json:"listen"`
@@ -513,6 +523,9 @@ func validateNotify(cfg Config, requireCommands bool) error {
 		if requireCommands && cfg.Notify.Via == "shoutrrr" && cfg.Shoutrrr.UrlsEnv == "" {
 			return errors.New("shoutrrr.urls_env is required for the shoutrrr route")
 		}
+		if requireCommands && cfg.Notify.Via == "imessage" && cfg.IMessage.To == "" {
+			return errors.New("imessage.to is required for the imessage route")
+		}
 		return nil
 	}
 	if len(cfg.Notify.FallbackOn) > 0 {
@@ -537,6 +550,9 @@ func validateNotify(cfg Config, requireCommands bool) error {
 		}
 		if requireCommands && step.Via == "shoutrrr" && step.UrlsEnv == "" {
 			return errors.New("shoutrrr.urls_env or a step urls_env is required for a shoutrrr step")
+		}
+		if requireCommands && step.Via == "imessage" && step.To == "" {
+			return errors.New("imessage.to or a step to is required for an imessage step")
 		}
 	}
 	return nil
@@ -572,6 +588,9 @@ func EffectiveNotifySteps(cfg Config) ([]NotifyStep, error) {
 		}
 		if step.Via == "herdr" && (step.Session == "" || isOneShot(cfg.Origins["herdr.session"])) {
 			step.Session = cfg.Herdr.Session
+		}
+		if step.Via == "imessage" && (step.To == "" || isOneShot(cfg.Origins["imessage.to"])) {
+			step.To = cfg.IMessage.To
 		}
 	}
 	return steps, nil
@@ -627,6 +646,7 @@ func (cfg Config) Values() map[string]string {
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
 		"shoutrrr.urls_env": cfg.Shoutrrr.UrlsEnv,
+		"imessage.to":       cfg.IMessage.To,
 		"send.via":          cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
 		"mcp.agent_targets":            fmt.Sprint(cfg.MCP.AgentTargets),
 		"listen.slack.app_token_env":   cfg.SlackTokenEnv(),
@@ -697,7 +717,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		cfg.Timeout = value
 	case "notify.via":
 		switch value {
-		case "stderr", "desktop", "apprise", "shoutrrr", "herdr", "command":
+		case "stderr", "desktop", "apprise", "shoutrrr", "imessage", "herdr", "command":
 			cfg.Notify.Via = value
 			cfg.Notify.Steps = nil
 			// A single route replaces any lower cascade with its fallback settings;
@@ -711,7 +731,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 				cfg.Origins["notify.fallback_notice"] = "default"
 			}
 		default:
-			return errors.New("notify.via must be stderr, desktop, apprise, shoutrrr, herdr, command, or an ordered route list")
+			return errors.New("notify.via must be stderr, desktop, apprise, shoutrrr, imessage, herdr, command, or an ordered route list")
 		}
 	case "notify.fallback_notice":
 		if value != "none" && value != "title" {
@@ -738,6 +758,11 @@ func (cfg *Config) apply(key, value, base, source string) error {
 			return errors.New("shoutrrr.urls_env must be an environment variable name")
 		}
 		cfg.Shoutrrr.UrlsEnv = value
+	case "imessage.to":
+		if !ValidIMessageHandle(value) {
+			return errors.New("imessage.to must be an E.164 phone number, such as +15551234567, or an email address")
+		}
+		cfg.IMessage.To = value
 	case "herdr.session":
 		cfg.Herdr.Session = value
 	case "send.via":
@@ -808,7 +833,7 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 			switch value.key {
 			case "secrets.policy", "notify.command":
 				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .git/tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
-			case "notify.via", "notify.fallback_on", "notify.fallback_notice", "apprise.config", "herdr.session", "shoutrrr.urls_env", "send.via", "send.to", "send.from", "mcp.agent_targets":
+			case "notify.via", "notify.fallback_on", "notify.fallback_notice", "apprise.config", "herdr.session", "shoutrrr.urls_env", "imessage.to", "send.via", "send.to", "send.from", "mcp.agent_targets":
 				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .git/tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
 			}
 		}

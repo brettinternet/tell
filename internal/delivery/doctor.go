@@ -50,6 +50,7 @@ func Doctor(ctx context.Context, cfg config.Config) []Readiness {
 	}{
 		{"apprise", cfg.Apprise.Config != "" || cfg.Apprise.Tag != "" || cfg.Apprise.Format != ""},
 		{"shoutrrr", cfg.Shoutrrr.UrlsEnv != ""},
+		{"imessage", cfg.IMessage.To != ""},
 		{"herdr", cfg.Herdr.Session != ""},
 		{"command", len(cfg.Notify.Command) > 0},
 	} {
@@ -119,6 +120,9 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 		}
 		_ = sender.Close()
 		return finish("ready")
+	case "imessage":
+		timeout, _ := time.ParseDuration(cfg.Timeout)
+		return finish(checkIMessage(ctx, timeout, platform))
 	case "command":
 		if len(cfg.Notify.Command) == 0 {
 			return finish("missing_command")

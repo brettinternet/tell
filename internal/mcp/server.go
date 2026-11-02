@@ -205,7 +205,7 @@ func notifySchema(allowTargets bool) map[string]any {
 		"type":    enumProperty("Optional notification type", "info", "success", "warning", "failure"),
 	}
 	if allowTargets {
-		properties["via"] = enumProperty("Optional configured notification route", "stderr", "desktop", "apprise", "shoutrrr", "command", "herdr")
+		properties["via"] = enumProperty("Optional configured notification route", "stderr", "desktop", "apprise", "shoutrrr", "imessage", "command", "herdr")
 		properties["herdr_session"] = objectProperty("Optional Herdr session selector")
 		properties["apprise_tag"] = objectProperty("Optional Apprise tag selector")
 		properties["apprise_config"] = objectProperty("Optional local Apprise config file selector")

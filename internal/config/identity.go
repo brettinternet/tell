@@ -1,6 +1,9 @@
 package config
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // ValidIdentity excludes CLI options, whitespace, control characters and selectors.
 func ValidIdentity(value string) bool {
@@ -26,4 +29,14 @@ func ValidRecipient(route, to string) bool {
 		return ok && strings.HasPrefix(workspace, "w") && strings.HasPrefix(pane, "p") && ValidIdentity(workspace) && ValidIdentity(pane)
 	}
 	return false
+}
+
+var (
+	e164Handle  = regexp.MustCompile(`^\+[1-9][0-9]{6,14}$`)
+	emailHandle = regexp.MustCompile(`^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
+)
+
+// ValidIMessageHandle accepts one E.164 phone number or one plain email address.
+func ValidIMessageHandle(to string) bool {
+	return e164Handle.MatchString(to) || emailHandle.MatchString(to) && to[0] != '-'
 }

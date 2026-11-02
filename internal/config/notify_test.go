@@ -108,6 +108,13 @@ func TestNotifyCascadeStrictValidation(t *testing.T) {
 		"notify: {via: [command, stderr]}\n",
 		"notify: {via: apprise, fallback_on: [not_sent]}\n",
 		"notify: {via: apprise, fallback_notice: title}\n",
+		// A missing or malformed iMessage handle must fail before Messages runs.
+		"notify: {via: imessage}\n",
+		"notify: {via: [imessage, stderr]}\n",
+		"notify: {via: imessage}\nimessage: {to: '-e'}\n",
+		"notify: {via: imessage}\nimessage: {to: '5551234567'}\n",
+		"notify: {via: [{imessage: {to: 'a@b'}}]}\n",
+		"notify: {via: [{imessage: {to: '+15551234567', session: x}}]}\n",
 	} {
 		input := fixture(t)
 		file := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
@@ -120,6 +127,18 @@ func TestNotifyCascadeStrictValidation(t *testing.T) {
 	writeFile(t, filepath.Join(input.CWD, "tell.yaml"), "notify: {via: [stderr, desktop]}\n")
 	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal routing") {
 		t.Fatalf("shared cascade was accepted: %v", err)
+	}
+	input = fixture(t)
+	writeFile(t, filepath.Join(input.CWD, "tell.yaml"), "imessage: {to: '+15551234567'}\n")
+	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal routing") {
+		t.Fatalf("shared imessage.to was accepted: %v", err)
+	}
+	input = fixture(t)
+	writeFile(t, filepath.Join(input.UserConfigDir, "tell", "config.yaml"), "notify: {via: [imessage, {imessage: {to: friend@example.com}}]}\nimessage: {to: '+15551234567'}\n")
+	if cfg, err := config.Load(input); err != nil {
+		t.Fatal(err)
+	} else if steps, _ := config.EffectiveNotifySteps(cfg); len(steps) != 2 || steps[0].To != "+15551234567" || steps[1].To != "friend@example.com" {
+		t.Fatalf("personal imessage handles did not resolve: %+v", steps)
 	}
 
 	input = fixture(t)
