@@ -56,6 +56,19 @@ notify:
 
 `accepted` from `imessage` means Messages took the text, not that it arrived.
 
+Anywhere, the built-in Pushover route reaches your phone with nothing to
+install. The variables hold the app token and user key; Tell never prints them:
+
+```yaml
+notify:
+  via:
+    - desktop
+    - pushover: {token_env: PUSHOVER_TOKEN, user_env: PUSHOVER_USER}
+```
+
+Unset or rejected credentials are `not_sent`, so the cascade moves on. For
+alerts that repeat until acknowledged, see [escalate](../escalate/README.md).
+
 ```console
 $ examples/fallback/deliver.sh "Review feat/rate-limit at 3f9c2e1; blockers first."
 herdr reviewer: busy
