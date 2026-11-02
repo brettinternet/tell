@@ -31,7 +31,7 @@ Start with a visible personal route, for example `notify.via: desktop` in
 | [Incident job](listen/incident-noon/README.md) | New `inc-*` channel → queued Noon job with event data | advanced | Slack, Noon, Python, jq |
 | [apprise](apprise/README.md) | Phone, Slack, and Discord with per-message audience tags | intermediate | Apprise |
 | [escalate](escalate/README.md) | Critical alerts that repeat on your phone until acknowledged | intermediate | Apprise, Pushover |
-| [github-actions](github-actions/README.md) | Post failed nightly runs to a team channel | intermediate | GitHub Actions, Apprise |
+| [github-actions](github-actions/README.md) | Post failed nightly runs to a team channel | intermediate | GitHub Actions, Apprise or built-in Shoutrrr |
 
 ## AI agents
 
@@ -51,7 +51,7 @@ Start with a visible personal route, for example `notify.via: desktop` in
 | [ci-to-agent](ci-to-agent/README.md) | Hand failed PR checks to a fixer agent; tell you whether it was reached | advanced | gh, jq, hcom |
 | [pr-review-queue](pr-review-queue/README.md) | First-pass reviews of newly requested PRs, sent once each | advanced | gh, Noon |
 | [eval-regression](eval-regression/README.md) | Catch prompt/model quality drops; ask an agent to find the cause | advanced | jq, any eval harness |
-| [fallback](fallback/README.md) | Ordered notify cascades plus caller-owned single-route send fallback | advanced | Herdr, hcom, Apprise, jq |
+| [fallback](fallback/README.md) | Ordered notify cascades plus caller-owned single-route send fallback | advanced | Herdr, hcom, Apprise or Shoutrrr, jq |
 
 ## Patterns used throughout
 

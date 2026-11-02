@@ -188,7 +188,7 @@ the direct child, so wrappers should `exec` and never background work.
     message: "Slack event ${id}; inspect channel ${data.event.channel.id}"   # required
     title: "Channel ${data.event.channel.name} created"                     # default: project name
     type: info            # optional
-    via: desktop          # optional; omit to use the notify cascade
+    via: desktop          # optional: stderr, desktop, apprise, shoutrrr, herdr, command; omit to use the notify cascade
     # herdr_session, apprise_tag also allowed
 - name: inform-agent
   source: slack

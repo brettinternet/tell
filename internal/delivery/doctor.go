@@ -48,6 +48,7 @@ func Doctor(ctx context.Context, cfg config.Config) []Readiness {
 		configured bool
 	}{
 		{"apprise", cfg.Apprise.Config != "" || cfg.Apprise.Tag != "" || cfg.Apprise.Format != ""},
+		{"shoutrrr", cfg.Shoutrrr.UrlsEnv != ""},
 		{"herdr", cfg.Herdr.Session != ""},
 		{"command", len(cfg.Notify.Command) > 0},
 	} {
@@ -104,6 +105,18 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 	var name string
 	switch route {
 	case "stderr":
+		return finish("ready")
+	case "shoutrrr":
+		if urlsEnv == "" {
+			urlsEnv = cfg.Shoutrrr.UrlsEnv
+		}
+		timeout, _ := time.ParseDuration(cfg.Timeout)
+		// Router construction parses URLs without sending or connecting.
+		sender, reason := shoutrrrRouter(urlsEnv, timeout)
+		if reason != "" {
+			return finish(reason)
+		}
+		_ = sender.Close()
 		return finish("ready")
 	case "command":
 		if len(cfg.Notify.Command) == 0 {

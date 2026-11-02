@@ -234,6 +234,8 @@ func notifyStep(ctx context.Context, cfg config.Config, step config.NotifyStep, 
 		default:
 			return NewResult(route, "failed", "provider_failure", "command reported failure")
 		}
+	case "shoutrrr":
+		return notifyShoutrrr(ctx, timeout, step.UrlsEnv, message)
 	case "herdr":
 		return notifyHerdr(ctx, timeout, cfg.Herdr.Session, message)
 	case "desktop":

@@ -22,6 +22,11 @@ Routing comes from the job's environment (`TELL_NOTIFY_VIA=apprise`), the CI
 equivalent of personal config. Apprise reads `APPRISE_URLS` itself; Tell
 never handles the webhook.
 
+To skip installing Apprise, use the built-in Shoutrrr route: store Shoutrrr
+URLs in a `SHOUTRRR_URLS` secret and replace the step's routing env and
+`pipx install apprise` as in
+[notify-on-failure-shoutrrr.yaml](notify-on-failure-shoutrrr.yaml).
+
 ## Notes
 
 - Context is passed through `env:` instead of `${{ }}` inside `run:`, so a

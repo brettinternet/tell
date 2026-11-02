@@ -473,3 +473,64 @@ exit "$PROVIDER_EXIT"
 		})
 	}
 }
+
+// The linked Shoutrrr library writes to the real process streams if any logger
+// escapes; only Tell's own result may appear, and never the URL credential.
+func TestShoutrrrBinaryStreams(t *testing.T) {
+	binary, err := filepath.Abs("../bin/tell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const token = "private-shoutrrr-token"
+	status := 200
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/hook/"+token {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		w.WriteHeader(status)
+	}))
+	defer server.Close()
+	home := t.TempDir()
+	file := filepath.Join(home, "config.yaml")
+	if err := os.WriteFile(file, []byte("notify: {via: shoutrrr}\nshoutrrr: {urls_env: PHONE_URLS}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The generic+ shortcut makes the router log a custom-URL conversion.
+	urls := "generic+" + server.URL + "/hook/" + token
+	for _, tc := range []struct {
+		status   int
+		args     []string
+		jsonOut  bool
+		wantCode int
+	}{
+		{200, []string{"--json", "notify", "body"}, true, 0},
+		{200, []string{"notify", "body"}, false, 0},
+		{500, []string{"--json", "notify", "body"}, true, 4},
+		{500, []string{"notify", "body"}, false, 4},
+		{200, []string{"--json", "doctor"}, true, 0},
+		{200, []string{"doctor"}, false, 0},
+	} {
+		status = tc.status
+		cmd := exec.Command(binary, append([]string{"--config", file}, tc.args...)...)
+		cmd.Dir = home
+		cmd.Env = []string{"HOME=" + home, "PHONE_URLS=" + urls}
+		var out, errOut bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &out, &errOut
+		err := cmd.Run()
+		code := 0
+		if exit, ok := err.(*exec.ExitError); ok {
+			code = exit.ExitCode()
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if code != tc.wantCode || strings.Contains(out.String()+errOut.String(), token) || strings.Contains(out.String()+errOut.String(), "127.0.0.1") {
+			t.Fatalf("%v: code=%d stdout=%q stderr=%q", tc.args, code, out.String(), errOut.String())
+		}
+		if tc.jsonOut && (errOut.Len() != 0 || strings.Count(out.String(), "\n") != 1 || !json.Valid(out.Bytes())) {
+			t.Fatalf("%v: stdout must be one JSON result and stderr empty: %q %q", tc.args, out.String(), errOut.String())
+		}
+		if !tc.jsonOut && tc.args[0] == "notify" && tc.wantCode == 0 && out.Len()+errOut.Len() != 0 {
+			t.Fatalf("%v: accepted notify must be silent: %q %q", tc.args, out.String(), errOut.String())
+		}
+	}
+}

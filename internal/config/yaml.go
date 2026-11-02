@@ -109,7 +109,7 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return err
 			}
 			*values = append(*values, fileValue{key: name, strings: fallback, line: value.Line})
-		case "notify", "apprise", "herdr", "send", "secrets", "mcp":
+		case "notify", "apprise", "shoutrrr", "herdr", "send", "secrets", "mcp":
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
 			}
@@ -128,7 +128,7 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return fmt.Errorf("line %d: notify.command executable must not be empty", value.Line)
 			}
 			*values = append(*values, fileValue{key: name, argv: argv, line: value.Line})
-		case "listen.slack.app_token_env", "listen.github.secret_env", "listen.http.addr", "secrets.policy", "timeout", "notify.fallback_notice", "apprise.config", "apprise.tag", "apprise.format", "herdr.session", "send.via", "send.to", "send.from":
+		case "listen.slack.app_token_env", "listen.github.secret_env", "listen.http.addr", "secrets.policy", "timeout", "notify.fallback_notice", "apprise.config", "apprise.tag", "apprise.format", "shoutrrr.urls_env", "herdr.session", "send.via", "send.to", "send.from":
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 				return fmt.Errorf("line %d: %s must be a string", value.Line, name)
 			}
@@ -171,7 +171,7 @@ func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
 		if item.Kind == yaml.ScalarNode && item.Tag == "!!str" {
 			step := NotifyStep{Via: item.Value}
 			if !validNotifyRoute(step.Via) || strings.ContainsAny(step.Via, "\x00\x1b\r\n") {
-				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, apprise, herdr, or command", item.Line)
+				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, apprise, shoutrrr, herdr, or command", item.Line)
 			}
 			steps = append(steps, step)
 			continue
@@ -197,7 +197,7 @@ func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
 
 func validNotifyRoute(route string) bool {
 	switch route {
-	case "stderr", "desktop", "apprise", "herdr", "command":
+	case "stderr", "desktop", "apprise", "shoutrrr", "herdr", "command":
 		return true
 	default:
 		return false
@@ -237,6 +237,13 @@ func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
 			default:
 				return fmt.Errorf("line %d: unknown apprise step option %q", key.Line, key.Value)
 			}
+		} else if step.Via == "shoutrrr" && key.Value == "urls_env" {
+			if !environmentName.MatchString(value.Value) {
+				return fmt.Errorf("line %d: shoutrrr step urls_env must be an environment variable name", value.Line)
+			}
+			step.UrlsEnv = value.Value
+		} else if step.Via == "shoutrrr" {
+			return fmt.Errorf("line %d: unknown shoutrrr step option %q", key.Line, key.Value)
 		} else if step.Via == "herdr" && key.Value == "session" {
 			step.Session = value.Value
 		} else if step.Via == "herdr" {

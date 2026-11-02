@@ -7,5 +7,8 @@ notify:
   via: stderr
 apprise:
   config: ../apprise/apprise.yaml
+# Built-in alternative to Apprise; the variable holds the Shoutrrr URLs.
+# shoutrrr:
+#   urls_env: SHOUTRRR_URLS
 herdr:
   session: main

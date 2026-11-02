@@ -35,7 +35,8 @@ plugin registry.
 
 `notify` asks a person for attention. stderr (the default) keeps stdout and
 `--json` clean; desktop and Herdr need no extra runtime; Apprise fans out to
-services; command runs one personal executable.
+services; Shoutrrr fans out in-process with no extra runtime; command runs one
+personal executable.
 
 `send` gives one existing agent information (`--intent inform`) or an
 instruction (`--intent request`) over one transport. It never falls through to
@@ -70,8 +71,8 @@ Per-step options override top-level provider settings; flag, environment, and
 permitted MCP selectors override every matching step.
 
 `fallback_notice: title` prefixes later titles with the first step's label and
-reason. Labels are the Apprise tag, config basename, or `urls_env` name, never
-URLs. JSON receipts list attempts:
+reason. Labels are the Apprise tag, config basename, or `urls_env` name
+(`shoutrrr:NAME` for Shoutrrr), never URLs. JSON receipts list attempts:
 
 ```json
 {"attempts":[{"route":"apprise","label":"apprise:phone","outcome":"not_sent","reason":"no_match"},{"route":"desktop","label":"desktop","outcome":"accepted","reason":""}]}
@@ -218,6 +219,31 @@ To debug, run `tell doctor --via apprise` with the same overrides (no send),
 then `apprise -vv` with a harmless message (sends; logs are sensitive).
 Verified against Apprise `8227752a16c630536daefc387a0e546580fed5ae`; older
 versions may report no match as exit 1.
+
+## Shoutrrr delivery
+
+Tell links [Shoutrrr](https://github.com/nicholas-fedor/shoutrrr) `v0.22.1`
+in-process; no executable is needed, so it is the natural fallback where
+Apprise is not installed. `shoutrrr.urls_env` (or a step's `urls_env`) names an
+environment variable holding whitespace-separated Shoutrrr URLs. Tell reads it
+at send time; there is no plain `url` key because the URL is the credential.
+The title and body are sent; `--type` is not mapped to service levels.
+
+| Condition | Tell outcome |
+| --- | --- |
+| variable unset or empty | not_sent/missing_urls |
+| URL parse failure or unknown service | not_sent/invalid_config |
+| every service succeeds | accepted |
+| any service times out or is cancelled | uncertain/timeout or cancelled |
+| any other service error | failed/provider_failure |
+
+With several URLs some may have been delivered, so a partial failure is
+`failed` (the same rule as Apprise) and does not advance a cascade unless
+`fallback_on` lists it. Shoutrrr errors and logs can embed URLs and tokens, so
+Tell never prints library text: results carry fixed messages and fixed hints
+(TLS or connection error) chosen by error type, and all library logging is
+discarded. `tell doctor --via shoutrrr` parses the URLs without connecting or
+sending.
 
 ## Herdr delivery
 

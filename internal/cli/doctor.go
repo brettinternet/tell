@@ -120,7 +120,15 @@ func humanReason(route, reason, fallback string) string {
 	case "missing_config":
 		return "the configured Apprise config file was not found; choose an available file or another route"
 	case "missing_urls":
+		if route == "shoutrrr" {
+			return "the configured Shoutrrr URLs environment variable is unset or empty; set it or choose another route"
+		}
 		return "the configured Apprise URLs environment variable is unset or empty; set it or choose another route"
+	case "invalid_config":
+		if route == "shoutrrr" {
+			return "the Shoutrrr URLs could not be parsed or name an unknown service; check the variable's value"
+		}
+		return "readiness check did not succeed; check the provider setup"
 	case "probe_failed", "provider_failure":
 		return "the provider readiness check failed; check its setup"
 	case "session_not_running":

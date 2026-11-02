@@ -162,6 +162,12 @@ type Herdr struct {
 	Session string `json:"session,omitempty"`
 }
 
+// Shoutrrr names the environment variable holding service URLs; the URLs are
+// credentials and never appear in configuration.
+type Shoutrrr struct {
+	UrlsEnv string `json:"urls_env,omitempty"`
+}
+
 type Send struct {
 	Via  string `json:"via,omitempty"`
 	To   string `json:"to,omitempty"`
@@ -278,9 +284,9 @@ func validateRouteSyntax(routes []Route) error {
 					return errors.New("listen.routes notify via is invalid")
 				}
 				switch route.Notify.Via {
-				case "stderr", "desktop", "apprise", "herdr", "command":
+				case "stderr", "desktop", "apprise", "shoutrrr", "herdr", "command":
 				default:
-					return errors.New("listen.routes notify via must be stderr, desktop, apprise, herdr, or command")
+					return errors.New("listen.routes notify via must be stderr, desktop, apprise, shoutrrr, herdr, or command")
 				}
 			}
 			if route.Notify.HerdrSession != "" && !validTemplateFreeSelector(route.Notify.HerdrSession) {
@@ -359,6 +365,9 @@ func validateRoutes(cfg Config) error {
 		default:
 			return errors.New("listen.routes reference an unconfigured source")
 		}
+		if route.Notify != nil && route.Notify.Via == "shoutrrr" && cfg.Shoutrrr.UrlsEnv == "" {
+			return errors.New("listen.routes notify via shoutrrr requires shoutrrr.urls_env")
+		}
 		if route.Send != nil {
 			via := route.Send.Via
 			if via == "" {
@@ -386,17 +395,18 @@ type MCP struct {
 // Config is the effective snapshot. Provider files are referenced, never parsed.
 // Origins tracks the winning source of each setting, including built-in defaults.
 type Config struct {
-	Project string            `json:"project"`
-	Timeout string            `json:"timeout"`
-	Notify  Notify            `json:"notify"`
-	Secrets Secrets           `json:"secrets"`
-	Apprise Apprise           `json:"apprise"`
-	Herdr   Herdr             `json:"herdr"`
-	Send    Send              `json:"send"`
-	MCP     MCP               `json:"mcp"`
-	Listen  Listen            `json:"listen"`
-	Sources []string          `json:"sources"`
-	Origins map[string]string `json:"origins"`
+	Project  string            `json:"project"`
+	Timeout  string            `json:"timeout"`
+	Notify   Notify            `json:"notify"`
+	Secrets  Secrets           `json:"secrets"`
+	Apprise  Apprise           `json:"apprise"`
+	Herdr    Herdr             `json:"herdr"`
+	Shoutrrr Shoutrrr          `json:"shoutrrr"`
+	Send     Send              `json:"send"`
+	MCP      MCP               `json:"mcp"`
+	Listen   Listen            `json:"listen"`
+	Sources  []string          `json:"sources"`
+	Origins  map[string]string `json:"origins"`
 }
 
 // Load merges user, shared-project, repository-personal, then invocation
@@ -500,6 +510,9 @@ func validateNotify(cfg Config, requireCommands bool) error {
 		if cfg.Notify.FallbackOnSet || cfg.Notify.NoticeSet {
 			return errors.New("notify.fallback_on and notify.fallback_notice require a list notify.via")
 		}
+		if requireCommands && cfg.Notify.Via == "shoutrrr" && cfg.Shoutrrr.UrlsEnv == "" {
+			return errors.New("shoutrrr.urls_env is required for the shoutrrr route")
+		}
 		return nil
 	}
 	if len(cfg.Notify.FallbackOn) > 0 {
@@ -521,6 +534,9 @@ func validateNotify(cfg Config, requireCommands bool) error {
 	for _, step := range steps {
 		if requireCommands && step.Via == "command" && len(cfg.Notify.Command) == 0 {
 			return errors.New("notify.command is required for a command step")
+		}
+		if requireCommands && step.Via == "shoutrrr" && step.UrlsEnv == "" {
+			return errors.New("shoutrrr.urls_env or a step urls_env is required for a shoutrrr step")
 		}
 	}
 	return nil
@@ -551,6 +567,9 @@ func EffectiveNotifySteps(cfg Config) ([]NotifyStep, error) {
 				return nil, errors.New("apprise urls_env cannot be combined with effective apprise.config or apprise.tag")
 			}
 		}
+		if step.Via == "shoutrrr" && (step.UrlsEnv == "" || isOneShot(cfg.Origins["shoutrrr.urls_env"])) {
+			step.UrlsEnv = cfg.Shoutrrr.UrlsEnv
+		}
 		if step.Via == "herdr" && (step.Session == "" || isOneShot(cfg.Origins["herdr.session"])) {
 			step.Session = cfg.Herdr.Session
 		}
@@ -572,6 +591,10 @@ func NotifyStepLabel(step NotifyStep) string {
 			return "apprise:" + filepath.Base(step.Config)
 		case step.UrlsEnv != "":
 			return "apprise:" + step.UrlsEnv
+		}
+	case "shoutrrr":
+		if step.UrlsEnv != "" {
+			return "shoutrrr:" + step.UrlsEnv
 		}
 	}
 	return step.Via
@@ -603,7 +626,8 @@ func (cfg Config) Values() map[string]string {
 		"notify.fallback_notice": fallbackNotice, "notify.command": command,
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
-		"send.via": cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
+		"shoutrrr.urls_env": cfg.Shoutrrr.UrlsEnv,
+		"send.via":          cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
 		"mcp.agent_targets":            fmt.Sprint(cfg.MCP.AgentTargets),
 		"listen.slack.app_token_env":   cfg.SlackTokenEnv(),
 		"listen.github.secret_env":     cfg.GitHubSecretEnv(),
@@ -673,7 +697,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		cfg.Timeout = value
 	case "notify.via":
 		switch value {
-		case "stderr", "desktop", "apprise", "herdr", "command":
+		case "stderr", "desktop", "apprise", "shoutrrr", "herdr", "command":
 			cfg.Notify.Via = value
 			cfg.Notify.Steps = nil
 			// A single route replaces any lower cascade with its fallback settings;
@@ -687,7 +711,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 				cfg.Origins["notify.fallback_notice"] = "default"
 			}
 		default:
-			return errors.New("notify.via must be stderr, desktop, apprise, herdr, command, or an ordered route list")
+			return errors.New("notify.via must be stderr, desktop, apprise, shoutrrr, herdr, command, or an ordered route list")
 		}
 	case "notify.fallback_notice":
 		if value != "none" && value != "title" {
@@ -709,6 +733,11 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		default:
 			return errors.New("apprise.format must be text, markdown, or html")
 		}
+	case "shoutrrr.urls_env":
+		if !environmentName.MatchString(value) {
+			return errors.New("shoutrrr.urls_env must be an environment variable name")
+		}
+		cfg.Shoutrrr.UrlsEnv = value
 	case "herdr.session":
 		cfg.Herdr.Session = value
 	case "send.via":
@@ -779,7 +808,7 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 			switch value.key {
 			case "secrets.policy", "notify.command":
 				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .git/tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
-			case "notify.via", "notify.fallback_on", "notify.fallback_notice", "apprise.config", "herdr.session", "send.via", "send.to", "send.from", "mcp.agent_targets":
+			case "notify.via", "notify.fallback_on", "notify.fallback_notice", "apprise.config", "herdr.session", "shoutrrr.urls_env", "send.via", "send.to", "send.from", "mcp.agent_targets":
 				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .git/tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
 			}
 		}

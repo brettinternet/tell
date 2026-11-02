@@ -29,6 +29,20 @@ output. Do not combine `urls_env` with a step's effective config or tag. Use
 `fallback_notice: title` to prefix later titles with the first step label and
 reason; `none` is the silent default.
 
+On hosts without Apprise, the built-in Shoutrrr route catches the
+`not_sent`/`missing_executable` from an Apprise step:
+
+```yaml
+notify:
+  via:
+    - apprise: {tag: phone}
+    - shoutrrr: {urls_env: PHONE_SHOUTRRR_URLS}
+    - desktop
+```
+
+With several URLs in the variable, a partial failure is `failed` and does not
+advance unless `fallback_on` lists it.
+
 ```console
 $ examples/fallback/deliver.sh "Review feat/rate-limit at 3f9c2e1; blockers first."
 herdr reviewer: busy

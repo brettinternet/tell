@@ -21,7 +21,7 @@
           "description": "One route retains single-route behavior. A list runs in order and advances only on not_sent by default.",
           "default": "stderr",
           "oneOf": [
-            { "enum": ["stderr", "desktop", "apprise", "herdr", "command"] },
+            { "enum": ["stderr", "desktop", "apprise", "shoutrrr", "herdr", "command"] },
             { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/notifyStep" } }
           ]
         },
@@ -50,6 +50,13 @@
         },
         "tag": { "$ref": "#/definitions/nonBlankString", "description": "Apprise tag expression." },
         "format": { "enum": ["text", "markdown", "html"] }
+      }
+    },
+    "shoutrrr": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "urls_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Environment variable name holding whitespace-separated Shoutrrr URLs. Required for the shoutrrr route; the URLs never appear in config or diagnostics." }
       }
     },
     "herdr": {
@@ -167,7 +174,7 @@
                   "message": { "$ref": "#/definitions/templateString", "description": "Message with single-pass ${path} envelope scalar placeholders; $${ escapes a literal opener." },
                   "title": { "type": "string", "description": "Optional title with the same envelope placeholder grammar; empty explicitly suppresses the default project title." },
                   "type": { "enum": ["info", "success", "warning", "failure"], "default": "info" },
-                  "via": { "enum": ["stderr", "desktop", "apprise", "herdr", "command"], "description": "Static single-route override; otherwise inherit effective notify.via, including its cascade." },
+                  "via": { "enum": ["stderr", "desktop", "apprise", "shoutrrr", "herdr", "command"], "description": "Static single-route override; otherwise inherit effective notify.via, including its cascade." },
                   "herdr_session": { "$ref": "#/definitions/staticSelector", "description": "Static session override; otherwise inherit herdr.session." },
                   "apprise_tag": { "$ref": "#/definitions/staticSelector", "description": "Static Apprise tag override; otherwise inherit apprise.tag." }
                 }
@@ -205,7 +212,7 @@
   "definitions": {
     "notifyStep": {
       "oneOf": [
-        { "enum": ["stderr", "desktop", "apprise", "herdr", "command"] },
+        { "enum": ["stderr", "desktop", "apprise", "shoutrrr", "herdr", "command"] },
         {
           "type": "object",
           "minProperties": 1,
@@ -223,6 +230,13 @@
               "allOf": [
                 { "if": { "required": ["urls_env"] }, "then": { "not": { "anyOf": [{ "required": ["config"] }, { "required": ["tag"] }] } } }
               ]
+            },
+            "shoutrrr": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "urls_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Environment variable name holding Shoutrrr URLs; overrides shoutrrr.urls_env for this step." }
+              }
             },
             "herdr": {
               "type": "object",
