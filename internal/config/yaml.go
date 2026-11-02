@@ -110,7 +110,7 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return err
 			}
 			*values = append(*values, fileValue{key: name, strings: fallback, line: value.Line})
-		case "notify", "notify.desktop", "apprise", "shoutrrr", "imessage", "herdr", "send", "secrets", "mcp":
+		case "notify", "notify.desktop", "apprise", "shoutrrr", "imessage", "pushover", "herdr", "send", "secrets", "mcp":
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
 			}
@@ -129,7 +129,8 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return fmt.Errorf("line %d: %s executable must not be empty", value.Line, name)
 			}
 			*values = append(*values, fileValue{key: name, argv: argv, line: value.Line})
-		case "listen.slack.app_token_env", "listen.github.secret_env", "listen.http.addr", "secrets.policy", "timeout", "notify.fallback_notice", "apprise.config", "apprise.tag", "apprise.format", "shoutrrr.urls_env", "imessage.to", "herdr.session", "send.via", "send.to", "send.from":
+		case "listen.slack.app_token_env", "listen.github.secret_env", "listen.http.addr", "secrets.policy", "timeout", "notify.fallback_notice", "apprise.config", "apprise.tag", "apprise.format", "shoutrrr.urls_env", "imessage.to", "herdr.session", "send.via", "send.to", "send.from",
+			"pushover.token_env", "pushover.user_env", "pushover.priority", "pushover.retry", "pushover.expire", "pushover.device":
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 				return fmt.Errorf("line %d: %s must be a string", value.Line, name)
 			}
@@ -172,7 +173,7 @@ func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
 		if item.Kind == yaml.ScalarNode && item.Tag == "!!str" {
 			step := NotifyStep{Via: item.Value}
 			if !validNotifyRoute(step.Via) || strings.ContainsAny(step.Via, "\x00\x1b\r\n") {
-				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, alert, apprise, shoutrrr, imessage, herdr, or command", item.Line)
+				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, herdr, or command", item.Line)
 			}
 			steps = append(steps, step)
 			continue
@@ -198,7 +199,7 @@ func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
 
 func validNotifyRoute(route string) bool {
 	switch route {
-	case "stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "herdr", "command":
+	case "stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "pushover", "herdr", "command":
 		return true
 	default:
 		return false
@@ -252,6 +253,10 @@ func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
 			step.To = value.Value
 		} else if step.Via == "imessage" {
 			return fmt.Errorf("line %d: unknown imessage step option %q", key.Line, key.Value)
+		} else if step.Via == "pushover" {
+			if err := applyPushoverOption(&step.Pushover, key.Value, value.Value); err != nil {
+				return fmt.Errorf("line %d: %w", key.Line, err)
+			}
 		} else if step.Via == "herdr" && key.Value == "session" {
 			step.Session = value.Value
 		} else if step.Via == "herdr" {

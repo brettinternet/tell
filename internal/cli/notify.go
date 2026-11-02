@@ -26,6 +26,9 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 	default:
 		return delivery.NewResult(route, "usage", "invalid_type", fmt.Sprintf("invalid --type %q; must be info, success, warning, or failure", usageValue(cmd, kind)))
 	}
+	if failure := checkPushoverOptions(cmd, cfg); failure != nil {
+		return failure
+	}
 	body := strings.Join(cmd.Args().Slice(), " ")
 	if cmd.NArg() == 1 && body == "-" {
 		data, err := readMessage(ctx, cmd.Reader)
@@ -44,7 +47,8 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 	if !cmd.IsSet("title") {
 		title = filepath.Base(cfg.Project)
 	}
-	result := delivery.Notify(ctx, cfg, delivery.Message{Title: title, Body: body, Type: kind}, cmd.ErrWriter)
+	message := delivery.Message{Title: title, Body: body, Type: kind, PushoverTag: cmd.String("pushover-tag"), PushoverCallback: cmd.String("pushover-callback")}
+	result := delivery.Notify(ctx, cfg, message, cmd.ErrWriter)
 	if result.ExitCode() != 0 {
 		return result
 	}
@@ -52,6 +56,9 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 		output := map[string]any{"outcome": result.Outcome, "route": result.Route, "redactions": result.Redactions, "attempts": result.Attempts}
 		if result.Acknowledged {
 			output["acknowledged"] = true
+		}
+		if result.Receipt != "" {
+			output["receipt"] = result.Receipt
 		}
 		if err := emit(cmd, output); err != nil {
 			return &resultWriteError{}

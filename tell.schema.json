@@ -21,7 +21,7 @@
           "description": "One route retains single-route behavior. A list runs in order and advances only on not_sent by default.",
           "default": "stderr",
           "oneOf": [
-            { "enum": ["stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "herdr", "command"] },
+            { "enum": ["stderr", "desktop", "alert", "apprise", "shoutrrr", "pushover", "imessage", "herdr", "command"] },
             { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/notifyStep" } }
           ]
         },
@@ -70,6 +70,19 @@
       "additionalProperties": false,
       "properties": {
         "urls_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Environment variable name holding whitespace-separated Shoutrrr URLs. Required for the shoutrrr route; the URLs never appear in config or diagnostics." }
+      }
+    },
+    "pushover": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Direct Pushover route. Personal config only, never shared tell.yaml.",
+      "properties": {
+        "token_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Environment variable name holding the Pushover application token. Personal config only; the token never appears in config or diagnostics." },
+        "user_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Environment variable name holding the Pushover user or group key. Personal config only." },
+        "priority": { "enum": ["lowest", "low", "normal", "high", "emergency"], "description": "Pushover priority. emergency repeats until acknowledged and returns a receipt; it requires retry and expire." },
+        "retry": { "type": "string", "pattern": "^\\+?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h)(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h))*$", "description": "Whole-second Go duration of at least 30s between emergency repeats." },
+        "expire": { "type": "string", "pattern": "^\\+?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h)(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h))*$", "description": "Whole-second Go duration of at most 3h after which emergency repeats stop." },
+        "device": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,25}(,[A-Za-z0-9_-]{1,25})*$", "description": "Comma-separated Pushover device names; default all devices." }
       }
     },
     "imessage": {
@@ -232,7 +245,7 @@
   "definitions": {
     "notifyStep": {
       "oneOf": [
-        { "enum": ["stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "herdr", "command"] },
+        { "enum": ["stderr", "desktop", "alert", "apprise", "shoutrrr", "pushover", "imessage", "herdr", "command"] },
         {
           "type": "object",
           "minProperties": 1,
@@ -256,6 +269,18 @@
               "additionalProperties": false,
               "properties": {
                 "urls_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Environment variable name holding Shoutrrr URLs; overrides shoutrrr.urls_env for this step." }
+              }
+            },
+            "pushover": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "token_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Environment variable name holding the Pushover application token. Personal config only; the token never appears in config or diagnostics." },
+                "user_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "Environment variable name holding the Pushover user or group key. Personal config only." },
+                "priority": { "enum": ["lowest", "low", "normal", "high", "emergency"], "description": "Pushover priority. emergency repeats until acknowledged and returns a receipt; it requires retry and expire." },
+                "retry": { "type": "string", "pattern": "^\\+?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h)(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h))*$", "description": "Whole-second Go duration of at least 30s between emergency repeats." },
+                "expire": { "type": "string", "pattern": "^\\+?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h)(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h))*$", "description": "Whole-second Go duration of at most 3h after which emergency repeats stop." },
+                "device": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,25}(,[A-Za-z0-9_-]{1,25})*$", "description": "Comma-separated Pushover device names; default all devices." }
               }
             },
             "imessage": {

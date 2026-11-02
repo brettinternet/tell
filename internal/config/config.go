@@ -57,6 +57,7 @@ type NotifyStep struct {
 	Session string `json:"session,omitempty"`
 	To      string `json:"to,omitempty"`
 	Wait    string `json:"wait,omitempty"`
+	Pushover
 }
 
 // DefaultAlertWait is how long an alert step waits for acknowledgement.
@@ -138,6 +139,7 @@ func (s *NotifyStep) UnmarshalJSON(data []byte) error {
 		}
 		s.Config, s.Tag, s.Format = values["config"], values["tag"], values["format"]
 		s.UrlsEnv, s.Session, s.Wait = values["urls_env"], values["session"], values["wait"]
+		s.Pushover = Pushover{TokenEnv: values["token_env"], UserEnv: values["user_env"], Priority: values["priority"], Retry: values["retry"], Expire: values["expire"], Device: values["device"]}
 	}
 	return nil
 }
@@ -161,6 +163,11 @@ func (s NotifyStep) MarshalJSON() ([]byte, error) {
 	}
 	if s.Wait != "" {
 		options["wait"] = s.Wait
+	}
+	for key, value := range map[string]string{"token_env": s.TokenEnv, "user_env": s.UserEnv, "priority": s.Priority, "retry": s.Retry, "expire": s.Expire, "device": s.Device} {
+		if value != "" {
+			options[key] = value
+		}
 	}
 	if len(options) == 0 {
 		return json.Marshal(s.Via)
@@ -431,6 +438,7 @@ type Config struct {
 	Herdr    Herdr             `json:"herdr"`
 	Shoutrrr Shoutrrr          `json:"shoutrrr"`
 	IMessage IMessage          `json:"imessage"`
+	Pushover Pushover          `json:"pushover"`
 	Send     Send              `json:"send"`
 	MCP      MCP               `json:"mcp"`
 	Listen   Listen            `json:"listen"`
@@ -545,6 +553,9 @@ func validateNotify(cfg Config, requireCommands bool) error {
 		if requireCommands && cfg.Notify.Via == "imessage" && cfg.IMessage.To == "" {
 			return errors.New("imessage.to is required for the imessage route")
 		}
+		if requireCommands && cfg.Notify.Via == "pushover" {
+			return cfg.Pushover.validate()
+		}
 		return nil
 	}
 	if len(cfg.Notify.FallbackOn) > 0 {
@@ -572,6 +583,11 @@ func validateNotify(cfg Config, requireCommands bool) error {
 		}
 		if requireCommands && step.Via == "imessage" && step.To == "" {
 			return errors.New("imessage.to or a step to is required for an imessage step")
+		}
+		if requireCommands && step.Via == "pushover" {
+			if err := step.Pushover.validate(); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -610,6 +626,9 @@ func EffectiveNotifySteps(cfg Config) ([]NotifyStep, error) {
 		}
 		if step.Via == "imessage" && (step.To == "" || isOneShot(cfg.Origins["imessage.to"])) {
 			step.To = cfg.IMessage.To
+		}
+		if step.Via == "pushover" {
+			step.Pushover = step.Pushover.merge(cfg.Pushover)
 		}
 	}
 	return steps, nil
@@ -667,9 +686,12 @@ func (cfg Config) Values() map[string]string {
 		"notify.fallback_notice": fallbackNotice, "notify.command": command, "notify.desktop.on_click": onClick,
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
-		"shoutrrr.urls_env": cfg.Shoutrrr.UrlsEnv,
-		"imessage.to":       cfg.IMessage.To,
-		"send.via":          cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
+		"shoutrrr.urls_env":  cfg.Shoutrrr.UrlsEnv,
+		"imessage.to":        cfg.IMessage.To,
+		"pushover.token_env": cfg.Pushover.TokenEnv, "pushover.user_env": cfg.Pushover.UserEnv,
+		"pushover.priority": cfg.Pushover.Priority, "pushover.retry": cfg.Pushover.Retry,
+		"pushover.expire": cfg.Pushover.Expire, "pushover.device": cfg.Pushover.Device,
+		"send.via": cfg.Send.Via, "send.to": cfg.Send.To, "send.from": cfg.Send.From, "secrets.policy": cfg.Secrets.Policy,
 		"mcp.agent_targets":            fmt.Sprint(cfg.MCP.AgentTargets),
 		"listen.slack.app_token_env":   cfg.SlackTokenEnv(),
 		"listen.github.secret_env":     cfg.GitHubSecretEnv(),
@@ -739,7 +761,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		cfg.Timeout = value
 	case "notify.via":
 		switch value {
-		case "stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "herdr", "command":
+		case "stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "pushover", "herdr", "command":
 			cfg.Notify.Via = value
 			cfg.Notify.Steps = nil
 			// A single route replaces any lower cascade with its fallback settings;
@@ -753,7 +775,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 				cfg.Origins["notify.fallback_notice"] = "default"
 			}
 		default:
-			return errors.New("notify.via must be stderr, desktop, alert, apprise, shoutrrr, imessage, herdr, command, or an ordered route list")
+			return errors.New("notify.via must be stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, herdr, command, or an ordered route list")
 		}
 	case "notify.fallback_notice":
 		if value != "none" && value != "title" {
@@ -785,6 +807,10 @@ func (cfg *Config) apply(key, value, base, source string) error {
 			return errors.New("imessage.to must be an E.164 phone number, such as +15551234567, or an email address")
 		}
 		cfg.IMessage.To = value
+	case "pushover.token_env", "pushover.user_env", "pushover.priority", "pushover.retry", "pushover.expire", "pushover.device":
+		if err := applyPushoverOption(&cfg.Pushover, strings.TrimPrefix(key, "pushover."), value); err != nil {
+			return err
+		}
 	case "herdr.session":
 		cfg.Herdr.Session = value
 	case "send.via":
@@ -851,6 +877,10 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 		if shared {
 			if strings.HasPrefix(value.key, "listen") {
 				return fmt.Errorf("config %s:%d: listen is personal configuration; use user config, .git/tell.yaml, or --config", path, value.line)
+			}
+			// Pushover settings name credentials and page a personal device.
+			if strings.HasPrefix(value.key, "pushover.") {
+				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .git/tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
 			}
 			switch value.key {
 			case "secrets.policy", "notify.command", "notify.desktop.on_click":

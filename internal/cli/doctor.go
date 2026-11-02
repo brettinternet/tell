@@ -146,6 +146,10 @@ func humanReason(route, reason, fallback string) string {
 			return "the configured Shoutrrr URLs environment variable is unset or empty; set it or choose another route"
 		}
 		return "the configured Apprise URLs environment variable is unset or empty; set it or choose another route"
+	case "missing_credentials":
+		return "set the variables named by pushover.token_env and pushover.user_env; readiness is local only, not authentication"
+	case "invalid_credentials":
+		return "the Pushover token or user key variable is not a 30-character key; check the variables named by pushover.token_env and pushover.user_env"
 	case "invalid_config":
 		if route == "shoutrrr" {
 			return "the Shoutrrr URLs could not be parsed or name an unknown service; check the variable's value"

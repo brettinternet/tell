@@ -16,13 +16,15 @@ import (
 )
 
 // Result describes dispatch. Only the alert route sets Acknowledged, after an
-// explicit local click. It never contains input text.
+// explicit local click; only an emergency Pushover step sets Receipt, which is
+// data for the caller, never diagnostics. It never contains input text.
 type Result struct {
 	SchemaVersion int       `json:"schema_version"`
 	Redactions    int       `json:"redactions"`
 	Outcome       string    `json:"outcome"`
 	Route         string    `json:"route"`
 	Acknowledged  bool      `json:"acknowledged,omitempty"`
+	Receipt       string    `json:"receipt,omitempty"`
 	Recipient     string    `json:"recipient,omitempty"`
 	Intent        string    `json:"intent,omitempty"`
 	Attempts      []Attempt `json:"attempts,omitempty"`
@@ -73,7 +75,12 @@ func (r *Result) ExitCode() int {
 	}
 }
 
-type Message struct{ Title, Body, Type string }
+// Message is the text every route receives. PushoverTag and PushoverCallback
+// are per-call emergency options, not message text; only Pushover uses them.
+type Message struct {
+	Title, Body, Type             string
+	PushoverTag, PushoverCallback string
+}
 
 func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.Writer) *Result {
 	ctx = childContext(ctx, cfg)
@@ -258,6 +265,8 @@ func notifyStep(ctx context.Context, cfg config.Config, step config.NotifyStep, 
 		return notifyShoutrrr(ctx, timeout, step.UrlsEnv, message)
 	case "imessage":
 		return notifyIMessage(ctx, timeout, step.To, message, runtime.GOOS)
+	case "pushover":
+		return notifyPushover(ctx, timeout, step.Pushover, message)
 	case "herdr":
 		return notifyHerdr(ctx, timeout, cfg.Herdr.Session, message)
 	case "desktop":

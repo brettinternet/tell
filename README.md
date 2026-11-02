@@ -5,7 +5,7 @@
 Send one notification to a person, or one message to an agent, then exit.
 
 ```sh
-tell notify "Build finished"                               # person: stderr, desktop, alert, Apprise, Shoutrrr, iMessage, Herdr, or your command
+tell notify "Build finished"                               # person: stderr, desktop, alert, Apprise, Shoutrrr, Pushover, iMessage, Herdr, or your command
 tell send --intent request "Triage PRs; report blockers"   # agent: hcom mailbox or idle Herdr pane
 tell listen slack github                                   # foreground: route Slack/GitHub events to actions
 ```
@@ -48,6 +48,7 @@ Optional routes need their own executable on PATH:
 | alert | `osascript` (macOS) or `notify-send` 0.7.10+ and `gdbus` (Linux) |
 | apprise | `apprise` and its own config |
 | shoutrrr | nothing (built in); URLs in an env var you name |
+| pushover | nothing (built in); token and user key in env vars you name |
 | imessage | macOS Messages signed in to iMessage; `osascript` |
 | herdr | `herdr` and a running session |
 | hcom | `hcom` and a participating recipient |
@@ -160,6 +161,7 @@ See [configuration](docs/configuration.md) for every key and flag, and
 | alert | `tell notify --via alert "Disk full"` (waits up to 2m for Acknowledge; exits 0 only if clicked) |
 | apprise | `tell notify --via apprise --apprise-tag phone "Done"` |
 | shoutrrr | `PHONE_URLS='ntfy://ntfy.sh/topic' tell notify --via shoutrrr --shoutrrr-urls-env PHONE_URLS "Done"` |
+| pushover | `tell --json notify --via pushover --pushover-tag inc-1 "Disk full"` (emergency priority returns a `receipt`) |
 | imessage | `tell notify --via imessage --imessage-to +15551234567 "Done"` |
 | herdr | `tell notify --via herdr --herdr-session work "Done"` |
 | command | `tell notify --via command "Done"` |
@@ -180,6 +182,25 @@ notify:
 # also gets TELL_TITLE, TELL_TYPE, TELL_PROJECT
 exec /usr/bin/say -f -
 ```
+
+### Pushover receipts
+
+The `pushover` route calls the Pushover API directly. Its token and user key
+stay in environment variables named in personal config (never shared
+`tell.yaml`):
+
+```yaml
+pushover: {token_env: PUSHOVER_TOKEN, user_env: PUSHOVER_USER, priority: emergency, retry: 2m, expire: 1h}
+```
+
+```sh
+tell --json notify --via pushover --pushover-tag inc-1 "Disk full"   # {"outcome":"accepted","receipt":"…",…}
+tell pushover status RECEIPT     # one request; exit 0 acknowledged, 3 not yet
+tell pushover cancel --tag inc-1 # stop the repeating alert
+```
+
+Emergency alerts repeat on the phone until acknowledged or expired; Tell never
+waits or polls. See [escalation](examples/escalate/README.md).
 
 ### Ordered notify fallback
 
@@ -209,7 +230,7 @@ single route. `send` has no fallback: two agents doing the same work is worse
 than none. Details: [fallback](docs/design.md#notify-fallback-cascades),
 [examples](examples/fallback/README.md), [desktop](docs/design.md#desktop-delivery),
 [alert](docs/design.md#alert-delivery),
-[Herdr](docs/design.md#herdr-delivery), [command](docs/design.md#command-delivery),
+[Pushover](docs/design.md#pushover-delivery), [Herdr](docs/design.md#herdr-delivery), [command](docs/design.md#command-delivery),
 [escalation](examples/escalate/README.md).
 
 ## Agent messages

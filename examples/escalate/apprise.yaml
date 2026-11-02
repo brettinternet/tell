@@ -1,9 +1,0 @@
-# ~/.config/apprise/escalate.yaml: Apprise's own config. Tell never reads it.
-# Replace the placeholders; keep this file private (chmod 600).
-version: 1
-urls:
-  # Pushover emergency: repeats every 120s until you acknowledge it in the
-  # Pushover app, or for 3600s. Apprise calls the repeat setting "interval"
-  # (minimum 30), not "retry"; expire is 0-10800 seconds.
-  - pover://CHANGE-ME-user-key@CHANGE-ME-app-token?priority=emergency&interval=120&expire=3600:
-      - tag: escalate

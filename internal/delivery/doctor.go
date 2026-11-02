@@ -56,6 +56,7 @@ func Doctor(ctx context.Context, cfg config.Config) []Readiness {
 		{"apprise", cfg.Apprise.Config != "" || cfg.Apprise.Tag != "" || cfg.Apprise.Format != ""},
 		{"shoutrrr", cfg.Shoutrrr.UrlsEnv != ""},
 		{"imessage", cfg.IMessage.To != ""},
+		{"pushover", cfg.Pushover != config.Pushover{}},
 		{"herdr", cfg.Herdr.Session != ""},
 		{"command", len(cfg.Notify.Command) > 0},
 	} {
@@ -82,6 +83,9 @@ func checkNotifyStep(ctx context.Context, cfg config.Config, step config.NotifyS
 	}
 	if step.Via == "herdr" {
 		cfg.Herdr.Session = step.Session
+	}
+	if step.Via == "pushover" {
+		cfg.Pushover = step.Pushover
 	}
 	return checkRouteWithEnv(ctx, cfg, step.Via, platform, step.UrlsEnv)
 }
@@ -125,6 +129,9 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 		}
 		_ = sender.Close()
 		return finish("ready")
+	case "pushover":
+		// Credentials only; readiness never contacts Pushover.
+		return finish(PushoverReadiness(cfg.Pushover))
 	case "imessage":
 		timeout, _ := time.ParseDuration(cfg.Timeout)
 		return finish(checkIMessage(ctx, timeout, platform))

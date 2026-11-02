@@ -1,10 +1,11 @@
 # ~/.config/tell/critical.yaml: use with tell --config for alerts that must be
-# acknowledged. Relative paths resolve from this file.
+# acknowledged. The variables hold the Pushover app token and user key.
 version: 1
 notify:
-  via:
-    - apprise: {tag: oncall}     # team on-call service, if apprise.yaml has one
-    - apprise: {tag: escalate}   # Pushover emergency: repeats until acknowledged
-  fallback_on: [not_sent]
-apprise:
-  config: ../apprise/escalate.yaml
+  via: pushover
+pushover:
+  token_env: PUSHOVER_TOKEN
+  user_env: PUSHOVER_USER
+  priority: emergency   # repeats until acknowledged in the app or expired
+  retry: 2m             # at least 30s
+  expire: 1h            # at most 3h

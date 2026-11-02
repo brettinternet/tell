@@ -10,6 +10,10 @@ apprise:
 # Built-in alternative to Apprise; the variable holds the Shoutrrr URLs.
 # shoutrrr:
 #   urls_env: SHOUTRRR_URLS
+# Direct Pushover; the variables hold the app token and user key.
+# pushover:
+#   token_env: PUSHOVER_TOKEN
+#   user_env: PUSHOVER_USER
 # macOS Messages; one E.164 number or Apple ID email.
 # imessage:
 #   to: "+15551234567"

@@ -52,7 +52,7 @@ Origins are `default`, a file path, `env NAME`, or `flag --name`.
 These fields choose destinations, so shared `tell.yaml` rejects them even if a
 higher layer overrides them: `notify.via`, `notify.fallback_on`,
 `notify.fallback_notice`, `notify.command`, `notify.desktop.on_click`, `apprise.config`,
-`shoutrrr.urls_env`, `imessage.to`, `herdr.session`, `send.via`, `send.to`, `send.from`, `secrets.policy`, `mcp.agent_targets`, and
+`shoutrrr.urls_env`, the whole `pushover` block, `imessage.to`, `herdr.session`, `send.via`, `send.to`, `send.from`, `secrets.policy`, `mcp.agent_targets`, and
 the whole `listen` block.
 
 ```console
@@ -133,6 +133,7 @@ does not change the project; no repository code runs.
 | `apprise.tag` | — | `TELL_APPRISE_TAG` | `--apprise-tag` |
 | `apprise.format` | — | `TELL_APPRISE_FORMAT` | `--apprise-format` |
 | `shoutrrr.urls_env` | — | `TELL_SHOUTRRR_URLS_ENV` | `--shoutrrr-urls-env` |
+| `pushover.token_env`, `.user_env`, `.priority`, `.retry`, `.expire`, `.device` | — | — | — |
 | `imessage.to` | — | `TELL_IMESSAGE_TO` | `--imessage-to` |
 | `herdr.session` | — | `TELL_HERDR_SESSION` | `--herdr-session` |
 | `send.via` | — | `TELL_SEND_VIA` | `--send-via` |
@@ -166,7 +167,7 @@ send:
 | Field | Accepts |
 | --- | --- |
 | `timeout` | positive Go duration (`0s` refused) |
-| `notify.via` | `stderr`, `desktop`, `alert`, `apprise`, `shoutrrr`, `imessage`, `command`, `herdr`, or a nonempty list of those names, `apprise: {config, tag, format, urls_env}`, `shoutrrr: {urls_env}`, `imessage: {to}`, `herdr: {session}`, and `alert: {wait}` steps (positive Go duration, default `2m`) |
+| `notify.via` | `stderr`, `desktop`, `alert`, `apprise`, `shoutrrr`, `pushover`, `imessage`, `command`, `herdr`, or a nonempty list of those names, `apprise: {config, tag, format, urls_env}`, `shoutrrr: {urls_env}`, `pushover: {token_env, user_env, priority, retry, expire, device}`, `imessage: {to}`, `herdr: {session}`, and `alert: {wait}` steps (positive Go duration, default `2m`) |
 | `notify.fallback_on` | nonempty subset of `not_sent`, `failed`; cascade only |
 | `notify.fallback_notice` | `none` or `title` (prefix later titles with the first step's label and reason); cascade only |
 | `notify.command` | nonempty argv list; nonblank executable; no NUL |
@@ -176,6 +177,10 @@ send:
 | `apprise.tag` | one Apprise tag expression |
 | `apprise.format` | `text`, `markdown`, `html` |
 | `shoutrrr.urls_env` | environment variable name; required for the `shoutrrr` route unless each step sets `urls_env` |
+| `pushover.token_env`, `pushover.user_env` | environment variable names holding the app token and user/group key; required for the `pushover` route unless each step sets them |
+| `pushover.priority` | `lowest`, `low`, `normal`, `high`, `emergency`; default is Pushover's normal |
+| `pushover.retry`, `pushover.expire` | whole-second Go durations, required for `emergency`: retry ≥ `30s`, expire ≤ `3h` |
+| `pushover.device` | comma-separated device names; default all devices |
 | `imessage.to` | one E.164 phone number (`+15551234567`) or Apple ID email; required for the `imessage` route unless each step sets `to` |
 | `herdr.session` | existing session name; `default` for the default session |
 | `send.via` | `hcom` or `herdr`; no default |
@@ -201,13 +206,21 @@ overrides `shoutrrr.urls_env`. Tell reads it at send time and never prints it;
 unset or empty is `not_sent/missing_urls`, and an unparsable URL or unknown
 service is `not_sent/invalid_config`.
 
+Pushover is the one route whose credentials Tell reads, because the receipt
+and cancel-by-tag API need a direct call ([why](design.md#pushover-delivery)).
+Only the variable names appear in config, and only in personal files; a
+step's options override the top-level `pushover` block. Unset or empty
+variables are `not_sent/invalid_config`; doctor reports `missing_credentials`
+or `invalid_credentials` (not 30 letters and digits).
+
 iMessage `to` is the recipient handle; a step's value overrides `imessage.to`.
 It is personal routing, so shared `tell.yaml` rejects it, and a missing or
 malformed handle is a config error before Messages runs. Diagnostics never
 print it.
 
 Omit optional keys rather than setting them empty (`send.to` excepted).
-Provider URLs and credentials are never accepted; keep them with the provider.
+Provider URLs and credentials are never accepted; keep them with the provider
+(Pushover keeps them in environment variables you name).
 Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
 (use `send.to`, `TELL_SEND_TO`).
 
@@ -216,7 +229,8 @@ Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
 | Scope | Flags |
 | --- | --- |
 | global (before the command) | `-C`/`--project`, `-c`/`--config`, `-j`/`--json`, `--no-color`, `--timeout`, `-h`, `-v` |
-| `notify` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`, `-n`/`--type` |
+| `notify` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`, `-n`/`--type`, `--pushover-tag`, `--pushover-callback` |
+| `pushover` | `status RECEIPT`; `cancel --tag TAG`; bare inspects only |
 | `send` | `--send-via`, `--to`, `--from`, `--herdr-session`, `-i`/`--intent` |
 | `targets` | `--send-via`, `--herdr-session` |
 | `doctor`, `config [show\|check]`, `mcp` | every setting flag above |
@@ -232,6 +246,10 @@ tell send --intent request "Triage PRs"                  # inform (default) | re
 tell send --send-via herdr --to reviewer "..."           # --via is notify-only
 tell --via desktop doctor                                # rejected: routing flag before command
 ```
+
+`--pushover-tag TAG` and `--pushover-callback URL` apply only to an effective
+`pushover` step with `priority: emergency`; otherwise they are usage errors
+(exit 2). Tell passes the callback URL literally and never prints it.
 
 No message arguments is a usage error (exit 2), even with piped stdin. A `-`
 among other words is literal. Empty messages are refused. Desktop, Herdr, and
@@ -254,7 +272,7 @@ $ tell --json doctor
 ```
 
 It checks each selected notify step, other explicitly configured routes
-(Apprise settings, `shoutrrr.urls_env`, `imessage.to`, `herdr.session`, `notify.command`), and the send route when
+(Apprise settings, `shoutrrr.urls_env`, `pushover`, `imessage.to`, `herdr.session`, `notify.command`), and the send route when
 `send.via`/`send.to` are set. Defaults alone add nothing; use
 `tell doctor --via desktop` to check desktop.
 
@@ -266,6 +284,7 @@ It checks each selected notify step, other explicitly configured routes
 | command | executable resolves; never run | interpreter, its config |
 | apprise | `apprise --dry-run` matches ≥1 service | credentials, reachability |
 | shoutrrr | URL variable is set and every URL parses to a known service | credentials, reachability |
+| pushover | token and user key variables are set and 30 letters and digits; no network | that Pushover accepts them |
 | imessage | macOS, `osascript`, an enabled iMessage account, Automation allowed (reads accounts; may open Messages) | recipient reachability |
 | herdr | `herdr session list --json` shows the session running | — |
 | send/hcom | `hcom list --json` has one exact active name | — |

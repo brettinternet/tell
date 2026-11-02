@@ -36,7 +36,8 @@ plugin registry.
 
 `notify` asks a person for attention. stderr (the default) keeps stdout and
 `--json` clean; desktop and Herdr need no extra runtime; Apprise fans out to
-services; Shoutrrr fans out in-process with no extra runtime; iMessage texts a
+services; Shoutrrr fans out in-process with no extra runtime; Pushover calls its API
+directly and returns emergency receipts; iMessage texts a
 phone through macOS Messages; command runs one personal executable.
 
 `send` gives one existing agent information (`--intent inform`) or an
@@ -98,13 +99,16 @@ Tell sends once and keeps no state, so repeat-until-acknowledged escalation
 belongs to the provider or the scheduler. See
 [examples/escalate](../examples/escalate/README.md).
 
-A final Apprise step that selects a Pushover `priority=emergency` URL makes
-Pushover repeat the alert until it is acknowledged in the app or expires;
-PagerDuty and Opsgenie through Apprise work the same way. `accepted` means the
-provider accepted the alert, not that anyone acknowledged it; Tell does not
-poll receipts. Use Apprise, not Shoutrrr, for this: Shoutrrr `v0.22.1` drops
-`priority=2` and sends a normal Pushover notification that still reports
-`accepted`.
+A `pushover` step with `priority: emergency` makes Pushover repeat the alert
+until it is acknowledged in the app or expires; PagerDuty and Opsgenie through
+Apprise work the same way. `accepted` means the provider accepted the alert,
+not that anyone acknowledged it. The direct route returns the receipt, so a
+later tier can ask once (`tell pushover status`) whether it was acknowledged,
+and acknowledgement can stop the repeats (`tell pushover cancel --tag`). Tell
+never polls or waits. Shoutrrr and Apprise cannot do this: Shoutrrr's
+`Send` returns only errors (and `v0.22.1` drops `priority=2`, sending a normal
+notification that still reports `accepted`), and the Apprise CLI prints no
+provider response, so neither can expose a receipt.
 
 Timed tiers spread separate calls over time. Schedule every later tier before
 waiting on anything, and let acknowledgement cancel them: if the raising
@@ -117,7 +121,9 @@ cancel it by a name derived from the incident, and not duplicate a re-raised
 incident. Noon temporary jobs meet this, as do `systemd-run --on-active` units.
 Tell never calls or reads a scheduler: each tier is one `tell notify`, and
 acknowledgement is a user command (`ack.sh`). Without a scheduler, a
-provider-native step (Pushover emergency, PagerDuty) is the single tier.
+provider-native step (Pushover emergency, PagerDuty) is the single tier. A
+later tier may guard itself with `tell pushover status RECEIPT` (exit 0 when
+acknowledged in the app); the caller stores the receipt, not Tell.
 
 | Case | Behavior |
 | --- | --- |
@@ -209,7 +215,8 @@ Reasons: `missing_executable`, `start_failed`, `unsupported_route`,
 `no_match`, `busy`, `blocked`, `disabled`, `rate_limited`,
 `no_foreground_client`, `not_shown`, `partial`, `provider_failure`, `timeout`,
 `cancelled`, `secret_detected`, `secret_scan_failed`. Results never include the
-body or provider output; unknown provider exits are `failed`.
+body or provider output; unknown provider exits are `failed`. Accepted
+emergency Pushover results add `receipt`, the only provider value Tell returns.
 
 - Cancellation before the provider starts, or while reading stdin, is `config`.
 - The stderr route writes to stderr even with `--json`; a write error is `failed`.
@@ -372,6 +379,43 @@ Tell never prints library text: results carry fixed messages and fixed hints
 (TLS or connection error) chosen by error type, and all library logging is
 discarded. `tell doctor --via shoutrrr` parses the URLs without connecting or
 sending.
+
+## Pushover delivery
+
+`pushover` posts one message to the Pushover API in-process. It is the one
+route whose credentials Tell reads: the receipt and cancel-by-tag API need the
+app token, and no generic library returns the receipt. `pushover.token_env`
+and `pushover.user_env` name variables holding the token and user key; the
+names may appear only in personal config, never in shared `tell.yaml`. The
+title (≤250 characters) and body (≤1024 characters, truncated with a marker)
+are sent; `--type` is not mapped to priority.
+
+`priority: emergency` also sends `retry` and `expire` in seconds, and per-call
+`--pushover-tag` and `--pushover-callback` (passed literally). `--json` then
+includes `receipt`. Other priorities send none of these and return no receipt.
+
+| Condition | Tell outcome |
+| --- | --- |
+| HTTP 200, `status: 1` | accepted (+ `receipt` for emergency) |
+| variable unset, empty, or not a 30-character key | not_sent/invalid_config |
+| HTTP 429 | not_sent/rate_limited |
+| other HTTP 4xx (rejected token, user, or option) | not_sent/invalid_config |
+| connection failed before the request was written | not_sent/start_failed |
+| HTTP 5xx | failed/provider_failure |
+| timeout or cancel after the request was written | uncertain/timeout or cancelled |
+| unreadable response, or emergency without a receipt | uncertain/invalid_response |
+
+`tell pushover status RECEIPT` and `tell pushover cancel --tag TAG` each make
+one request with the token from the first effective emergency `pushover`
+step (else the first `pushover` step, else the top-level block) and map failures the same way. `status` prints
+`acknowledged`, `expired`, or `not acknowledged` and exits 0 only when
+acknowledged, 3 otherwise. Bare `tell pushover` shows help and local
+readiness, like `tell doctor --via pushover`; neither contacts Pushover.
+
+net/http errors embed request URLs, and a receipt lookup carries the token in
+its query, so results carry only fixed messages. Diagnostics never include the
+token, user key, receipt, callback URL, or body; the receipt appears only as
+`--json` data on stdout. Redirects are not followed.
 
 ## iMessage delivery
 

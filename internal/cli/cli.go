@@ -44,7 +44,7 @@ type settingSpec struct{ key, flag, env, usage string }
 
 var settings = []settingSpec{
 	{"timeout", "timeout", "TELL_TIMEOUT", "Wait up to a positive Go `duration`, such as 5s or 1m (default: 10s)"},
-	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification `route`: stderr, desktop, alert, apprise, shoutrrr, imessage, command, herdr (default: stderr)"},
+	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification `route`: stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, command, herdr (default: stderr)"},
 	{"apprise.config", "apprise-config", "TELL_APPRISE_CONFIG", "Local Apprise config `file`; Tell does not read it (default: Apprise discovery)"},
 	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag `expression` (default: no tag filter)"},
 	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body `format`: text, markdown, html (default: provider setting)"},
@@ -82,6 +82,8 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 				Flags: []urfave.Flag{
 					&urfave.StringFlag{Name: "title", Aliases: []string{"t"}, Usage: "Notification `title` (default: project directory name)"},
 					&urfave.StringFlag{Name: "type", Aliases: []string{"n"}, Value: "info", DefaultText: "info", Usage: "Notification `type`: info, success, warning, failure"},
+					&urfave.StringFlag{Name: "pushover-tag", Usage: "Tag an emergency Pushover alert so pushover cancel --tag can stop it (`tag`)"},
+					&urfave.StringFlag{Name: "pushover-callback", Usage: "`URL` Pushover calls when an emergency alert is acknowledged"},
 				}, Action: notify},
 			{Name: "send", Usage: "Send a message to an existing agent", ArgsUsage: "MESSAGE... | -",
 				Description: "Use a configured recipient, or select one with --to. The recipient must already exist.\nJoin message words with spaces, or use a lone - to read stdin.\n\nExamples (with a participating hcom agent named reviewer):\n  tell send --send-via hcom --to reviewer Tests passed\n  tell send --send-via hcom --to reviewer --intent request Review the changes",
@@ -102,6 +104,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 					&urfave.BoolFlag{Name: "user", Aliases: []string{"u"}, Usage: "Create personal user config instead"},
 					&urfave.BoolFlag{Name: "local", Aliases: []string{"l"}, Usage: "Create personal .git/tell.yaml for this repository and its worktrees instead"},
 				}, Action: initialize},
+			pushoverCommand(),
 			{Name: "mcp", Usage: "Serve notify, send, and doctor as MCP tools over stdio", Action: mcpCommand(build.Version)},
 		},
 	}
@@ -166,6 +169,10 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 		var listenerError *listenerFailure
 		if errors.As(err, &listenerError) {
 			return 1
+		}
+		var status exitStatus
+		if errors.As(err, &status) {
+			return int(status)
 		}
 		plain := jsonRequested(root, args) || boolRequested(root, args, "no-color") || commandRequested(root, args, "mcp") || commandRequested(root, args, "completion")
 		style := newOutputStyle(errOut, plain)
