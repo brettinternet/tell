@@ -88,13 +88,10 @@ func send(ctx context.Context, cfg config.Config, body, intent, source, eventID 
 // report it as such rather than as uncertain delivery.
 func probeSend(ctx context.Context, cfg config.Config) (string, *Result) {
 	target, failure := probeTarget(ctx, cfg)
-	if failure == nil || failure.Outcome != "uncertain" {
-		return target, failure
+	if failure == nil {
+		return target, nil
 	}
-	if failure.Failure.Reason == "cancelled" {
-		return "", NewResult(failure.Route, "config", "cancelled", "send cancelled before delivery")
-	}
-	return "", NewResult(failure.Route, "not_sent", failure.Failure.Reason, "recipient check did not complete; nothing was sent")
+	return "", readOnlyFailure(failure, "send cancelled before delivery", "recipient check did not complete; nothing was sent")
 }
 
 // probeTarget: hcom requires an exact listed active name; Herdr requires
@@ -160,11 +157,17 @@ type herdrResponse struct {
 		Code string `json:"code"`
 	} `json:"error"`
 	Result *struct {
-		Agent *struct {
-			Status string `json:"agent_status"`
-			PaneID string `json:"pane_id"`
-		} `json:"agent"`
+		Agent  *herdrAgentState   `json:"agent"`
+		Agents *[]herdrAgentState `json:"agents"`
 	} `json:"result"`
+}
+
+// Decode only fields Tell uses; titles, paths, and session details stay unread.
+type herdrAgentState struct {
+	Name   string `json:"name"`
+	Kind   string `json:"agent"`
+	Status string `json:"agent_status"`
+	PaneID string `json:"pane_id"`
 }
 
 func herdrAgent(ctx context.Context, cfg config.Config, args []string) (herdrResponse, *Result) {

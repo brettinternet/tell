@@ -88,6 +88,8 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 				Flags: []urfave.Flag{
 					&urfave.StringFlag{Name: "intent", Aliases: []string{"i"}, Value: "inform", DefaultText: "inform", Usage: "Message `intent`: inform or request"},
 				}, Action: send},
+			{Name: "targets", Usage: "List recipients the configured send route accepts, without sending",
+				Description: "Read-only. send still requires one explicit recipient: copy a TO value into send.to or --to.\n\nExamples:\n  tell targets --send-via herdr --herdr-session default\n  tell --json targets --send-via hcom", Action: targets},
 			{Name: "doctor", Usage: "Check route readiness without sending or starting services",
 				Description: "Only the selected routes decide the exit code.\n\nExamples:\n  tell doctor\n  tell doctor --via desktop\n  tell --json doctor --via stderr", Action: doctor},
 			{Name: "config", Usage: "Show settings and where they came from",
@@ -113,6 +115,8 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 				include = strings.HasPrefix(spec.key, "notify.") || strings.HasPrefix(spec.key, "apprise.") || strings.HasPrefix(spec.key, "shoutrrr.") || spec.key == "imessage.to" || spec.key == "herdr.session"
 			case "send":
 				include = strings.HasPrefix(spec.key, "send.") || spec.key == "herdr.session"
+			case "targets":
+				include = spec.key == "send.via" || spec.key == "herdr.session"
 			case "doctor", "config", "mcp":
 				include = spec.key != "timeout"
 			}
@@ -168,6 +172,10 @@ func Run(ctx context.Context, args []string, build config.BuildOpts, out, errOut
 		var report *doctorReport
 		if errors.As(err, &report) {
 			return report.render(root, args, out, errOut)
+		}
+		var listing *targetsReport
+		if errors.As(err, &listing) {
+			return listing.render(jsonRequested(root, args), out, errOut, style)
 		}
 		var outputError *resultWriteError
 		if errors.As(err, &outputError) {

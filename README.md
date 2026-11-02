@@ -229,6 +229,17 @@ tell send: route="" recipient="" intent="inform" outcome=not_sent reason=missing
 tell send: choose send.via in personal config, --send-via, or TELL_SEND_VIA (hcom or herdr)
 ```
 
+To pick `send.to`, list the recipients the configured route accepts. `targets`
+is read-only and never chooses for you; `send` still needs one explicit
+recipient. Unnamed Herdr agents are listed by pane ID.
+
+```console
+$ tell targets --send-via herdr --herdr-session default
+TO        KIND    STATUS   READY
+reviewer  claude  idle     yes
+w1:p2     pi      working  no
+```
+
 hcom queues for the agent's next hook. Herdr types a turn only into an idle
 agent, but the agent can start working between check and prompt; use hcom when
 interruption matters. Accepted means dispatched, not done.

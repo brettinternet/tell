@@ -54,7 +54,11 @@ func sendProvider(t *testing.T) string {
 if read -r input; then exit 92; fi
 if [ "$FIXTURE_PROBE_WAIT" = yes ]; then exec /bin/sleep 30; fi
 if [ "$*" = "session list --json" ]; then
- printf '{"sessions":[{"name":"work","running":true}]}'
+ printf '%s' "$FIXTURE_SESSIONS"
+ exit 0
+fi
+if [ "$FIXTURE_OVERSIZE" = yes ]; then
+ /usr/bin/head -c 1100000 /dev/zero | /usr/bin/tr '\000' ' '
  exit 0
 fi
 if [ "$1" = list ]; then
@@ -66,6 +70,10 @@ if [ "$1" = --session ]; then
  if /usr/bin/env | /usr/bin/grep '^HERDR_' >/dev/null; then exit 94; fi
  if [ "$4" = get ]; then
   printf '%s' "$FIXTURE_AGENT"
+  exit 0
+ fi
+ if [ "$4" = list ]; then
+  printf '%s' "$FIXTURE_AGENT_LIST"
   exit 0
  fi
 fi
@@ -81,6 +89,7 @@ exit "${FIXTURE_EXIT:-0}"
 			t.Fatal(err)
 		}
 	}
+	t.Setenv("FIXTURE_SESSIONS", `{"sessions":[{"name":"work","running":true}]}`)
 	t.Setenv("FIXTURE_AGENTS", `[{"name":"reviewer","status":"listening"}]`)
 	t.Setenv("FIXTURE_AGENT", `{"result":{"agent":{"agent_status":"idle","pane_id":"w1:p2"}}}`)
 	t.Setenv("FIXTURE_RESPONSE", `{"result":{"type":"agent_prompted"}}`)
@@ -360,6 +369,86 @@ func TestSendReadinessAndPreparation(t *testing.T) {
 			sent, _ := os.ReadFile(record + ".sent")
 			if result.Redactions == 0 || strings.Contains(string(sent), token) || strings.Contains(string(sent), "\x1b") || !strings.Contains(string(sent), "Tell automation: nightly") {
 				t.Fatalf("preparation: %s", out)
+			}
+		})
+	}
+}
+
+// targets must list only values send accepts, never prompt or send, and never
+// pass titles, session paths, or other provider fields through.
+func TestTargetsReadOnly(t *testing.T) {
+	private := `"title":"private-title","terminal_title":"private-title","cwd":"/private/path","agent_session":{"kind":"path","value":"/private/session.jsonl"}`
+	for _, tc := range []struct {
+		route, fixture, list string
+		want                 []delivery.Target
+	}{
+		{"herdr", "FIXTURE_AGENT_LIST", `{"result":{"agents":[` +
+			`{"name":"reviewer","agent":"claude","agent_status":"idle","pane_id":"w1:p1",` + private + `},` +
+			`{"agent":"pi","agent_status":"working","pane_id":"w1:p2",` + private + `},` +
+			`{"name":"bad name","agent":"Private Kind","agent_status":"blocked","pane_id":"w1:p3"},` +
+			`{"agent":"codex","agent_status":"private-state","pane_id":"w1:p4"},` +
+			`{"agent":"codex","agent_status":"done","pane_id":"/private/pane"}]}}`,
+			[]delivery.Target{{To: "reviewer", Kind: "claude", Status: "idle", Ready: true}, {To: "w1:p2", Kind: "pi", Status: "working"}, {To: "w1:p3", Kind: "unknown", Status: "blocked"}, {To: "w1:p4", Kind: "codex", Status: "unknown"}}},
+		{"hcom", "FIXTURE_AGENTS", `[{"name":"reviewer","status":"listening","tool":"claude","directory":"/private/path"},` +
+			`{"name":"twin","status":"active","tool":"codex"},{"name":"twin","status":"blocked","tool":"codex"},` +
+			`{"name":"gone","status":"inactive","tool":"claude"},{"name":"@private","status":"active"}]`,
+			[]delivery.Target{{To: "reviewer", Kind: "claude", Status: "listening", Ready: true}, {To: "twin", Kind: "codex", Status: "duplicate"}}},
+		{"herdr", "FIXTURE_AGENT_LIST", `{"result":{"agents":[]}}`, []delivery.Target{}},
+	} {
+		t.Run(tc.route, func(t *testing.T) {
+			environment(t)
+			record := sendProvider(t)
+			t.Setenv(tc.fixture, tc.list)
+			args := []string{"targets", "--send-via", tc.route, "--herdr-session", "work"}
+			code, out, diag := run(append([]string{"--json"}, args...)...)
+			decoder := json.NewDecoder(strings.NewReader(out))
+			var report struct {
+				SchemaVersion int               `json:"schema_version"`
+				Route         string            `json:"route"`
+				Targets       []delivery.Target `json:"targets"`
+			}
+			if code != 0 || diag != "" || decoder.Decode(&report) != nil || decoder.More() || report.SchemaVersion != 1 || report.Route != tc.route || !reflect.DeepEqual(report.Targets, tc.want) {
+				t.Fatalf("%d %q %q", code, out, diag)
+			}
+			humanCode, human, humanDiag := run(args...)
+			if humanCode != 0 || humanDiag != "" || (len(tc.want) == 0) != strings.HasPrefix(human, "No ") {
+				t.Fatalf("human: %d %q %q", humanCode, human, humanDiag)
+			}
+			if strings.Contains(out+human, "private") || strings.Contains(out+human, "raw-provider-output") {
+				t.Fatalf("leaked provider fields: %s %s", out, human)
+			}
+			if _, err := os.Stat(record + ".sent"); !os.IsNotExist(err) {
+				t.Fatal("targets sent or prompted")
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name, route, outcome, reason string
+		setup                        func(t *testing.T)
+	}{
+		{"missing-executable", "herdr", "not_sent", "missing_executable", func(t *testing.T) { t.Setenv("PATH", t.TempDir()) }},
+		{"missing-executable", "hcom", "not_sent", "missing_executable", func(t *testing.T) { t.Setenv("PATH", t.TempDir()) }},
+		{"stopped-session", "herdr", "not_sent", "session_not_running", func(t *testing.T) {
+			t.Setenv("FIXTURE_SESSIONS", `{"sessions":[{"name":"work","running":false}]}`)
+		}},
+		{"timeout", "herdr", "not_sent", "timeout", func(t *testing.T) { t.Setenv("FIXTURE_PROBE_WAIT", "yes") }},
+		{"timeout", "hcom", "not_sent", "timeout", func(t *testing.T) { t.Setenv("FIXTURE_PROBE_WAIT", "yes") }},
+		{"malformed", "herdr", "not_sent", "invalid_response", func(t *testing.T) { t.Setenv("FIXTURE_AGENT_LIST", `{"result":{}}`) }},
+		{"malformed", "hcom", "not_sent", "invalid_response", func(t *testing.T) { t.Setenv("FIXTURE_AGENTS", `{"private":true}`) }},
+		{"oversized", "herdr", "not_sent", "invalid_response", func(t *testing.T) { t.Setenv("FIXTURE_OVERSIZE", "yes") }},
+		{"oversized", "hcom", "not_sent", "invalid_response", func(t *testing.T) { t.Setenv("FIXTURE_OVERSIZE", "yes") }},
+	} {
+		t.Run(tc.route+"-"+tc.name, func(t *testing.T) {
+			environment(t)
+			record := sendProvider(t)
+			tc.setup(t)
+			code, out, diag := run("--json", "--timeout", "150ms", "targets", "--send-via", tc.route, "--herdr-session", "work")
+			assertResult(t, code, out, diag, tc.route, tc.outcome, tc.reason)
+			if diag != "" {
+				t.Fatalf("diagnostics: %q", diag)
+			}
+			if _, err := os.Stat(record + ".sent"); !os.IsNotExist(err) {
+				t.Fatal("targets sent or prompted")
 			}
 		})
 	}

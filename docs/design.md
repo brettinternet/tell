@@ -11,6 +11,7 @@ person / script / scheduler hook / MCP client
          tell
           ├── notify → one route or an ordered fallback cascade
           ├── send   → hcom mailbox | idle Herdr agent pane
+          ├── targets → read-only list of send recipients
           ├── listen SOURCE → bounded run | notify | send actions
           └── mcp    → client-owned stdio: notify | send | doctor
 ```
@@ -43,6 +44,11 @@ instruction (`--intent request`) over one transport. It never falls through to
 another agent and never waits for a reply. Tracked agent work belongs to the
 scheduler's agent jobs (such as Noon's); ask-and-wait belongs to Unharness.
 Listener routes may only `inform`, because event authors are untrusted.
+
+`targets` lists recipients for the configured `send.via` only, never sending,
+prompting, or starting services. It never selects or defaults a recipient:
+`send` still requires one explicit `send.to`. See
+[recipient listing](#recipient-listing).
 
 ## Notify fallback cascades
 
@@ -470,6 +476,27 @@ herdr --session SESSION agent prompt PANE_ID MESSAGE
 
 **The check and prompt are not atomic**: the agent can start working between
 them. Use hcom when interruption matters.
+
+### Recipient listing
+
+```text
+hcom list --json                                  # hcom
+herdr --session SESSION session list --json       # Herdr: same check as doctor
+herdr --session SESSION agent list
+```
+
+Each row is the exact `send.to` value, the agent kind, a status, and whether
+send would accept it now. hcom lists active, listening, and blocked names
+(all ready); a name listed twice is `duplicate` and not ready. Herdr lists the
+agent name, or the pane ID for an unnamed agent; only `idle` and `done` are
+ready, and `working`, `blocked`, or `unknown` are not. Only these fields are
+read; titles, working directories, session paths, and other provider fields are
+never printed. Kinds that are not short identifiers print as `unknown`.
+
+Failures match `send` and `doctor` (missing executable, `missing_session`,
+`session_not_running`, `timeout`, `invalid_response` for malformed or
+oversized output) and exit as `not_sent`. A completed listing exits 0, even
+with no recipients; `--json` prints one schema_version 1 object.
 
 ## Scheduler hooks
 

@@ -1,7 +1,7 @@
 # Configuration
 
-Inspection (`tell`, `tell config`, `tell config check`, `tell doctor`) never
-sends a message.
+Inspection (`tell`, `tell config`, `tell config check`, `tell doctor`,
+`tell targets`) never sends a message.
 
 ## Sources
 
@@ -216,6 +216,7 @@ Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
 | global (before the command) | `-C`/`--project`, `-c`/`--config`, `-j`/`--json`, `--no-color`, `--timeout`, `-h`, `-v` |
 | `notify` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`, `-n`/`--type` |
 | `send` | `--send-via`, `--to`, `--from`, `--herdr-session`, `-i`/`--intent` |
+| `targets` | `--send-via`, `--herdr-session` |
 | `doctor`, `config [show\|check]`, `mcp` | every setting flag above |
 | `listen` | `--all`, `--print`, `--dry-run`; sources `slack`, `github` |
 | `init` | `-u`/`--user` or `-l`/`--local`; rejects `--config`, `--timeout`, and setting flags |
