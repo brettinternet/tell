@@ -161,6 +161,8 @@ func humanReason(route, reason, fallback string) string {
 		return "the agent is not idle or done; wait for it to finish before sending"
 	case "blocked":
 		return "the agent is blocked; resolve its blocker before sending"
+	case "permission_denied":
+		return "allow Tell in System Settings > Notifications, or remove ~/Applications/Tell.app to use osascript"
 	case "start_failed":
 		return "the provider executable could not start; check its permissions and setup"
 	default:
@@ -197,6 +199,12 @@ func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut i
 			}
 			if route.Presence != "" {
 				count = "; presence: " + route.Presence
+			}
+			if route.Provider != "" {
+				count += "; provider: " + route.Provider
+			}
+			if route.Permission != "" {
+				count += "; permission: " + route.Permission
 			}
 			routeName := route.Route
 			if route.Label != "" {

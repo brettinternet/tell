@@ -21,3 +21,6 @@ coverage.out
 
 # System
 .DS_Store
+
+# Task checksum cache
+/.task/

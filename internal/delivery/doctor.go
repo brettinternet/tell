@@ -24,6 +24,10 @@ type Readiness struct {
 	Reason   string `json:"reason"`
 	Services *int   `json:"services,omitempty"`
 	Presence string `json:"presence,omitempty"`
+	// Provider and Permission describe the desktop route's active provider and,
+	// for Tell.app, its notification authorization.
+	Provider   string `json:"provider,omitempty"`
+	Permission string `json:"permission,omitempty"`
 }
 
 // Doctor checks the selected route and routes with explicit configuration.
@@ -141,6 +145,12 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 		default:
 			return finish("unsupported_platform")
 		}
+		if route == "desktop" {
+			result.Provider = name
+			if helper := desktopHelper(platform); helper != "" {
+				name, result.Provider = helper, "tell-app"
+			}
+		}
 	case "herdr":
 		if cfg.Herdr.Session == "" {
 			return finish("missing_target")
@@ -166,6 +176,19 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 		}
 	}
 	if route == "desktop" || route == "alert" {
+		if result.Provider == "tell-app" {
+			// Reading notification settings never prompts or posts.
+			output := &probeOutput{}
+			code, failure := process(ctx, timeout, route, name, []string{"status"}, nil, herdrEnv(), output, nil)
+			result.Permission = "unknown"
+			if status := strings.TrimSpace(output.buffer.String()); failure == nil && code == 0 && !output.overflow &&
+				(status == "authorized" || status == "denied" || status == "not_determined" || status == "provisional") {
+				result.Permission = status
+			}
+			if result.Permission == "denied" {
+				return finish("permission_denied")
+			}
+		}
 		result.Presence = desktopPresence(ctx, timeout, platform)
 		if result.Presence == presenceLocked || result.Presence == presenceInactive {
 			return finish("unattended")

@@ -261,7 +261,7 @@ func notifyStep(ctx context.Context, cfg config.Config, step config.NotifyStep, 
 	case "herdr":
 		return notifyHerdr(ctx, timeout, cfg.Herdr.Session, message)
 	case "desktop":
-		return notifyDesktop(ctx, timeout, message, runtime.GOOS)
+		return notifyDesktop(ctx, timeout, message, runtime.GOOS, cfg.Notify.DesktopOnClick)
 	case "alert":
 		return notifyAlert(ctx, timeout, step.AlertWait(), message, runtime.GOOS)
 	case "apprise":

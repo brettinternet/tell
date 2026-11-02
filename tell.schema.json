@@ -33,6 +33,19 @@
           "minItems": 1,
           "items": [{ "type": "string", "pattern": "\\S", "not": { "pattern": "\u0000" } }],
           "additionalItems": { "type": "string", "not": { "pattern": "\u0000" } }
+        },
+        "desktop": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "on_click": {
+              "description": "Literal executable and arguments run when a Tell.app notification is clicked, replacing the default origin focus. Receives TELL_ORIGIN_* variables, never message text. Personal files only.",
+              "type": "array",
+              "minItems": 1,
+              "items": [{ "type": "string", "pattern": "\\S", "not": { "pattern": "\u0000" } }],
+              "additionalItems": { "type": "string", "not": { "pattern": "\u0000" } }
+            }
+          }
         }
       },
       "allOf": [

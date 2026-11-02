@@ -110,23 +110,23 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return err
 			}
 			*values = append(*values, fileValue{key: name, strings: fallback, line: value.Line})
-		case "notify", "apprise", "shoutrrr", "imessage", "herdr", "send", "secrets", "mcp":
+		case "notify", "notify.desktop", "apprise", "shoutrrr", "imessage", "herdr", "send", "secrets", "mcp":
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
 			}
-		case "notify.command":
+		case "notify.command", "notify.desktop.on_click":
 			if value.Kind != yaml.SequenceNode || value.Tag != "!!seq" || len(value.Content) == 0 {
-				return fmt.Errorf("line %d: notify.command must be a non-empty argv list", value.Line)
+				return fmt.Errorf("line %d: %s must be a non-empty argv list", value.Line, name)
 			}
 			argv := make([]string, len(value.Content))
 			for i, arg := range value.Content {
 				if arg.Kind != yaml.ScalarNode || arg.Tag != "!!str" || arg.Anchor != "" || strings.ContainsRune(arg.Value, 0) {
-					return fmt.Errorf("line %d: notify.command arguments must be strings without NUL, anchors, or aliases", arg.Line)
+					return fmt.Errorf("line %d: %s arguments must be strings without NUL, anchors, or aliases", arg.Line, name)
 				}
 				argv[i] = arg.Value
 			}
 			if strings.TrimSpace(argv[0]) == "" {
-				return fmt.Errorf("line %d: notify.command executable must not be empty", value.Line)
+				return fmt.Errorf("line %d: %s executable must not be empty", value.Line, name)
 			}
 			*values = append(*values, fileValue{key: name, argv: argv, line: value.Line})
 		case "listen.slack.app_token_env", "listen.github.secret_env", "listen.http.addr", "secrets.policy", "timeout", "notify.fallback_notice", "apprise.config", "apprise.tag", "apprise.format", "shoutrrr.urls_env", "imessage.to", "herdr.session", "send.via", "send.to", "send.from":

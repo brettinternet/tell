@@ -44,7 +44,7 @@ Optional routes need their own executable on PATH:
 | Route | Needs |
 | --- | --- |
 | stderr | nothing |
-| desktop | `osascript` (macOS) or `notify-send` + desktop D-Bus (Linux) |
+| desktop | `osascript` or Tell.app from `task macos:install` (macOS), or `notify-send` + desktop D-Bus (Linux) |
 | alert | `osascript` (macOS) or `notify-send` 0.7.10+ and `gdbus` (Linux) |
 | apprise | `apprise` and its own config |
 | shoutrrr | nothing (built in); URLs in an env var you name |
@@ -103,7 +103,7 @@ Check routes without sending:
 
 ```console
 $ tell doctor
-desktop (selected): ready; presence: attended
+desktop (selected): ready; presence: attended; provider: tell-app; permission: authorized
 apprise: not ready
   apprise was not found on PATH; install it or choose another route
 ```
@@ -156,7 +156,7 @@ See [configuration](docs/configuration.md) for every key and flag, and
 | Route | Example |
 | --- | --- |
 | stderr (default) | `tell notify "Done"` |
-| desktop | `tell notify --via desktop "Done"` (exits 3, `not_sent/unattended`, when the screen is locked) |
+| desktop | `tell notify --via desktop "Done"` (exits 3, `not_sent/unattended`, when the screen is locked; with Tell.app, a click returns to the [origin](docs/design.md#click-actions) terminal and Herdr tab) |
 | alert | `tell notify --via alert "Disk full"` (waits up to 2m for Acknowledge; exits 0 only if clicked) |
 | apprise | `tell notify --via apprise --apprise-tag phone "Done"` |
 | shoutrrr | `PHONE_URLS='ntfy://ntfy.sh/topic' tell notify --via shoutrrr --shoutrrr-urls-env PHONE_URLS "Done"` |

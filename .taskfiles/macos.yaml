@@ -1,0 +1,31 @@
+version: "3"
+
+vars:
+  SRC: macos/TellNotifier
+  APP: bin/Tell.app
+  ICONSET: bin/Tell.iconset
+  INSTALL: "{{.HOME}}/Applications/Tell.app"
+
+tasks:
+  build:
+    desc: Build the ad-hoc signed Tell.app notification helper (macOS)
+    platforms: [darwin]
+    sources: ["{{.SRC}}/**/*"]
+    generates: ["{{.APP}}/Contents/MacOS/Tell", "{{.APP}}/Contents/Resources/Tell.icns"]
+    cmds:
+      - mkdir -p "{{.APP}}/Contents/MacOS" "{{.APP}}/Contents/Resources" "{{.ICONSET}}"
+      - cp "{{.SRC}}/Info.plist" "{{.APP}}/Contents/Info.plist"
+      - xcrun swiftc -O -o "{{.APP}}/Contents/MacOS/Tell" "{{.SRC}}/main.swift"
+      - xcrun swift "{{.SRC}}/icon.swift" "{{.ICONSET}}/icon_512x512@2x.png"
+      - for s in 16 32 128 256 512; do sips -z $s $s "{{.ICONSET}}/icon_512x512@2x.png" --out "{{.ICONSET}}/icon_${s}x${s}.png" >/dev/null; d=$((s*2)); sips -z $d $d "{{.ICONSET}}/icon_512x512@2x.png" --out "{{.ICONSET}}/icon_${s}x${s}@2x.png" >/dev/null; done
+      - iconutil -c icns -o "{{.APP}}/Contents/Resources/Tell.icns" "{{.ICONSET}}"
+      - codesign --force --sign - "{{.APP}}"
+  install:
+    desc: Install Tell.app to ~/Applications and request notification permission (macOS)
+    platforms: [darwin]
+    deps: [build]
+    cmds:
+      - mkdir -p "{{.HOME}}/Applications"
+      - ditto "{{.APP}}" "{{.INSTALL}}"
+      - /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "{{.INSTALL}}"
+      - open "{{.INSTALL}}"

@@ -12,6 +12,7 @@ mise trust && mise exec -- task init   # pinned tools, Go modules, Lefthook hook
 | --- | --- |
 | `task cli:build` | build `bin/tell` |
 | `task cli:run -- --help` | run from source |
+| `task macos:install` | build Tell.app, install it to `~/Applications`, request notification permission |
 | `task check` | gofmt, vet, Staticcheck, changelog generation |
 | `task test` / `task race` | unit tests, with race detector |
 | `task smoke` | test the built binary in an isolated environment |

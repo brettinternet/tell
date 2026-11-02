@@ -376,10 +376,13 @@ func TestCommandConfig(t *testing.T) {
 		t.Fatalf("explicit argv: %+v %v", cfg, err)
 	}
 	input.File = nil
-	writeFile(t, shared, "notify: {command: [untrusted]}\n")
-	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal policy") {
-		t.Fatalf("accepted shared executable policy: %v", err)
+	for _, body := range []string{"notify: {command: [untrusted]}\n", "notify: {desktop: {on_click: [untrusted]}}\n"} {
+		writeFile(t, shared, body)
+		if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal policy") {
+			t.Fatalf("accepted shared executable policy %q: %v", body, err)
+		}
 	}
+	writeFile(t, shared, "notify: {command: [untrusted]}\n")
 	input.File = &shared
 	cfg, err = config.Load(input)
 	if err != nil || !reflect.DeepEqual(cfg.Notify.Command, []string{"untrusted"}) {

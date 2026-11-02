@@ -41,6 +41,9 @@ type Notify struct {
 	NoticeSet      bool         `json:"-"`
 	// Command is trusted personal argv, never exposed in inspection output.
 	Command []string `json:"-"`
+	// DesktopOnClick is trusted personal argv run when a macOS desktop
+	// notification is clicked, replacing the default origin focus.
+	DesktopOnClick []string `json:"-"`
 }
 
 // NotifyStep selects one notification provider. Provider settings are references,
@@ -487,7 +490,7 @@ func Load(input Input) (Config, error) {
 	// against configured defaults rather than those one-shot selectors.
 	listenerCfg := cfg
 	for key, value := range input.Overrides {
-		if key == "secrets.policy" || key == "notify.command" || key == "listen" || strings.HasPrefix(key, "listen.") {
+		if key == "secrets.policy" || key == "notify.command" || key == "notify.desktop.on_click" || key == "listen" || strings.HasPrefix(key, "listen.") {
 			return Config{}, fmt.Errorf("%s is settable only in personal config files", key)
 		}
 		if err := cfg.apply(key, value.Text, input.CWD, value.Source); err != nil {
@@ -637,9 +640,12 @@ func NotifyStepLabel(step NotifyStep) string {
 
 // Values returns non-secret settings for config inspection, never raw command argv.
 func (cfg Config) Values() map[string]string {
-	command := ""
+	command, onClick := "", ""
 	if len(cfg.Notify.Command) > 0 {
 		command = "[configured]"
+	}
+	if len(cfg.Notify.DesktopOnClick) > 0 {
+		onClick = "[configured]"
 	}
 	via := cfg.Notify.Via
 	if len(cfg.Notify.Steps) > 0 {
@@ -658,7 +664,7 @@ func (cfg Config) Values() map[string]string {
 	}
 	return map[string]string{
 		"timeout": cfg.Timeout, "notify.via": via, "notify.fallback_on": fallbackOn,
-		"notify.fallback_notice": fallbackNotice, "notify.command": command,
+		"notify.fallback_notice": fallbackNotice, "notify.command": command, "notify.desktop.on_click": onClick,
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
 		"apprise.format": cfg.Apprise.Format, "herdr.session": cfg.Herdr.Session,
 		"shoutrrr.urls_env": cfg.Shoutrrr.UrlsEnv,
@@ -847,7 +853,7 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 				return fmt.Errorf("config %s:%d: listen is personal configuration; use user config, .git/tell.yaml, or --config", path, value.line)
 			}
 			switch value.key {
-			case "secrets.policy", "notify.command":
+			case "secrets.policy", "notify.command", "notify.desktop.on_click":
 				return fmt.Errorf("config %s:%d: %s is personal policy; set it in user config, .git/tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
 			case "notify.via", "notify.fallback_on", "notify.fallback_notice", "apprise.config", "herdr.session", "shoutrrr.urls_env", "imessage.to", "send.via", "send.to", "send.from", "mcp.agent_targets":
 				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .git/tell.yaml, --config, environment, or flags instead of shared tell.yaml", path, value.line, value.key)
@@ -855,6 +861,11 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 		}
 		if value.key == "notify.command" {
 			cfg.Notify.Command = value.argv
+			cfg.Origins[value.key] = path
+			continue
+		}
+		if value.key == "notify.desktop.on_click" {
+			cfg.Notify.DesktopOnClick = value.argv
 			cfg.Origins[value.key] = path
 			continue
 		}

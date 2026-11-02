@@ -16,7 +16,7 @@ Lowest to highest priority:
 | 5 | `TELL_*` environment | yes |
 | 6 | flags | yes |
 
-Settings merge by field. `notify.command`, list-valued `notify.via`, and
+Settings merge by field. `notify.command`, `notify.desktop.on_click`, list-valued `notify.via`, and
 `listen.routes` replace lower values whole.
 
 `.git/tell.yaml` lives in the common Git directory, so linked worktrees share
@@ -51,7 +51,7 @@ Origins are `default`, a file path, `env NAME`, or `flag --name`.
 
 These fields choose destinations, so shared `tell.yaml` rejects them even if a
 higher layer overrides them: `notify.via`, `notify.fallback_on`,
-`notify.fallback_notice`, `notify.command`, `apprise.config`,
+`notify.fallback_notice`, `notify.command`, `notify.desktop.on_click`, `apprise.config`,
 `shoutrrr.urls_env`, `imessage.to`, `herdr.session`, `send.via`, `send.to`, `send.from`, `secrets.policy`, `mcp.agent_targets`, and
 the whole `listen` block.
 
@@ -127,6 +127,7 @@ does not change the project; no repository code runs.
 | `notify.fallback_on` | `[not_sent]` | — | — |
 | `notify.fallback_notice` | `none` | — | — |
 | `notify.command` | — | — | — |
+| `notify.desktop.on_click` | — | — | — |
 | `secrets.policy` | `redact` | — | — |
 | `apprise.config` | — | `TELL_APPRISE_CONFIG` | `--apprise-config` |
 | `apprise.tag` | — | `TELL_APPRISE_TAG` | `--apprise-tag` |
@@ -169,6 +170,7 @@ send:
 | `notify.fallback_on` | nonempty subset of `not_sent`, `failed`; cascade only |
 | `notify.fallback_notice` | `none` or `title` (prefix later titles with the first step's label and reason); cascade only |
 | `notify.command` | nonempty argv list; nonblank executable; no NUL |
+| `notify.desktop.on_click` | as `notify.command`; replaces the default [click action](design.md#click-actions) when Tell.app is installed |
 | `secrets.policy` | `redact` (`[REDACTED]`) or `reject` (exit 1, `secret_detected`) |
 | `apprise.config` | local file path, not a URL; Tell never opens it |
 | `apprise.tag` | one Apprise tag expression |
@@ -243,7 +245,7 @@ as the real caller, with the same environment.
 
 ```console
 $ tell doctor
-desktop (selected): ready; presence: attended
+desktop (selected): ready; presence: attended; provider: tell-app; permission: authorized
 apprise: not ready
   apprise was not found on PATH; install it or choose another route
 
@@ -259,7 +261,7 @@ It checks each selected notify step, other explicitly configured routes
 | Route | Check | Does not verify |
 | --- | --- | --- |
 | stderr | nothing | — |
-| desktop | `osascript` or `notify-send` on PATH; screen unlocked and session active ([presence](design.md#desktop-delivery)), unknown counts as ready | permissions, D-Bus, Focus/Do Not Disturb, display sleep, banners |
+| desktop | provider (`tell-app` when `~/Applications/Tell.app` is installed, else `osascript` or `notify-send` on PATH); Tell.app notification `permission` (`denied` is `permission_denied`); screen unlocked and session active ([presence](design.md#desktop-delivery)), unknown counts as ready | osascript permissions, D-Bus, Focus/Do Not Disturb, display sleep, banners |
 | alert | as desktop; on Linux also `gdbus` and `notify-send --version` 0.7.10+ (`unsupported_provider_version`) | GUI session reachability (ssh), D-Bus action support |
 | command | executable resolves; never run | interpreter, its config |
 | apprise | `apprise --dry-run` matches ≥1 service | credentials, reachability |
@@ -280,7 +282,7 @@ agent), `blocked` (dialog), and `unattended` (desktop or alert, locked or inacti
 Probes use the configured timeout, cap output at 1 MiB, fail closed on
 malformed output (except desktop presence, which fails open), strip `HERDR_*`,
 and never print URLs, config, or provider output. JSON adds ordered `steps`,
-`selected_send`, Apprise `services`, and desktop and alert `presence`.
+`selected_send`, Apprise `services`, desktop and alert `presence`, and desktop `provider` and `permission`.
 
 ## Editor schemas
 
@@ -322,7 +324,7 @@ $ tell --json --timeout 0s config check; echo $?
 
 `--json` prints one stdout object with `schema_version: 1`; help, version, and
 completion stay text. Exit 0 success, 1 config/I/O, 2 usage. Human output
-quotes values so terminal escapes are inert. `notify.command` shows as
+quotes values so terminal escapes are inert. `notify.command` and `notify.desktop.on_click` show as
 `[configured]` (omitted in JSON); `urls_env` shows only the variable name.
 Delivery uses its own [outcomes](design.md#outcomes).
 

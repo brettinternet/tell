@@ -219,13 +219,56 @@ body or provider output; unknown provider exits are `failed`.
 
 | Platform | Runs | Type |
 | --- | --- | --- |
+| macOS with Tell.app | `~/Applications/Tell.app/Contents/MacOS/Tell post`; title, body, and [click actions](#click-actions) as JSON on stdin | ignored |
 | macOS | `osascript` with fixed AppleScript; title and body as argv | ignored |
 | Linux | `notify-send --urgency LEVEL -- TITLE BODY` | `failure` → critical, else normal |
 | other | — | `not_sent/unsupported_platform` |
 
-Text is never interpolated into code. macOS banners appear as **Script
-Editor**; allow its notifications. Linux services need the session D-Bus
+Text is never interpolated into code. Linux services need the session D-Bus
 (`DBUS_SESSION_BUS_ADDRESS`), which Tell inherits but does not discover.
+
+osascript banners appear as **Script Editor**, and clicking one opens Script
+Editor. `task macos:install` builds Tell.app, a small ad-hoc signed Swift
+helper (`macos/TellNotifier/`, bundle ID `com.brettinternet.tell`), installs
+it to `~/Applications`, and opens it once so macOS asks for notification
+permission. With it installed, banners appear as **Tell** with Tell's icon,
+posted through UNUserNotificationCenter; the helper exits right after posting.
+Denied permission returns `not_sent/permission_denied` (exit 3), so a cascade
+moves on. Remove the app to return to osascript. `tell doctor --via desktop`
+shows `provider` (`tell-app`, `osascript`, or `notify-send`) and, for Tell.app,
+`permission` (`authorized`, `denied`, `not_determined`, `provisional`, or
+`unknown`) without posting.
+
+### Click actions
+
+Tell records where the notification came from, using only identifiers from its
+own environment:
+
+| Origin | Source | Default click action |
+| --- | --- | --- |
+| terminal app | `__CFBundleIdentifier` | `/usr/bin/open -b ID` |
+| Herdr workspace, tab | `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID` (with `HERDR_SOCKET_PATH`, `HERDR_BIN_PATH`) | `herdr workspace focus ID`, then `herdr tab focus ID` |
+| directory | working directory | none; passed to `on_click` |
+
+Tell turns the origin into literal argv lists and stores them in the
+notification's `userInfo`; message text is never stored there. When the
+notification is clicked, macOS relaunches Tell.app, which runs those commands
+in order (each bounded to 10 seconds, output discarded) and exits. Tell itself
+has already exited. With no terminal or Herdr origin, such as a notification
+from Noon, a click does nothing extra.
+
+`notify.desktop.on_click: [argv...]` replaces the default action. It is
+personal config only, refused in shared `tell.yaml` like `notify.command`. It
+runs in the origin directory with `TELL_ORIGIN_APP`,
+`TELL_ORIGIN_HERDR_WORKSPACE`, `TELL_ORIGIN_HERDR_TAB`, and `TELL_ORIGIN_CWD`
+(empty when unknown); title and body never reach its argv or environment. A
+bare executable name resolves on Tell's PATH at send time, because the click
+relaunch only has launchd's PATH.
+
+Not supported: focusing the exact Herdr pane (Herdr 0.9.5 `pane focus` only
+moves by direction), action buttons or replies, opening a terminal when there
+is no origin, click actions on Linux or with osascript, notarized
+distribution, and tmux or other multiplexers.
 
 Before sending, Tell checks whether anyone could see the banner. A locked
 screen or a session that is not the active one returns `not_sent/unattended`
