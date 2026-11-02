@@ -386,8 +386,9 @@ or body equal to, or starting with `=` after, `--session`, `--remote`,
 
 Herdr exits 0 even when it declines to show, so Tell reads `result.reason`
 from its JSON (capped at 1 MiB, never printed) and a `not_sent` advances the
-cascade. Herdr 0.9.5 still reports `shown` for a session with no attached
-client, so a detached session is `accepted` until Herdr reports it.
+cascade. A session with no attached client reports `no_foreground_client`, so
+a detached session advances. An attached client nobody is watching still
+reports `shown` and is `accepted`; escalation tiers cover that case.
 
 ## Command delivery
 
