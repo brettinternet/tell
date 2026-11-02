@@ -36,11 +36,6 @@ func PrepareMessage(message Message, policy string) (Message, int, string) {
 	return message, count, ""
 }
 
-// prepare remains the internal spelling used by existing delivery paths.
-func prepare(message Message, policy string) (Message, int, string) {
-	return PrepareMessage(message, policy)
-}
-
 // PrepareSendMessage applies existing send provenance, external-event trust
 // context when supplied, and the shared message preparation pipeline.
 func PrepareSendMessage(cfg config.Config, body, intent, source, eventID string) (Message, int, string) {

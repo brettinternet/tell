@@ -100,7 +100,7 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 	}
 	timeout, _ := time.ParseDuration(cfg.Timeout) // validated configuration
 	if len(cfg.Notify.Steps) == 0 {
-		message, redactions, reason := prepare(message, cfg.Secrets.Policy)
+		message, redactions, reason := PrepareMessage(message, cfg.Secrets.Policy)
 		if reason != "" {
 			return NewResult(steps[0].Via, "config", reason, "notification rejected during message preparation")
 		}
@@ -163,7 +163,7 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 		if i > 0 && cfg.Notify.FallbackNotice == "title" {
 			stepMessage.Title = "Fallback from " + firstLabel + " (" + firstReason + "): " + stepMessage.Title
 		}
-		prepared, redactions, reason := prepare(stepMessage, cfg.Secrets.Policy)
+		prepared, redactions, reason := PrepareMessage(stepMessage, cfg.Secrets.Policy)
 		if reason != "" {
 			result := NewResult(step.Via, "config", reason, "notification rejected during message preparation")
 			result.Redactions = redactions
