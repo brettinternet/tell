@@ -1,12 +1,12 @@
 ---
 id: TELL-42
 title: Add direct Pushover route with receipts, tags, and callback
-status: todo
+status: done
 type: feature
 labels: [notify, escalation]
 related: [TELL-33, TELL-35, TELL-36, TELL-38]
 created: 2026-11-02T03:47:01Z
-updated: 2026-11-02T04:02:46Z
+updated: 2026-11-02T04:48:55Z
 ---
 
 ### Context
@@ -59,8 +59,17 @@ None to start. TELL-33 consumes `callback`. Related: TELL-35, TELL-36, TELL-38, 
 
 ## Acceptance criteria
 
-- [ ] An emergency pushover step delivers to a real Pushover account and --json includes the receipt; normal priorities return accepted without one
-- [ ] Cancel-by-tag stops a repeating emergency alert and receipt status reports acknowledged after acking in the app, each as a one-shot command; verified with a real account
-- [ ] Token, user key, receipt, and body never appear in diagnostics or doctor output; credentials in shared tell.yaml are refused; covered by tests
-- [ ] Request building (emergency retry/expire/tags/callback) and response mapping are covered by tests against an httptest server; Tell has no polling loop or wait
-- [ ] examples/escalate uses the direct route as the Pushover tier, with a receipt guard in later tiers and ack.sh cancelling by tag; docs explain why Shoutrrr/Apprise cannot expose receipts; task ci passes
+- [x] An emergency pushover step delivers to a real Pushover account and --json includes the receipt; normal priorities return accepted without one
+  Evidence: 5f0a11f. Live account 2026-11-01: tell --config emergency.yaml --json notify --pushover-tag tell42-ack -> exit 0 {outcome:accepted, receipt:r2kf…}; priority normal -> exit 0 accepted, no receipt field; doctor ready.
+- [x] Cancel-by-tag stops a repeating emergency alert and receipt status reports acknowledged after acking in the app, each as a one-shot command; verified with a real account
+  Evidence: Live: pushover status before ack -> 'not acknowledged' exit 3; after user acked in app -> {acknowledged:true} exit 0. Second emergency (tag tell42-cancel): pushover cancel --tag -> accepted exit 0; status then {acknowledged:false, expired:true} exit 3 (repeats stopped). Each a one-shot command.
+- [x] Token, user key, receipt, and body never appear in diagnostics or doctor output; credentials in shared tell.yaml are refused; covered by tests
+  Evidence: internal/delivery/pushover_test.go assertNoPushoverLeak over all outcome cases; internal/cli/pushover_test.go TestPushoverInspectionNeverLeaksCredentials (doctor json/human + bare tell pushover) and TestPushoverConfigValidation (shared tell.yaml pushover.* refused). Reviewer pass found no leak paths. task ci passed.
+- [x] Request building (emergency retry/expire/tags/callback) and response mapping are covered by tests against an httptest server; Tell has no polling loop or wait
+  Evidence: TestPushoverNotifyRequest (emergency retry/expire/tags/callback/device form fields, receipt; non-emergency omits them), TestPushoverNotifyOutcomes (400/429/500/malformed/no-receipt/slow->uncertain/missing creds/unreachable), TestPushoverStatusAndCancel against httptest. No polling/wait: status and cancel are single requests.
+- [x] examples/escalate uses the direct route as the Pushover tier, with a receipt guard in later tiers and ack.sh cancelling by tag; docs explain why Shoutrrr/Apprise cannot expose receipts; task ci passes
+  Evidence: examples/escalate: config.yaml direct pushover emergency; raise.sh sends tier 1 with --pushover-tag inc-<hash>, saves receipt per raise; tier.sh guards later tiers with tell pushover status; ack.sh cancels by tag + Noon jobs. README + docs/design.md explain Shoutrrr Send returns only errors and Apprise CLI prints no provider response. shellcheck clean; task ci passed after rebase on 870b871.
+
+## Notes
+
+Worktree: .worktrees/feat-tell-42-pushover branch feat/tell-42-pushover session fa2b28fa-f05a-48d4-b25d-9669ae3f4f44
