@@ -176,7 +176,7 @@ positives and misses; it is not proof a message is safe.
 | 0 | accepted | printed, posted, or provider exited 0; not proof anyone read it, except alert (`acknowledged: true`) | no |
 | 1 | config | config, input, or I/O error before delivery | after fixing |
 | 2 | usage | invalid invocation | after fixing |
-| 3 | not_sent | missing executable, unsupported platform, unattended desktop, unacknowledged alert, absent/invalid target, busy/blocked agent, no match | yes, or another route |
+| 3 | not_sent | missing executable, unsupported platform, unattended desktop, unacknowledged alert, Herdr not shown, absent/invalid target, busy/blocked agent, no match | yes, or another route |
 | 4 | failed | provider ran and failed; `partial` means some destinations got it | not blindly |
 | 5 | uncertain | timed out or cancelled after the provider started | not without checking |
 
@@ -189,7 +189,8 @@ Reasons: `missing_executable`, `start_failed`, `unsupported_route`,
 `unsupported_platform`, `unattended`, `unacknowledged`, `no_user_interaction`,
 `unsupported_message`, `missing_route`,
 `missing_target`, `missing_session`, `invalid_target`, `invalid_response`,
-`no_match`, `busy`, `blocked`, `partial`, `provider_failure`, `timeout`,
+`no_match`, `busy`, `blocked`, `disabled`, `rate_limited`,
+`no_foreground_client`, `not_shown`, `partial`, `provider_failure`, `timeout`,
 `cancelled`, `secret_detected`, `secret_scan_failed`. Results never include the
 body or provider output; unknown provider exits are `failed`.
 
@@ -359,9 +360,17 @@ or body equal to, or starting with `=` after, `--session`, `--remote`,
 
 | Case | Outcome |
 | --- | --- |
+| shown, or exit 0 with unparseable output | `accepted` |
+| notifications disabled, rate limited, no foreground client, or busy | `not_sent/disabled`, `rate_limited`, `no_foreground_client`, or `busy` |
+| `shown: false` with another reason | `not_sent/not_shown` |
 | no session configured | `not_sent/missing_target` |
 | no executable | `not_sent/missing_executable` |
 | unreachable session, other nonzero exit | `failed/provider_failure` |
+
+Herdr exits 0 even when it declines to show, so Tell reads `result.reason`
+from its JSON (capped at 1 MiB, never printed) and a `not_sent` advances the
+cascade. Herdr 0.9.5 still reports `shown` for a session with no attached
+client, so a detached session is `accepted` until Herdr reports it.
 
 ## Command delivery
 
