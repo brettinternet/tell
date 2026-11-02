@@ -85,6 +85,16 @@ Apprise config or URLs.
 `tell doctor` lists steps in order and is ready if any step is. Listener
 `notify` actions without `via` use the cascade within the action timeout.
 
+### Escalation
+
+Tell sends once and keeps no state, so repeat-until-acknowledged escalation
+belongs to the provider. A final Apprise step that selects a Pushover
+`priority=emergency` URL makes Pushover repeat the alert until it is
+acknowledged in the app or expires; PagerDuty and Opsgenie through Apprise work
+the same way. `accepted` means the provider accepted the alert, not that anyone
+acknowledged it; Tell does not poll receipts. See
+[examples/escalate](../examples/escalate/README.md).
+
 ## Listeners
 
 `tell listen slack` and `tell listen github` are explicit foreground processes

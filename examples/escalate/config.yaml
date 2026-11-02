@@ -1,0 +1,10 @@
+# ~/.config/tell/critical.yaml: use with tell --config for alerts that must be
+# acknowledged. Relative paths resolve from this file.
+version: 1
+notify:
+  via:
+    - apprise: {tag: oncall}     # team on-call service, if apprise.yaml has one
+    - apprise: {tag: escalate}   # Pushover emergency: repeats until acknowledged
+  fallback_on: [not_sent]
+apprise:
+  config: ../apprise/escalate.yaml

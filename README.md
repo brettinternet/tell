@@ -199,7 +199,8 @@ One `--timeout` covers the whole cascade. `--via` or `TELL_NOTIFY_VIA` picks a
 single route. `send` has no fallback: two agents doing the same work is worse
 than none. Details: [fallback](docs/design.md#notify-fallback-cascades),
 [examples](examples/fallback/README.md), [desktop](docs/design.md#desktop-delivery),
-[Herdr](docs/design.md#herdr-delivery), [command](docs/design.md#command-delivery).
+[Herdr](docs/design.md#herdr-delivery), [command](docs/design.md#command-delivery),
+[escalation](examples/escalate/README.md).
 
 ## Agent messages
 
