@@ -1,11 +1,11 @@
 ---
 id: TELL-43
 title: Open notification origin on desktop click on macOS
-status: todo
+status: done
 type: feature
 labels: [notify, desktop]
 created: 2026-11-02T03:50:06Z
-updated: 2026-11-02T03:50:06Z
+updated: 2026-11-02T04:44:56Z
 ---
 
 ## Context
@@ -50,9 +50,21 @@ Build and install the helper locally. From a Herdr pane in Ghostty, send a notif
 
 ## Acceptance criteria
 
-- [ ] tell notify --via desktop on macOS with Tell.app installed shows a notification attributed to Tell (not Script Editor); verified on a real Mac and recorded
-- [ ] Clicking a notification sent from a Herdr pane in Ghostty activates Ghostty and focuses the origin Herdr workspace and tab, after tell notify has already exited; verified on a real Mac and recorded
-- [ ] A notification sent with no origin (e.g. from Noon or a non-terminal parent) does nothing extra on click; covered by a test of origin capture
-- [ ] notify.desktop.on_click is refused in shared tell.yaml, receives origin only as TELL_ORIGIN_* environment variables, and message title/body never reach its argv or environment; covered by a test
-- [ ] Without Tell.app, the desktop route falls back to the existing osascript behavior unchanged; tell doctor --via desktop reports which provider is active and whether notification permission is granted, without sending
-- [ ] README route table, docs/configuration.md, and docs/design.md document the helper, origin capture, click behavior, and non-goals; AGENTS.md notes HERDR_* origin reads are allowed; task ci passes
+- [x] tell notify --via desktop on macOS with Tell.app installed shows a notification attributed to Tell (not Script Editor); verified on a real Mac and recorded
+  Evidence: c718aa8. task macos:install built and installed ~/Applications/Tell.app (com.brettinternet.tell, ad-hoc signed). After enabling in System Settings, bin/tell notify --via desktop from a Herdr pane in Ghostty exited 0; user confirmed the banner was attributed to Tell, not Script Editor (2026-11-01).
+- [x] Clicking a notification sent from a Herdr pane in Ghostty activates Ghostty and focuses the origin Herdr workspace and tab, after tell notify has already exited; verified on a real Mac and recorded
+  Evidence: Real Mac: sent from Herdr pane wQY:p5 (Ghostty, workspace wQY/tab wQY:t1); tell notify exited, user switched Herdr workspace and app, clicked the notification; user confirmed Ghostty activated on the tell workspace/tab (Works fully).
+- [x] A notification sent with no origin (e.g. from Noon or a non-terminal parent) does nothing extra on click; covered by a test of origin capture
+  Evidence: TestDesktopOrigin (internal/delivery/desktop_test.go): empty environment yields no click actions; Ghostty+Herdr env yields open -b, herdr workspace focus, herdr tab focus with absolute herdr path and socket. go test ./internal/delivery passes.
+- [x] notify.desktop.on_click is refused in shared tell.yaml, receives origin only as TELL_ORIGIN_* environment variables, and message title/body never reach its argv or environment; covered by a test
+  Evidence: TestCommandConfig refuses notify.desktop.on_click in shared tell.yaml (personal policy) and overrides are rejected; TestDesktopHelper asserts on_click argv/Dir/env are only TELL_ORIGIN_* and that title/body never appear in click actions or helper env (HERDR_* stripped). go test ./internal/... passes.
+- [x] Without Tell.app, the desktop route falls back to the existing osascript behavior unchanged; tell doctor --via desktop reports which provider is active and whether notification permission is granted, without sending
+  Evidence: Real Mac with ~/Applications/Tell.app moved aside: tell doctor --via desktop -> 'provider: osascript', notify exit 0 via osascript; restored -> 'provider: tell-app; permission: authorized'; denied state reported 'permission: denied' and notify returned not_sent/permission_denied exit 3. TestDesktopLiteralArguments (fallback argv unchanged) and TestDesktopHelper (doctor provider/permission) pass.
+- [x] README route table, docs/configuration.md, and docs/design.md document the helper, origin capture, click behavior, and non-goals; AGENTS.md notes HERDR_* origin reads are allowed; task ci passes
+  Evidence: README route tables, docs/configuration.md (settings, personal policy, doctor), docs/design.md (Desktop delivery + Click actions incl. non-goals), docs/development.md, tell.schema.json, AGENTS.md origin-env note updated in c718aa8. task ci passed (security, check, test, race, smoke).
+
+## Notes
+
+Worktree: .worktrees/feat-tell-43-desktop-click branch feat/tell-43-desktop-click session 4101740d-395c-46c9-a6e3-3af4d4d6535f
+
+Done in c718aa8 (merged to main, fast-forward). Review: one self-review pass, no item-scoped defects found. Tell.app remains installed at ~/Applications/Tell.app with notifications allowed. Verified: task ci, real-Mac attribution/click/fallback with user.
