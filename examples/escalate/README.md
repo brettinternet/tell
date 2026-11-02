@@ -1,4 +1,8 @@
-# Escalate until acknowledged with Pushover emergency priority
+# Escalate until acknowledged
+
+Two patterns, which combine: the provider repeats one alert (Pushover
+emergency priority), or Noon sends louder [timed tiers](#timed-tiers-with-noon)
+until you run `ack.sh`. Tell stores no state in either.
 
 Pushover emergency alerts repeat on your phone until you acknowledge them in
 the Pushover app, or until they expire. Apprise sends them, so Tell needs no
@@ -86,5 +90,58 @@ emergency alert.
 | `not_sent` (3) | nothing reached Pushover; safe to rerun |
 | `failed` (4), `uncertain` (5) | it may have arrived; check the Pushover app before rerunning |
 
-Tell has no timed escalation tiers or acknowledgement tracking of its own; see
-[docs/design.md](../../docs/design.md#escalation).
+## Timed tiers with Noon
+
+Notify now, then louder later unless someone acknowledges. Noon owns the
+timers as temporary jobs; Tell only delivers each tier.
+
+```sh
+./raise.sh 'db-primary down' 'Database down'   # tier 1 now; tiers 2-3 scheduled
+./ack.sh 'db-primary down'                     # cancel every unsent tier
+```
+
+Needs Noon with temporary jobs (tested with 0.15.0), a running scheduler
+(`noon serve` or `noon service`), `jq`, and `sha256sum` or `shasum`. Tier jobs
+run in Noon's user project, so they need the
+[service setup](../noon/README.md#service-setup): `tell` on PATH and your Tell
+config. The user project's directory must exist: `mkdir -p ~/.config/noon`.
+
+Edit the policy at the top of [raise.sh](raise.sh), or override it in the
+environment:
+
+```sh
+TIER1_NOTIFY='--type warning'                                  # sent at once
+TIER2='10m --type failure'                                     # DELAY [notify options]
+TIER3='30m --type failure --via apprise --apprise-tag phone'
+LIFETIME=2h                                                    # jobs end on their own
+```
+
+Without `--via`, a tier uses your configured route, which may be a
+[fallback cascade](../fallback/README.md) ending in the Pushover step above.
+
+| Step | Noon |
+| --- | --- |
+| raise | `noon --user add inc-<hash>-tN --temporary --key inc-<hash> --in DELAY --for LIFETIME -- tell notify …` |
+| raise again | same key returns `created: false`; no new jobs, tier 1 not resent |
+| tier due | Noon runs `tell notify` once |
+| ack | `noon --user cancel` every active `inc-<hash>-t*` job |
+| nobody acks | jobs end at `LIFETIME`; Noon deletes them 24h later |
+
+Noon job names allow only `[a-z0-9_-]`, so the incident key is hashed: the
+first 12 hex characters of its SHA-256. Every tier is argv, never a shell
+string, so titles and keys cannot inject commands. An incident counts as raised
+until it is acknowledged or `LIFETIME` passes, even after its last tier is
+delivered; raising it after `ack.sh` starts a new escalation.
+
+| Case | Behavior |
+| --- | --- |
+| ack before a tier is due | the tier never runs |
+| ack while a tier runs | Noon sends TERM; that alert is uncertain, may have arrived |
+| ack after a tier is delivered | cannot be recalled |
+| Noon down across a due time | the tier runs late, once, when Noon restarts |
+| Noon down past `LIFETIME` | queued tiers are cancelled; nothing is sent (per Noon docs) |
+| two machines | each has its own Noon; acknowledgement is local only |
+
+Acknowledgement is a local command, not a reply from your phone or Slack, and
+does not acknowledge a Pushover emergency alert already sent. Set `LIFETIME` to
+how long an alert stays meaningful, since a late tier still sends.

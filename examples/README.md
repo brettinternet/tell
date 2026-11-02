@@ -30,7 +30,7 @@ Start with a visible personal route, for example `notify.via: desktop` in
 | [Reaction triage](listen/reaction-triage/README.md) | Eyes reaction on a Slack message → agent inform | intermediate | Slack, hcom |
 | [Incident job](listen/incident-noon/README.md) | New `inc-*` channel → queued Noon job with event data | advanced | Slack, Noon, Python, jq |
 | [apprise](apprise/README.md) | Phone, Slack, and Discord with per-message audience tags | intermediate | Apprise |
-| [escalate](escalate/README.md) | Critical alerts that repeat on your phone until acknowledged | intermediate | Apprise, Pushover |
+| [escalate](escalate/README.md) | Critical alerts that repeat on your phone, or timed tiers, until acknowledged | intermediate | Apprise, Pushover, Noon, jq |
 | [github-actions](github-actions/README.md) | Post failed nightly runs to a team channel | intermediate | GitHub Actions, Apprise or built-in Shoutrrr |
 
 ## AI agents

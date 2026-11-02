@@ -89,12 +89,25 @@ Apprise config or URLs.
 ### Escalation
 
 Tell sends once and keeps no state, so repeat-until-acknowledged escalation
-belongs to the provider. A final Apprise step that selects a Pushover
-`priority=emergency` URL makes Pushover repeat the alert until it is
-acknowledged in the app or expires; PagerDuty and Opsgenie through Apprise work
-the same way. `accepted` means the provider accepted the alert, not that anyone
-acknowledged it; Tell does not poll receipts. See
+belongs to the provider or the scheduler. See
 [examples/escalate](../examples/escalate/README.md).
+
+A final Apprise step that selects a Pushover `priority=emergency` URL makes
+Pushover repeat the alert until it is acknowledged in the app or expires;
+PagerDuty and Opsgenie through Apprise work the same way. `accepted` means the
+provider accepted the alert, not that anyone acknowledged it; Tell does not
+poll receipts.
+
+Timed tiers spread separate calls over time. Each later tier is a Noon
+temporary job that runs `tell notify` once, named from a hash of the incident
+key; acknowledging is a local command that cancels those jobs.
+
+| Case | Behavior |
+| --- | --- |
+| ack before a tier is due | never sent |
+| ack while a tier runs | Noon sends TERM; the alert is uncertain |
+| ack after delivery | cannot be recalled |
+| scheduler down across a due time | the tier runs late, once (Noon `0.15.0`) |
 
 ## Listeners
 
