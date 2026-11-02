@@ -1,11 +1,11 @@
 ---
 id: TELL-36
 title: Example Noon-timed escalation tiers with local acknowledgement
-status: todo
+status: done
 type: docs
 labels: [notify, escalation]
 created: 2026-11-02T03:18:12Z
-updated: 2026-11-02T03:18:12Z
+updated: 2026-11-02T03:36:56Z
 ---
 
 ## Context
@@ -42,7 +42,15 @@ Run the example against a real Noon scheduler with short waits (`--in 1m`) and a
 
 ## Acceptance criteria
 
-- [ ] raise.sh delivers tier 1 at once and schedules later tiers as Noon temporary jobs whose names are derived from a hash of the incident key
-- [ ] Against a real Noon scheduler with 1m waits: without acknowledgement tier 2 is delivered; ack.sh before the wait prevents it; a second raise.sh for the same key creates no new jobs
-- [ ] Noon downtime across a tier due time is tested and the observed behavior (late run or skip) is documented
-- [ ] Docs cover the TERM/uncertain race on acknowledgement, local-only acknowledgement, and that Tell stores no state; task ci passes
+- [x] raise.sh delivers tier 1 at once and schedules later tiers as Noon temporary jobs whose names are derived from a hash of the incident key
+  Evidence: 616883f examples/escalate/raise.sh: tier 1 via tell notify at once; tiers 2-3 via noon --user add inc-<sha256[:12]>-tN --temporary --key inc-<hash> --in DELAY. Isolated Noon 0.15.0 run: tier 1 logged 20:27:59 at raise; jobs inc-5b96402eca72-t2/t3 created.
+- [x] Against a real Noon scheduler with 1m waits: without acknowledgement tier 2 is delivered; ack.sh before the wait prevents it; a second raise.sh for the same key creates no new jobs
+  Evidence: Real noon serve (NOON_STATE_DIR temp), TIER2=1m TIER3=2m: unacked 'db-primary down' tier 2 ran 20:28:59 (run 1 succeeded), tier 3 20:29:59; ack.sh 'disk full' before due cancelled runs 3,4, nothing delivered; second raise.sh printed 'already raised; nothing sent' with created:false, no new jobs.
+- [x] Noon downtime across a tier due time is tested and the observed behavior (late run or skip) is documented
+  Evidence: Stopped noon serve 20:30:13 with 'net down' tier 2 due 20:31:10; nothing sent while down; restarted 20:31:44; run 7 started 20:31:45 succeeded: runs late, once. Documented in examples/escalate/README.md Limits table and docs/design.md Escalation.
+- [x] Docs cover the TERM/uncertain race on acknowledgement, local-only acknowledgement, and that Tell stores no state; task ci passes
+  Evidence: README + design.md cover TERM/uncertain ack race, recall impossibility, local-only ack, Tell stores no state. task ci passed on rebased 616883f (tests, race, vet, staticcheck, smoke, integration); shellcheck clean.
+
+## Summary
+
+Added examples/escalate/raise.sh and ack.sh (Noon temporary-job tiers keyed by hashed incident key), merged into TELL-35's escalate README as 'Timed tiers with Noon', extended design.md Escalation. Verified against a real isolated Noon 0.15.0 scheduler; commit 616883f fast-forwarded onto main.
