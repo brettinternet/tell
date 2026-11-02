@@ -22,6 +22,7 @@ type Readiness struct {
 	Ready    bool   `json:"ready"`
 	Reason   string `json:"reason"`
 	Services *int   `json:"services,omitempty"`
+	Presence string `json:"presence,omitempty"`
 }
 
 // Doctor checks the selected route and routes with explicit configuration.
@@ -148,10 +149,14 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 	if _, err := exec.LookPath(name); err != nil {
 		return finish("missing_executable")
 	}
+	timeout, _ := time.ParseDuration(cfg.Timeout)
 	if route == "desktop" {
+		result.Presence = desktopPresence(ctx, timeout, platform)
+		if result.Presence == presenceLocked || result.Presence == presenceInactive {
+			return finish("unattended")
+		}
 		return finish("ready")
 	}
-	timeout, _ := time.ParseDuration(cfg.Timeout)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	args := []string{"session", "list", "--json"}

@@ -101,7 +101,7 @@ Check routes without sending:
 
 ```console
 $ tell doctor
-desktop (selected): ready
+desktop (selected): ready; presence: attended
 apprise: not ready
   apprise was not found on PATH; install it or choose another route
 ```
@@ -154,7 +154,7 @@ See [configuration](docs/configuration.md) for every key and flag, and
 | Route | Example |
 | --- | --- |
 | stderr (default) | `tell notify "Done"` |
-| desktop | `tell notify --via desktop "Done"` |
+| desktop | `tell notify --via desktop "Done"` (exits 3, `not_sent/unattended`, when the screen is locked) |
 | apprise | `tell notify --via apprise --apprise-tag phone "Done"` |
 | shoutrrr | `PHONE_URLS='ntfy://ntfy.sh/topic' tell notify --via shoutrrr --shoutrrr-urls-env PHONE_URLS "Done"` |
 | herdr | `tell notify --via herdr --herdr-session work "Done"` |

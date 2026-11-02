@@ -27,6 +27,12 @@ func notifyDesktop(ctx context.Context, timeout time.Duration, message Message, 
 	default:
 		return NewResult(route, "not_sent", "unsupported_platform", "desktop notifications are not supported on this platform")
 	}
+	switch desktopPresence(ctx, timeout, platform) {
+	case presenceLocked:
+		return NewResult(route, "not_sent", "unattended", "screen is locked; nobody can see a desktop notification")
+	case presenceInactive:
+		return NewResult(route, "not_sent", "unattended", "desktop session is not on the active console; nobody can see a desktop notification")
+	}
 	code, failure := RunProcess(ctx, timeout, route, name, args)
 	if failure != nil {
 		return failure

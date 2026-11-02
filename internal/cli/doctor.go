@@ -105,6 +105,8 @@ func humanReason(route, reason, fallback string) string {
 		return "set notify.command to an executable and arguments in personal config"
 	case "command_not_executable":
 		return "notify.command cannot be executed; check its path and permissions in personal config"
+	case "unattended":
+		return "nobody can see desktop notifications now; notify skips desktop and a cascade moves to its next step"
 	case "unsupported_platform":
 		return "desktop notifications require macOS or Linux; choose another route"
 	case "unsupported_route":
@@ -172,6 +174,9 @@ func (r *doctorReport) render(root *urfave.Command, args []string, out, errOut i
 			}
 			if route.Services != nil {
 				count = fmt.Sprintf("; services: %d", *route.Services)
+			}
+			if route.Presence != "" {
+				count = "; presence: " + route.Presence
 			}
 			routeName := route.Route
 			if route.Label != "" {

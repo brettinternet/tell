@@ -176,7 +176,7 @@ positives and misses; it is not proof a message is safe.
 | 0 | accepted | printed, posted, or provider exited 0; not proof anyone read it | no |
 | 1 | config | config, input, or I/O error before delivery | after fixing |
 | 2 | usage | invalid invocation | after fixing |
-| 3 | not_sent | missing executable, unsupported platform, absent/invalid target, busy/blocked agent, no match | yes, or another route |
+| 3 | not_sent | missing executable, unsupported platform, unattended desktop, absent/invalid target, busy/blocked agent, no match | yes, or another route |
 | 4 | failed | provider ran and failed; `partial` means some destinations got it | not blindly |
 | 5 | uncertain | timed out or cancelled after the provider started | not without checking |
 
@@ -186,7 +186,7 @@ $ tell --json notify --via apprise "Deploy done"
 ```
 
 Reasons: `missing_executable`, `start_failed`, `unsupported_route`,
-`unsupported_platform`, `unsupported_message`, `missing_route`,
+`unsupported_platform`, `unattended`, `unsupported_message`, `missing_route`,
 `missing_target`, `missing_session`, `invalid_target`, `invalid_response`,
 `no_match`, `busy`, `blocked`, `partial`, `provider_failure`, `timeout`,
 `cancelled`, `secret_detected`, `secret_scan_failed`. Results never include the
@@ -206,8 +206,28 @@ body or provider output; unknown provider exits are `failed`.
 
 Text is never interpolated into code. macOS banners appear as **Script
 Editor**; allow its notifications. Linux services need the session D-Bus
-(`DBUS_SESSION_BUS_ADDRESS`), which Tell inherits but does not discover. Focus
-or Do Not Disturb can hide an accepted banner.
+(`DBUS_SESSION_BUS_ADDRESS`), which Tell inherits but does not discover.
+
+Before sending, Tell checks whether anyone could see the banner. A locked
+screen or a session that is not the active one returns `not_sent/unattended`
+(exit 3) without running the provider, so a cascade such as
+`[desktop, apprise]` moves on to the phone. This applies to CLI notify,
+listener notify actions, and MCP.
+
+| Platform | Locked | Not the active session |
+| --- | --- | --- |
+| macOS | `IOConsoleLocked` from `ioreg -n Root -d1 -a` | own `IOConsoleUsers` entry has `kCGSSessionOnConsoleKey` false (switched user) |
+| Linux | `LockedHint=yes` on the user's logind display session | `Active=no` on that session |
+
+Detection fails open: a missing `ioreg`/`loginctl`, no matching session, or
+unreadable output sends as before. `tell doctor --via desktop` shows
+`presence`: `attended`, `locked`, `inactive_session`, or `unknown`.
+
+Not detected: Focus or Do Not Disturb (no public API; its files need Full Disk
+Access), idle time, and display sleep. Apple Silicon has no
+`IODisplayWrangler`, and Linux DPMS state is compositor-specific, so a sleeping
+but unlocked display still counts as attended. Displays that lock on sleep are
+caught as locked.
 
 ## Apprise delivery
 

@@ -235,7 +235,7 @@ as the real caller, with the same environment.
 
 ```console
 $ tell doctor
-desktop (selected): ready
+desktop (selected): ready; presence: attended
 apprise: not ready
   apprise was not found on PATH; install it or choose another route
 
@@ -251,7 +251,7 @@ It checks each selected notify step, other explicitly configured routes
 | Route | Check | Does not verify |
 | --- | --- | --- |
 | stderr | nothing | — |
-| desktop | `osascript` or `notify-send` on PATH | permissions, D-Bus, Focus, banners |
+| desktop | `osascript` or `notify-send` on PATH; screen unlocked and session active ([presence](design.md#desktop-delivery)), unknown counts as ready | permissions, D-Bus, Focus/Do Not Disturb, display sleep, banners |
 | command | executable resolves; never run | interpreter, its config |
 | apprise | `apprise --dry-run` matches ≥1 service | credentials, reachability |
 | shoutrrr | URL variable is set and every URL parses to a known service | credentials, reachability |
@@ -266,10 +266,11 @@ It checks each selected notify step, other explicitly configured routes
 | 2 | usage error |
 
 Reasons include `missing_config`, `missing_urls`, `busy` (working/unknown
-agent), and `blocked` (dialog). Probes use the configured timeout, cap output at
-1 MiB, fail closed on malformed output, strip `HERDR_*`, and never print URLs,
-config, or provider output. JSON adds ordered `steps`, `selected_send`, and
-Apprise `services`.
+agent), `blocked` (dialog), and `unattended` (desktop locked or inactive).
+Probes use the configured timeout, cap output at 1 MiB, fail closed on
+malformed output (except desktop presence, which fails open), strip `HERDR_*`,
+and never print URLs, config, or provider output. JSON adds ordered `steps`,
+`selected_send`, Apprise `services`, and desktop `presence`.
 
 ## Editor schemas
 
