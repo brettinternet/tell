@@ -15,12 +15,14 @@ import (
 	"github.com/brettinternet/tell/internal/config"
 )
 
-// Result describes dispatch, not human acknowledgment. It never contains input text.
+// Result describes dispatch. Only the alert route sets Acknowledged, after an
+// explicit local click. It never contains input text.
 type Result struct {
 	SchemaVersion int       `json:"schema_version"`
 	Redactions    int       `json:"redactions"`
 	Outcome       string    `json:"outcome"`
 	Route         string    `json:"route"`
+	Acknowledged  bool      `json:"acknowledged,omitempty"`
 	Recipient     string    `json:"recipient,omitempty"`
 	Intent        string    `json:"intent,omitempty"`
 	Attempts      []Attempt `json:"attempts,omitempty"`
@@ -106,8 +108,18 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 		result.Attempts = []Attempt{{Route: steps[0].Via, Label: config.NotifyStepLabel(steps[0]), Outcome: result.Outcome, Reason: resultReason(result)}}
 		return result
 	}
-	budget, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	// The budget covers provider work only. An alert's human wait extends the
+	// deadline by the time it actually spent waiting, so later steps keep theirs.
+	deadline := time.Now().Add(timeout)
+	budgetErr := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !time.Now().Before(deadline) {
+			return context.DeadlineExceeded
+		}
+		return nil
+	}
 	fallbackOn := cfg.Notify.FallbackOn
 	if len(fallbackOn) == 0 {
 		fallbackOn = []string{"not_sent"}
@@ -126,7 +138,7 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 			}
 		}
 		reason := "timeout_budget"
-		if !errors.Is(budget.Err(), context.DeadlineExceeded) {
+		if !errors.Is(budgetErr(), context.DeadlineExceeded) {
 			reason = "cancelled"
 		}
 		result := NewResult(step.Via, "not_sent", reason, "notification cascade stopped before the next route")
@@ -136,7 +148,7 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 	}
 	for i, step := range steps {
 		label := config.NotifyStepLabel(step)
-		if budget.Err() != nil {
+		if budgetErr() != nil {
 			return stopAtBudget(step, label)
 		}
 		stepCfg := notifyStepConfig(cfg, step)
@@ -152,10 +164,18 @@ func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.W
 			result.Attempts = attempts
 			return result
 		}
-		if budget.Err() != nil {
+		if budgetErr() != nil {
 			return stopAtBudget(step, label)
 		}
+		var wait time.Duration
+		if step.Via == "alert" {
+			wait = step.AlertWait()
+		}
+		started := time.Now()
+		budget, cancel := context.WithDeadline(ctx, deadline.Add(wait))
 		result := notifyStep(budget, stepCfg, step, prepared, stderr, timeout, true)
+		cancel()
+		deadline = deadline.Add(min(time.Since(started), wait))
 		lastResult = result
 		result.Redactions = redactions
 		attemptReason := ""
@@ -242,6 +262,8 @@ func notifyStep(ctx context.Context, cfg config.Config, step config.NotifyStep, 
 		return notifyHerdr(ctx, timeout, cfg.Herdr.Session, message)
 	case "desktop":
 		return notifyDesktop(ctx, timeout, message, runtime.GOOS)
+	case "alert":
+		return notifyAlert(ctx, timeout, step.AlertWait(), message, runtime.GOOS)
 	case "apprise":
 		if cfg.Apprise.Config != "" {
 			if _, err := os.Stat(cfg.Apprise.Config); errors.Is(err, os.ErrNotExist) {

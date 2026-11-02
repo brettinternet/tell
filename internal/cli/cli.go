@@ -44,7 +44,7 @@ type settingSpec struct{ key, flag, env, usage string }
 
 var settings = []settingSpec{
 	{"timeout", "timeout", "TELL_TIMEOUT", "Wait up to a positive Go `duration`, such as 5s or 1m (default: 10s)"},
-	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification `route`: stderr, desktop, apprise, shoutrrr, imessage, command, herdr (default: stderr)"},
+	{"notify.via", "via", "TELL_NOTIFY_VIA", "Notification `route`: stderr, desktop, alert, apprise, shoutrrr, imessage, command, herdr (default: stderr)"},
 	{"apprise.config", "apprise-config", "TELL_APPRISE_CONFIG", "Local Apprise config `file`; Tell does not read it (default: Apprise discovery)"},
 	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag `expression` (default: no tag filter)"},
 	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body `format`: text, markdown, html (default: provider setting)"},

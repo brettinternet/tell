@@ -21,7 +21,7 @@
           "description": "One route retains single-route behavior. A list runs in order and advances only on not_sent by default.",
           "default": "stderr",
           "oneOf": [
-            { "enum": ["stderr", "desktop", "apprise", "shoutrrr", "imessage", "herdr", "command"] },
+            { "enum": ["stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "herdr", "command"] },
             { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/notifyStep" } }
           ]
         },
@@ -219,7 +219,7 @@
   "definitions": {
     "notifyStep": {
       "oneOf": [
-        { "enum": ["stderr", "desktop", "apprise", "shoutrrr", "imessage", "herdr", "command"] },
+        { "enum": ["stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "herdr", "command"] },
         {
           "type": "object",
           "minProperties": 1,
@@ -256,6 +256,18 @@
               "type": "object",
               "additionalProperties": false,
               "properties": { "session": { "$ref": "#/definitions/nonBlankString" } }
+            },
+            "alert": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "wait": {
+                  "type": "string",
+                  "pattern": "^\\+?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h)(?:(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:ns|us|µs|μs|ms|s|m|h))*$",
+                  "default": "2m",
+                  "description": "Positive Go duration to wait for Acknowledge. Human time outside the shared timeout budget."
+                }
+              }
             }
           },
           "additionalProperties": false

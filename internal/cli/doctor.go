@@ -84,10 +84,12 @@ func humanReason(route, reason, fallback string) string {
 		if name == "imessage" {
 			name = "osascript"
 		}
-		if name == "desktop" {
+		if name == "desktop" || name == "alert" {
 			name = "notify-send"
 			if runtime.GOOS == "darwin" {
 				name = "osascript"
+			} else if route == "alert" {
+				name = "notify-send or gdbus"
 			}
 		}
 		if name == "command" {
@@ -109,12 +111,20 @@ func humanReason(route, reason, fallback string) string {
 	case "command_not_executable":
 		return "notify.command cannot be executed; check its path and permissions in personal config"
 	case "unattended":
+		if route == "alert" {
+			return "nobody can acknowledge an alert now; notify skips alert without waiting and a cascade moves to its next step"
+		}
 		return "nobody can see desktop notifications now; notify skips desktop and a cascade moves to its next step"
 	case "unsupported_platform":
 		if route == "imessage" {
 			return "iMessage requires macOS with Messages; choose another route"
 		}
+		if route == "alert" {
+			return "alerts require macOS or Linux; choose another route"
+		}
 		return "desktop notifications require macOS or Linux; choose another route"
+	case "unsupported_provider_version":
+		return "alerts need notify-send from libnotify 0.7.10 or newer for --action and --wait; upgrade it or choose another route"
 	case "automation_denied":
 		return "allow this terminal to control Messages in System Settings > Privacy & Security > Automation"
 	case "no_account":

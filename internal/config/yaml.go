@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -171,7 +172,7 @@ func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
 		if item.Kind == yaml.ScalarNode && item.Tag == "!!str" {
 			step := NotifyStep{Via: item.Value}
 			if !validNotifyRoute(step.Via) || strings.ContainsAny(step.Via, "\x00\x1b\r\n") {
-				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, apprise, shoutrrr, imessage, herdr, or command", item.Line)
+				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, alert, apprise, shoutrrr, imessage, herdr, or command", item.Line)
 			}
 			steps = append(steps, step)
 			continue
@@ -197,7 +198,7 @@ func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
 
 func validNotifyRoute(route string) bool {
 	switch route {
-	case "stderr", "desktop", "apprise", "shoutrrr", "imessage", "herdr", "command":
+	case "stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "herdr", "command":
 		return true
 	default:
 		return false
@@ -255,6 +256,13 @@ func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
 			step.Session = value.Value
 		} else if step.Via == "herdr" {
 			return fmt.Errorf("line %d: unknown herdr step option %q", key.Line, key.Value)
+		} else if step.Via == "alert" && key.Value == "wait" {
+			if wait, err := time.ParseDuration(value.Value); err != nil || wait <= 0 {
+				return fmt.Errorf("line %d: alert step wait must be a positive Go duration, such as 2m", value.Line)
+			}
+			step.Wait = value.Value
+		} else if step.Via == "alert" {
+			return fmt.Errorf("line %d: unknown alert step option %q", key.Line, key.Value)
 		} else {
 			return fmt.Errorf("line %d: route %s does not accept step options", key.Line, step.Via)
 		}

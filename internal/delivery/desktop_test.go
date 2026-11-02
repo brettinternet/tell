@@ -148,6 +148,10 @@ func TestDesktopPresence(t *testing.T) {
 					if readiness.Ready || readiness.Reason != "unattended" || readiness.Presence != presenceLocked {
 						t.Fatalf("readiness: %+v", readiness)
 					}
+					alert := notifyAlert(context.Background(), time.Second, time.Hour, Message{Body: "body"}, platform)
+					if _, err := os.Stat(record); alert.Outcome != "not_sent" || alert.Failure.Reason != "unattended" || !os.IsNotExist(err) {
+						t.Fatalf("alert: %+v shown=%v", alert, err == nil)
+					}
 					return
 				}
 				if result.Outcome != "accepted" || err != nil {

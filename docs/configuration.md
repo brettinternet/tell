@@ -165,7 +165,7 @@ send:
 | Field | Accepts |
 | --- | --- |
 | `timeout` | positive Go duration (`0s` refused) |
-| `notify.via` | `stderr`, `desktop`, `apprise`, `shoutrrr`, `imessage`, `command`, `herdr`, or a nonempty list of those names, `apprise: {config, tag, format, urls_env}`, `shoutrrr: {urls_env}`, `imessage: {to}`, and `herdr: {session}` steps |
+| `notify.via` | `stderr`, `desktop`, `alert`, `apprise`, `shoutrrr`, `imessage`, `command`, `herdr`, or a nonempty list of those names, `apprise: {config, tag, format, urls_env}`, `shoutrrr: {urls_env}`, `imessage: {to}`, `herdr: {session}`, and `alert: {wait}` steps (positive Go duration, default `2m`) |
 | `notify.fallback_on` | nonempty subset of `not_sent`, `failed`; cascade only |
 | `notify.fallback_notice` | `none` or `title` (prefix later titles with the first step's label and reason); cascade only |
 | `notify.command` | nonempty argv list; nonblank executable; no NUL |
@@ -259,6 +259,7 @@ It checks each selected notify step, other explicitly configured routes
 | --- | --- | --- |
 | stderr | nothing | — |
 | desktop | `osascript` or `notify-send` on PATH; screen unlocked and session active ([presence](design.md#desktop-delivery)), unknown counts as ready | permissions, D-Bus, Focus/Do Not Disturb, display sleep, banners |
+| alert | as desktop; on Linux also `gdbus` and `notify-send --version` 0.7.10+ (`unsupported_provider_version`) | GUI session reachability (ssh), D-Bus action support |
 | command | executable resolves; never run | interpreter, its config |
 | apprise | `apprise --dry-run` matches ≥1 service | credentials, reachability |
 | shoutrrr | URL variable is set and every URL parses to a known service | credentials, reachability |
@@ -274,11 +275,11 @@ It checks each selected notify step, other explicitly configured routes
 | 2 | usage error |
 
 Reasons include `missing_config`, `missing_urls`, `busy` (working/unknown
-agent), `blocked` (dialog), and `unattended` (desktop locked or inactive).
+agent), `blocked` (dialog), and `unattended` (desktop or alert, locked or inactive).
 Probes use the configured timeout, cap output at 1 MiB, fail closed on
 malformed output (except desktop presence, which fails open), strip `HERDR_*`,
 and never print URLs, config, or provider output. JSON adds ordered `steps`,
-`selected_send`, Apprise `services`, and desktop `presence`.
+`selected_send`, Apprise `services`, and desktop and alert `presence`.
 
 ## Editor schemas
 

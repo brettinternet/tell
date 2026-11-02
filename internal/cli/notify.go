@@ -49,7 +49,11 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 		return result
 	}
 	if cmd.Bool("json") {
-		if err := emit(cmd, map[string]any{"outcome": result.Outcome, "route": result.Route, "redactions": result.Redactions, "attempts": result.Attempts}); err != nil {
+		output := map[string]any{"outcome": result.Outcome, "route": result.Route, "redactions": result.Redactions, "attempts": result.Attempts}
+		if result.Acknowledged {
+			output["acknowledged"] = true
+		}
+		if err := emit(cmd, output); err != nil {
 			return &resultWriteError{}
 		}
 	}

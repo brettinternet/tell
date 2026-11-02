@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -131,7 +132,7 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 			return finish("command_not_executable")
 		}
 		return finish("ready")
-	case "desktop":
+	case "desktop", "alert":
 		switch platform {
 		case "darwin":
 			name = "osascript"
@@ -154,7 +155,17 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 		return finish("missing_executable")
 	}
 	timeout, _ := time.ParseDuration(cfg.Timeout)
-	if route == "desktop" {
+	if route == "alert" && platform == "linux" {
+		if _, err := exec.LookPath("gdbus"); err != nil {
+			return finish("missing_executable")
+		}
+		output := &probeOutput{}
+		code, failure := process(ctx, timeout, route, "notify-send", []string{"--version"}, nil, nil, output, nil)
+		if failure != nil || code != 0 || !notifySendSupportsActions(output.buffer.String()) {
+			return finish("unsupported_provider_version")
+		}
+	}
+	if route == "desktop" || route == "alert" {
 		result.Presence = desktopPresence(ctx, timeout, platform)
 		if result.Presence == presenceLocked || result.Presence == presenceInactive {
 			return finish("unattended")
@@ -265,3 +276,19 @@ func herdrEnv() []string {
 	}
 	return env
 }
+
+// notifySendSupportsActions reports whether `notify-send --version` names
+// libnotify 0.7.10 or newer, which added --action and --wait.
+func notifySendSupportsActions(version string) bool {
+	match := notifySendVersion.FindStringSubmatch(version)
+	if match == nil {
+		return false
+	}
+	var parts [3]int
+	for i := range parts {
+		parts[i], _ = strconv.Atoi(match[i+1])
+	}
+	return parts[0] > 0 || parts[1] > 7 || (parts[1] == 7 && parts[2] >= 10)
+}
+
+var notifySendVersion = regexp.MustCompile(`\b([0-9]+)\.([0-9]+)\.([0-9]+)\b`)

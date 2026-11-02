@@ -68,7 +68,7 @@ func createTemplate(path string, mode os.FileMode, content string) (string, bool
 
 const sharedTemplate = `# yaml-language-server: $schema=https://raw.githubusercontent.com/brettinternet/tell/main/tell.shared.schema.json
 # Shared Tell settings. Commit this file to share project settings.
-# Inspection sends nothing. notify routes: stderr, desktop, apprise, shoutrrr, imessage, herdr, command.
+# Inspection sends nothing. notify routes: stderr, desktop, alert, apprise, shoutrrr, imessage, herdr, command.
 # send transports: hcom, herdr. Acceptance is not acknowledgment.
 # Routes are personal, not set here: tell init --user (all projects) or --local (this repo).
 # Keep credentials in your provider's configuration.
@@ -88,7 +88,7 @@ const localHeader = `# yaml-language-server: $schema=https://raw.githubuserconte
 # Git never commits files inside .git. Set notify.via, then run tell doctor.
 `
 
-const personalBody = `# Inspection sends nothing. notify routes: stderr, desktop, apprise, shoutrrr, imessage, herdr, command.
+const personalBody = `# Inspection sends nothing. notify routes: stderr, desktop, alert, apprise, shoutrrr, imessage, herdr, command.
 # send transports: hcom, herdr. Acceptance is not acknowledgment.
 # --config/TELL_CONFIG selects another trusted file instead of automatic files.
 # Routing can also use TELL_* environment variables or flags where supported.

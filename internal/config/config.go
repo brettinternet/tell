@@ -53,6 +53,19 @@ type NotifyStep struct {
 	UrlsEnv string `json:"urls_env,omitempty"`
 	Session string `json:"session,omitempty"`
 	To      string `json:"to,omitempty"`
+	Wait    string `json:"wait,omitempty"`
+}
+
+// DefaultAlertWait is how long an alert step waits for acknowledgement.
+const DefaultAlertWait = 2 * time.Minute
+
+// AlertWait returns the step wait rounded up to whole seconds, which macOS
+// dialogs require, or the default.
+func (s NotifyStep) AlertWait() time.Duration {
+	if wait, err := time.ParseDuration(s.Wait); err == nil && wait > 0 {
+		return (wait + time.Second - 1).Truncate(time.Second)
+	}
+	return DefaultAlertWait
 }
 
 func (n Notify) MarshalJSON() ([]byte, error) {
@@ -121,7 +134,7 @@ func (s *NotifyStep) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		s.Config, s.Tag, s.Format = values["config"], values["tag"], values["format"]
-		s.UrlsEnv, s.Session = values["urls_env"], values["session"]
+		s.UrlsEnv, s.Session, s.Wait = values["urls_env"], values["session"], values["wait"]
 	}
 	return nil
 }
@@ -142,6 +155,9 @@ func (s NotifyStep) MarshalJSON() ([]byte, error) {
 	}
 	if s.Session != "" {
 		options["session"] = s.Session
+	}
+	if s.Wait != "" {
+		options["wait"] = s.Wait
 	}
 	if len(options) == 0 {
 		return json.Marshal(s.Via)
@@ -717,7 +733,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		cfg.Timeout = value
 	case "notify.via":
 		switch value {
-		case "stderr", "desktop", "apprise", "shoutrrr", "imessage", "herdr", "command":
+		case "stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "herdr", "command":
 			cfg.Notify.Via = value
 			cfg.Notify.Steps = nil
 			// A single route replaces any lower cascade with its fallback settings;
@@ -731,7 +747,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 				cfg.Origins["notify.fallback_notice"] = "default"
 			}
 		default:
-			return errors.New("notify.via must be stderr, desktop, apprise, shoutrrr, imessage, herdr, command, or an ordered route list")
+			return errors.New("notify.via must be stderr, desktop, alert, apprise, shoutrrr, imessage, herdr, command, or an ordered route list")
 		}
 	case "notify.fallback_notice":
 		if value != "none" && value != "title" {

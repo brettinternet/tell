@@ -5,7 +5,7 @@
 Send one notification to a person, or one message to an agent, then exit.
 
 ```sh
-tell notify "Build finished"                               # person: stderr, desktop, Apprise, Shoutrrr, iMessage, Herdr, or your command
+tell notify "Build finished"                               # person: stderr, desktop, alert, Apprise, Shoutrrr, iMessage, Herdr, or your command
 tell send --intent request "Triage PRs; report blockers"   # agent: hcom mailbox or idle Herdr pane
 tell listen slack github                                   # foreground: route Slack/GitHub events to actions
 ```
@@ -45,6 +45,7 @@ Optional routes need their own executable on PATH:
 | --- | --- |
 | stderr | nothing |
 | desktop | `osascript` (macOS) or `notify-send` + desktop D-Bus (Linux) |
+| alert | `osascript` (macOS) or `notify-send` 0.7.10+ and `gdbus` (Linux) |
 | apprise | `apprise` and its own config |
 | shoutrrr | nothing (built in); URLs in an env var you name |
 | imessage | macOS Messages signed in to iMessage; `osascript` |
@@ -156,6 +157,7 @@ See [configuration](docs/configuration.md) for every key and flag, and
 | --- | --- |
 | stderr (default) | `tell notify "Done"` |
 | desktop | `tell notify --via desktop "Done"` (exits 3, `not_sent/unattended`, when the screen is locked) |
+| alert | `tell notify --via alert "Disk full"` (waits up to 2m for Acknowledge; exits 0 only if clicked) |
 | apprise | `tell notify --via apprise --apprise-tag phone "Done"` |
 | shoutrrr | `PHONE_URLS='ntfy://ntfy.sh/topic' tell notify --via shoutrrr --shoutrrr-urls-env PHONE_URLS "Done"` |
 | imessage | `tell notify --via imessage --imessage-to +15551234567 "Done"` |
@@ -201,10 +203,12 @@ notify:
 | failed | stops unless `fallback_on: [not_sent, failed]` |
 | uncertain | always stops; it may have arrived |
 
-One `--timeout` covers the whole cascade. `--via` or `TELL_NOTIFY_VIA` picks a
+One `--timeout` covers the whole cascade; an alert's wait is extra time on
+top of it, so `[alert, apprise]` still reaches the phone. `--via` or `TELL_NOTIFY_VIA` picks a
 single route. `send` has no fallback: two agents doing the same work is worse
 than none. Details: [fallback](docs/design.md#notify-fallback-cascades),
 [examples](examples/fallback/README.md), [desktop](docs/design.md#desktop-delivery),
+[alert](docs/design.md#alert-delivery),
 [Herdr](docs/design.md#herdr-delivery), [command](docs/design.md#command-delivery),
 [escalation](examples/escalate/README.md).
 
@@ -337,7 +341,7 @@ See [GitHub webhooks](docs/listening.md#github-webhooks).
 
 | Exit | Outcome | Resend? |
 | --- | --- | --- |
-| 0 | accepted | No. Not proof anyone read it. |
+| 0 | accepted | No. Not proof anyone read it, except alert's `acknowledged: true`. |
 | 1 | config | After fixing. Nothing sent. |
 | 2 | usage | After fixing. Nothing sent. |
 | 3 | not_sent | Yes, or use another route. |

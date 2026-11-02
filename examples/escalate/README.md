@@ -142,6 +142,14 @@ delivered; raising it after `ack.sh` starts a new escalation.
 | Noon down past `LIFETIME` | queued tiers are cancelled; nothing is sent (per Noon docs) |
 | two machines | each has its own Noon; acknowledgement is local only |
 
-Acknowledgement is a local command, not a reply from your phone or Slack, and
+To acknowledge at the keyboard, show an [alert](../../docs/design.md#alert-delivery)
+after raising; clicking Acknowledge cancels the later tiers:
+
+```sh
+./raise.sh 'db-primary down' 'Database down'
+tell notify --via alert --title 'Database down' 'db-primary down' && ./ack.sh 'db-primary down'
+```
+
+Acknowledgement is a local command or click, not a reply from your phone or Slack, and
 does not acknowledge a Pushover emergency alert already sent. Set `LIFETIME` to
 how long an alert stays meaningful, since a late tier still sends.

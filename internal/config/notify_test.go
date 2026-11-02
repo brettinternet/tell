@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/brettinternet/tell/internal/config"
 )
@@ -115,6 +116,10 @@ func TestNotifyCascadeStrictValidation(t *testing.T) {
 		"notify: {via: imessage}\nimessage: {to: '5551234567'}\n",
 		"notify: {via: [{imessage: {to: 'a@b'}}]}\n",
 		"notify: {via: [{imessage: {to: '+15551234567', session: x}}]}\n",
+		"notify: {via: [{alert: {wait: 0s}}]}\n",
+		"notify: {via: [{alert: {wait: -5s}}]}\n",
+		"notify: {via: [{alert: {wait: soon}}]}\n",
+		"notify: {via: [{alert: {tag: phone}}]}\n",
 	} {
 		input := fixture(t)
 		file := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
@@ -124,6 +129,11 @@ func TestNotifyCascadeStrictValidation(t *testing.T) {
 		}
 	}
 	input := fixture(t)
+	writeFile(t, filepath.Join(input.UserConfigDir, "tell", "config.yaml"), "notify: {via: [alert, {alert: {wait: 15s}}]}\n")
+	if cfg, err := config.Load(input); err != nil || cfg.Notify.Steps[0].AlertWait() != 2*time.Minute || cfg.Notify.Steps[1].AlertWait() != 15*time.Second {
+		t.Fatalf("alert waits: %+v %v", cfg.Notify.Steps, err)
+	}
+	input = fixture(t)
 	writeFile(t, filepath.Join(input.CWD, "tell.yaml"), "notify: {via: [stderr, desktop]}\n")
 	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal routing") {
 		t.Fatalf("shared cascade was accepted: %v", err)

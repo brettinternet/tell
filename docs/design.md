@@ -139,7 +139,7 @@ starts is `uncertain`.
 | --- | --- |
 | config `version: 1` | valid keys keep meaning, precedence, and trust boundaries; unknown keys stay errors |
 | JSON `schema_version: 1` | existing fields keep type and meaning; new fields may appear |
-| exit codes | stable; 0 never means acknowledged, 5 never means safe to resend |
+| exit codes | stable; 0 means acknowledged only for the alert route, 5 never means safe to resend |
 | human wording | not an API |
 
 Ignore unknown JSON fields and treat unknown reasons and routes
@@ -173,10 +173,10 @@ positives and misses; it is not proof a message is safe.
 
 | Exit | Outcome | Meaning | Resend? |
 | --- | --- | --- | --- |
-| 0 | accepted | printed, posted, or provider exited 0; not proof anyone read it | no |
+| 0 | accepted | printed, posted, or provider exited 0; not proof anyone read it, except alert (`acknowledged: true`) | no |
 | 1 | config | config, input, or I/O error before delivery | after fixing |
 | 2 | usage | invalid invocation | after fixing |
-| 3 | not_sent | missing executable, unsupported platform, unattended desktop, absent/invalid target, busy/blocked agent, no match | yes, or another route |
+| 3 | not_sent | missing executable, unsupported platform, unattended desktop, unacknowledged alert, absent/invalid target, busy/blocked agent, no match | yes, or another route |
 | 4 | failed | provider ran and failed; `partial` means some destinations got it | not blindly |
 | 5 | uncertain | timed out or cancelled after the provider started | not without checking |
 
@@ -186,7 +186,8 @@ $ tell --json notify --via apprise "Deploy done"
 ```
 
 Reasons: `missing_executable`, `start_failed`, `unsupported_route`,
-`unsupported_platform`, `unattended`, `unsupported_message`, `missing_route`,
+`unsupported_platform`, `unattended`, `unacknowledged`, `no_user_interaction`,
+`unsupported_message`, `missing_route`,
 `missing_target`, `missing_session`, `invalid_target`, `invalid_response`,
 `no_match`, `busy`, `blocked`, `partial`, `provider_failure`, `timeout`,
 `cancelled`, `secret_detected`, `secret_scan_failed`. Results never include the
@@ -228,6 +229,39 @@ Access), idle time, and display sleep. Apple Silicon has no
 `IODisplayWrangler`, and Linux DPMS state is compositor-specific, so a sleeping
 but unlocked display still counts as attended. Displays that lock on sleep are
 caught as locked.
+
+## Alert delivery
+
+An alert waits for someone at this machine to click **Acknowledge**, so a
+cascade such as `[alert, apprise]` escalates only when nobody responds.
+
+| Platform | Runs |
+| --- | --- |
+| macOS | `osascript` running fixed AppleScript `display dialog … buttons {"Acknowledge"} giving up after N`; title, body, and N as argv |
+| Linux | `notify-send --wait --urgency critical --expire-time 0 --action ack=Acknowledge --print-id -- TITLE BODY`; on expiry, `gdbus` `CloseNotification` by ID |
+| other | `not_sent/unsupported_platform` |
+
+| Result | Outcome | Exit |
+| --- | --- | --- |
+| Acknowledge clicked | `accepted`, JSON `acknowledged: true` | 0 |
+| wait elapsed, dismissed, or closed without the action | `not_sent/unacknowledged`; the dialog or notification is removed | 3 |
+| locked or inactive session ([presence](#desktop-delivery)) | `not_sent/unattended`, without showing or waiting | 3 |
+| macOS process outside the GUI session, such as ssh (`-1713`) | `not_sent/no_user_interaction` | 3 |
+| provider error | `failed/provider_failure` | 4 |
+| provider start or teardown exceeds `--timeout`, or cancellation | `uncertain` | 5 |
+
+`wait` defaults to `2m`; set it per step with `alert: {wait: 30s}`. The wait is
+human time outside the shared `--timeout` budget: `--timeout` covers only
+starting and tearing down the provider, and later cascade steps keep their
+remaining budget. One alert step runs at most `wait` (rounded up to whole
+seconds) plus that budget. Listener action timeouts still cap the whole step;
+an MCP call blocks for the wait unless the client cancels it.
+
+Dialogs work from launchd agents in the GUI session, including Noon jobs.
+From ssh they fail with `-1713`; Tell reports that instead of asking for
+Automation permission to drive System Events. Linux needs libnotify 0.7.10 or
+newer; `tell doctor --via alert` checks it. Linux behavior is not yet verified
+by hand.
 
 ## Apprise delivery
 
