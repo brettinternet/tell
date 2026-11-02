@@ -1,12 +1,12 @@
 ---
 id: TELL-31
 title: List addressable send recipients with tell targets
-status: draft
+status: todo
 type: feature
 priority: medium
 rank: ae969696969696959
 created: 2026-10-17T00:19:00Z
-updated: 2026-10-17T00:19:00Z
+updated: 2026-11-02T04:12:02Z
 ---
 
 Why: choosing `send.to` means leaving Tell to run `herdr --session S agent list` or `hcom list --json`, reading provider JSON, and guessing which value Tell accepts. Most Herdr agents have no name (only a pane ID), and an agent that is busy or blocked is refused at send time. A read-only `tell targets` puts the recipients Tell would accept, and whether each can receive a message now, in one place. It is also the intended home for future discovery, such as other Herdr sessions or saved machines, behind the same read-only boundary.
@@ -17,7 +17,7 @@ Scope: a `targets` command in internal/cli, listing logic beside the existing se
 
 Non-goals: choosing, ranking, or defaulting a recipient; changing send semantics; delivery to multiple recipients; starting or naming agents; discovery outside the configured route and session (other sessions, `--machine`, network); an MCP tool (decide separately once the CLI shape is settled).
 
-Open question for promotion: list only the configured `send.via`, or every send route whose executable is available.
+Decision: list only the configured `send.via` route, matching how `doctor` probes. Listing other available routes is a non-goal for now.
 
 ## Acceptance criteria
 
