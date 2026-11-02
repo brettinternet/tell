@@ -43,6 +43,19 @@ notify:
 With several URLs in the variable, a partial failure is `failed` and does not
 advance unless `fallback_on` lists it.
 
+On a Mac, show a banner when you are at the screen and text your phone when
+you are not. A locked screen or inactive session makes desktop
+`not_sent/unattended`, so the cascade advances to Messages:
+
+```yaml
+notify:
+  via:
+    - desktop
+    - imessage: {to: "+15551234567"}   # E.164 number or Apple ID email
+```
+
+`accepted` from `imessage` means Messages took the text, not that it arrived.
+
 ```console
 $ examples/fallback/deliver.sh "Review feat/rate-limit at 3f9c2e1; blockers first."
 herdr reviewer: busy
