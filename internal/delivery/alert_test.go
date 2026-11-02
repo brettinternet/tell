@@ -72,6 +72,11 @@ func TestAlertWaitOutsideTimeoutBudget(t *testing.T) {
 	write("notify-send", "echo 7")
 	cfg := config.Config{Timeout: "100ms", Notify: config.Notify{Via: "alert", Steps: []config.NotifyStep{{Via: "alert", Wait: "1s"}, {Via: "stderr"}}}, Secrets: config.Secrets{Policy: "off"}}
 	message := Message{Title: "-title ' \" \\\nnext", Body: "--body ' \" \\\n$(no-shell)", Type: "info"}
+	// Exclude first-use secret-rule initialization from this provider-wait test.
+	// Under the race detector it can consume the entire 100ms delivery budget.
+	if _, _, reason := PrepareMessage(message, cfg.Secrets.Policy); reason != "" {
+		t.Fatalf("prepare: %s", reason)
+	}
 	stderr := &strings.Builder{}
 	result := Notify(context.Background(), cfg, message, stderr)
 	if result.Outcome != "accepted" || result.Route != "stderr" || len(result.Attempts) != 2 || result.Attempts[0].Reason != "unacknowledged" {
