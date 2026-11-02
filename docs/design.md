@@ -96,11 +96,22 @@ A final Apprise step that selects a Pushover `priority=emergency` URL makes
 Pushover repeat the alert until it is acknowledged in the app or expires;
 PagerDuty and Opsgenie through Apprise work the same way. `accepted` means the
 provider accepted the alert, not that anyone acknowledged it; Tell does not
-poll receipts.
+poll receipts. Use Apprise, not Shoutrrr, for this: Shoutrrr `v0.22.1` drops
+`priority=2` and sends a normal Pushover notification that still reports
+`accepted`.
 
-Timed tiers spread separate calls over time. Each later tier is a Noon
-temporary job that runs `tell notify` once, named from a hash of the incident
-key; acknowledging is a local command that cancels those jobs.
+Timed tiers spread separate calls over time. Schedule every later tier before
+waiting on anything, and let acknowledgement cancel them: if the raising
+process dies, the tiers still fire. Escalation that only advances while a
+process waits fails silently. A short `alert` wait is a fine acknowledgement
+source (`tell notify --via alert … && ack.sh KEY`), not the escalation timer.
+
+Tiers need a scheduler that can run a command later and survive a restart,
+cancel it by a name derived from the incident, and not duplicate a re-raised
+incident. Noon temporary jobs meet this, as do `systemd-run --on-active` units.
+Tell never calls or reads a scheduler: each tier is one `tell notify`, and
+acknowledgement is a user command (`ack.sh`). Without a scheduler, a
+provider-native step (Pushover emergency, PagerDuty) is the single tier.
 
 | Case | Behavior |
 | --- | --- |

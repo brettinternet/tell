@@ -9,6 +9,10 @@ the Pushover app, or until they expire. Apprise sends them, so Tell needs no
 escalation logic: the escalation is one Apprise step at the end of a notify
 cascade. The Pushover URL and keys live only in Apprise's config.
 
+Don't use the built-in Shoutrrr route for this. Shoutrrr `v0.22.1` drops
+`priority=2` (it lacks Pushover's required `retry` and `expire`), so the alert
+goes out at normal priority, never repeats, and still reports `accepted`.
+
 ## Setup
 
 ```sh
@@ -93,7 +97,9 @@ emergency alert.
 ## Timed tiers with Noon
 
 Notify now, then louder later unless someone acknowledges. Noon owns the
-timers as temporary jobs; Tell only delivers each tier.
+timers as temporary jobs; Tell only delivers each tier. Noon is one choice:
+any scheduler that meets the [tier contract](../../docs/design.md#escalation)
+works, and Tell itself never calls it.
 
 ```sh
 ./raise.sh 'db-primary down' 'Database down'   # tier 1 now; tiers 2-3 scheduled
