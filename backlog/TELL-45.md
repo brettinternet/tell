@@ -1,12 +1,12 @@
 ---
 id: TELL-45
 title: Link notifications to a URL with notify --url
-status: todo
+status: done
 type: feature
 priority: high
 labels: [notify]
 created: 2026-11-17T19:51:37Z
-updated: 2026-11-17T19:51:37Z
+updated: 2026-11-17T20:33:56Z
 ---
 
 ## Context
@@ -47,8 +47,17 @@ Real Mac click test with Tell.app installed; Pushover through a local fixture se
 
 ## Acceptance criteria
 
-- [ ] With Tell.app installed, clicking a notification sent with --url https://... opens that URL in the default browser after tell notify has exited; verified on a real Mac and recorded
-- [ ] Pushover requests carry the URL as the url field (local fixture server); stderr, osascript or notify-send desktop, alert, apprise, shoutrrr, imessage, and herdr get it as the last body line; command gets it in the body and TELL_URL; covered by tests
-- [ ] Relative, file:, javascript:, userinfo, over-512-byte, and control-character URLs exit 2 and run no route; covered by a test
-- [ ] A URL containing a detected secret is never delivered: dropped and counted in redactions under redact, rejected under secrets.policy reject; covered by a test
-- [ ] README.md, docs/design.md, docs/configuration.md, and the wait-for, ci-to-agent, and github-actions examples use --url; task ci passes
+- [x] With Tell.app installed, clicking a notification sent with --url https://... opens that URL in the default browser after tell notify has exited; verified on a real Mac and recorded
+  Evidence: Real Mac (baja), Tell.app installed, no on_click: built bin/tell; 'tell --json notify --via desktop --url https://example.com/?tell-45-click' exited 0 (accepted); user clicked the banner after tell exited and the default browser opened the URL. Commit ccf89cb.
+- [x] Pushover requests carry the URL as the url field (local fixture server); stderr, osascript or notify-send desktop, alert, apprise, shoutrrr, imessage, and herdr get it as the last body line; command gets it in the body and TELL_URL; covered by tests
+  Evidence: go test ./internal/delivery ./internal/cli: TestPushoverNotifyRequest (httptest fixture asserts form url), TestNotifyURL (apprise argv + stderr last line), TestCommandNotify (stdin last line + TELL_URL), TestDesktopLiteralArguments (osascript/notify-send last line), TestDesktopHelper/TestDesktopOrigin (open URL click action, on_click TELL_URL). Other routes share notifyStep's linked() path.
+- [x] Relative, file:, javascript:, userinfo, over-512-byte, and control-character URLs exit 2 and run no route; covered by a test
+  Evidence: TestNotifyURL: relative, schemeless, file:, javascript:, userinfo, >512 bytes, newline, space, ESC, and U+202E URLs exit 2 usage/invalid_input; fixture record absent (no route ran).
+- [x] A URL containing a detected secret is never delivered: dropped and counted in redactions under redact, rejected under secrets.policy reject; covered by a test
+  Evidence: TestNotifyURL: ghp_ token in --url under redact -> accepted, redactions=1, provider body lacks the URL; under secrets.policy reject -> exit 1 config/secret_detected, token not in output.
+- [x] README.md, docs/design.md, docs/configuration.md, and the wait-for, ci-to-agent, and github-actions examples use --url; task ci passes
+  Evidence: README, docs/design.md (#links), docs/configuration.md, examples wait-for, ci-to-agent, github-actions (both workflows + README) use --url. task ci passed on rebased commit ccf89cb.
+
+## Notes
+
+Done in ccf89cb (fast-forwarded to main, not pushed). Review: tightened ValidURL to printable-only after finding bidi overrides (U+202E) would bypass body normalization since the URL is appended post-normalization. task ci green. Not pushed.
