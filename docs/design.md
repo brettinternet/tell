@@ -226,7 +226,7 @@ emergency Pushover results add `receipt`, the only provider value Tell returns.
 
 | Platform | Runs | Type |
 | --- | --- | --- |
-| macOS with Tell.app | `~/Applications/Tell.app/Contents/MacOS/Tell post`; title, body, and [click actions](#click-actions) as JSON on stdin | ignored |
+| macOS with Tell.app | `~/Applications/Tell.app/Contents/MacOS/Tell post`; title, body, project thread, and [click actions](#click-actions) as JSON on stdin | ignored |
 | macOS | `osascript` with fixed AppleScript; title and body as argv | ignored |
 | Linux | `notify-send --urgency LEVEL -- TITLE BODY` | `failure` → critical, else normal |
 | other | — | `not_sent/unsupported_platform` |
@@ -245,6 +245,12 @@ moves on. Remove the app to return to osascript. `tell doctor --via desktop`
 shows `provider` (`tell-app`, `osascript`, or `notify-send`) and, for Tell.app,
 `permission` (`authorized`, `denied`, `not_determined`, `provisional`, or
 `unknown`) without posting.
+
+Tell.app groups notifications by project: Tell sends the canonical project
+path as `thread`, and the helper sets it as the notification's
+`threadIdentifier`, so Notification Center stacks each repository separately
+under Tell. The path is never displayed, and message text never becomes the
+thread. A Tell.app built before grouping ignores the field and still posts.
 
 ### Click actions
 

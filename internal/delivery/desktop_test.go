@@ -40,7 +40,7 @@ func TestDesktopLiteralArguments(t *testing.T) {
 			}
 			for _, kind := range []string{"info", "success", "warning", "failure"} {
 				message := Message{Title: "-title ' \" \\\nnext", Body: "--body ' \" \\\n$(no-shell)", Type: kind}
-				result := notifyDesktop(context.Background(), time.Second, message, platform, nil)
+				result := notifyDesktop(context.Background(), time.Second, message, platform, "/project", nil)
 				if platform == "windows" {
 					if result.Outcome != "not_sent" || result.Failure.Reason != "unsupported_platform" {
 						t.Fatalf("%+v", result)
@@ -71,7 +71,7 @@ func TestDesktopLiteralArguments(t *testing.T) {
 				}
 			}
 			t.Setenv("PATH", t.TempDir())
-			result := notifyDesktop(context.Background(), time.Second, Message{Body: "body"}, platform, nil)
+			result := notifyDesktop(context.Background(), time.Second, Message{Body: "body"}, platform, "/project", nil)
 			if result.Outcome != "not_sent" {
 				t.Fatalf("%+v", result)
 			}
@@ -144,7 +144,7 @@ func TestDesktopPresence(t *testing.T) {
 				write("notify-send", `: > "$FIXTURE_RECORD"`)
 				write("ioreg", probe)
 				write("loginctl", probe)
-				result := notifyDesktop(context.Background(), time.Second, Message{Body: "body"}, platform, nil)
+				result := notifyDesktop(context.Background(), time.Second, Message{Body: "body"}, platform, "/project", nil)
 				readiness := checkRoute(context.Background(), config.Config{Timeout: "1s"}, "desktop", platform)
 				_, err := os.Stat(record)
 				if name == "unattended" {
@@ -195,7 +195,8 @@ func TestDesktopOrigin(t *testing.T) {
 	}
 }
 
-// Tell.app receives message text only on stdin. on_click replaces the default
+// Tell.app receives message text only on stdin and groups by the project path,
+// never message text. on_click replaces the default
 // action, sees the origin only as TELL_ORIGIN_* variables, and never receives
 // message text; denied permission must advance a cascade.
 func TestDesktopHelper(t *testing.T) {
@@ -224,7 +225,7 @@ func TestDesktopHelper(t *testing.T) {
 	cwd, _ := os.Getwd()
 
 	message := Message{Title: "title-secret", Body: "body-secret"}
-	result := notifyDesktop(context.Background(), time.Second, message, "darwin", []string{"on-click", "--flag"})
+	result := notifyDesktop(context.Background(), time.Second, message, "darwin", "/project", []string{"on-click", "--flag"})
 	if result.Outcome != "accepted" {
 		t.Fatalf("%+v", result)
 	}
@@ -233,10 +234,10 @@ func TestDesktopHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	var payload struct {
-		Title, Body string
-		Actions     []clickAction
+		Title, Body, Thread string
+		Actions             []clickAction
 	}
-	if err := json.Unmarshal(data, &payload); err != nil || payload.Title != message.Title || payload.Body != message.Body {
+	if err := json.Unmarshal(data, &payload); err != nil || payload.Title != message.Title || payload.Body != message.Body || payload.Thread != "/project" {
 		t.Fatalf("payload %s: %v", data, err)
 	}
 	want := []clickAction{{Argv: []string{filepath.Join(dir, "on-click"), "--flag"}, Dir: cwd, Env: []string{
@@ -253,7 +254,7 @@ func TestDesktopHelper(t *testing.T) {
 	}
 
 	t.Setenv("FIXTURE_EXIT", "3")
-	if result := notifyDesktop(context.Background(), time.Second, message, "darwin", nil); result.Outcome != "not_sent" || result.Failure.Reason != "permission_denied" {
+	if result := notifyDesktop(context.Background(), time.Second, message, "darwin", "/project", nil); result.Outcome != "not_sent" || result.Failure.Reason != "permission_denied" {
 		t.Fatalf("denied: %+v", result)
 	}
 	for status, reason := range map[string]string{"authorized": "ready", "not_determined": "ready", "denied": "permission_denied", "garbage": "ready"} {

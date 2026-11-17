@@ -12,7 +12,7 @@ import (
 
 // The platform is explicit so both native argv contracts can be exercised with
 // local executables on either development/CI host.
-func notifyDesktop(ctx context.Context, timeout time.Duration, message Message, platform string, onClick []string) *Result {
+func notifyDesktop(ctx context.Context, timeout time.Duration, message Message, platform, project string, onClick []string) *Result {
 	const route = "desktop"
 	var name string
 	var args []string
@@ -39,7 +39,7 @@ func notifyDesktop(ctx context.Context, timeout time.Duration, message Message, 
 		return NewResult(route, "not_sent", "unattended", "desktop session is not on the active console; nobody can see a desktop notification")
 	}
 	if helper := desktopHelper(platform); helper != "" {
-		return notifyDesktopHelper(ctx, timeout, helper, message, onClick)
+		return notifyDesktopHelper(ctx, timeout, helper, message, project, onClick)
 	}
 	code, failure := RunProcess(ctx, timeout, route, name, args)
 	if failure != nil {
@@ -67,14 +67,16 @@ func desktopHelper(platform string) string {
 
 // notifyDesktopHelper sends the message on stdin so it never appears in argv.
 // Only click actions, never message text, are stored with the notification.
-func notifyDesktopHelper(ctx context.Context, timeout time.Duration, helper string, message Message, onClick []string) *Result {
+// The project path is the thread, so Notification Center groups by project.
+func notifyDesktopHelper(ctx context.Context, timeout time.Duration, helper string, message Message, project string, onClick []string) *Result {
 	const route = "desktop"
 	cwd, _ := os.Getwd()
 	payload, err := json.Marshal(struct {
 		Title   string        `json:"title"`
 		Body    string        `json:"body"`
+		Thread  string        `json:"thread,omitempty"`
 		Actions []clickAction `json:"actions,omitempty"`
-	}{message.Title, message.Body, clickActions(captureOrigin(os.Getenv, cwd), onClick)})
+	}{message.Title, message.Body, project, clickActions(captureOrigin(os.Getenv, cwd), onClick)})
 	if err != nil {
 		return NewResult(route, "failed", "provider_failure", "could not encode desktop notification")
 	}
