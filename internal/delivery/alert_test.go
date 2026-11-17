@@ -64,16 +64,17 @@ func TestAlertWaitOutsideTimeoutBudget(t *testing.T) {
 	t.Setenv("PATH", dir)
 	t.Setenv("FIXTURE_RECORD", record)
 	write := func(name, body string) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nprintf '%s\\000' \"$@\" > \"$FIXTURE_RECORD\"\n/bin/sleep 0.3\n"+body+"\n"), 0o700); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nprintf '%s\\000' \"$@\" > \"$FIXTURE_RECORD\"\n/bin/sleep 1\n"+body+"\n"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	write("osascript", "echo 'button returned:, gave up:true'")
 	write("notify-send", "echo 7")
-	cfg := config.Config{Timeout: "100ms", Notify: config.Notify{Via: "alert", Steps: []config.NotifyStep{{Via: "alert", Wait: "1s"}, {Via: "stderr"}}}, Secrets: config.Secrets{Policy: "off"}}
+	cfg := config.Config{Timeout: "500ms", Notify: config.Notify{Via: "alert", Steps: []config.NotifyStep{{Via: "alert", Wait: "2s"}, {Via: "stderr"}}}, Secrets: config.Secrets{Policy: "off"}}
 	message := Message{Title: "-title ' \" \\\nnext", Body: "--body ' \" \\\n$(no-shell)", Type: "info"}
 	// Exclude first-use secret-rule initialization from this provider-wait test.
-	// Under the race detector it can consume the entire 100ms delivery budget.
+	// The 500ms budget still leaves room for per-step scans under the race
+	// detector on loaded CI runners while staying below the 1s provider run.
 	if _, _, reason := PrepareMessage(message, cfg.Secrets.Policy); reason != "" {
 		t.Fatalf("prepare: %s", reason)
 	}
@@ -89,7 +90,7 @@ func TestAlertWaitOutsideTimeoutBudget(t *testing.T) {
 	got := strings.Split(strings.TrimSuffix(string(data), "\x00"), "\x00")
 	want := []string{"--", message.Title, message.Body}
 	if runtime.GOOS == "darwin" {
-		want = append(want, "1")
+		want = append(want, "2")
 	}
 	if !reflect.DeepEqual(got[len(got)-len(want):], want) {
 		t.Fatalf("argv: %q", got)
