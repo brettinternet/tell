@@ -1,12 +1,12 @@
 ---
 id: TELL-46
 title: Test listener routes offline from captured events
-status: todo
+status: done
 type: feature
 priority: medium
 labels: [listen]
 created: 2026-11-17T19:51:37Z
-updated: 2026-11-17T19:51:37Z
+updated: 2026-11-17T20:17:37Z
 ---
 
 ## Context
@@ -39,8 +39,19 @@ Fixture envelopes through the built binary with credentials unset and no network
 
 ## Acceptance criteria
 
-- [ ] tell listen --dry-run --from FILE reports the same per-route match, no-match, and duplicate receipts as a live dry-run of the same envelopes; covered by a test with fixture envelopes
-- [ ] With source credentials unset and no network it succeeds, and no connection, bind, executable resolution, or action start occurs; covered by a test
-- [ ] Malformed lines get body-free receipts with line numbers, valid lines still process, and the exit is 1; no receipt contains envelope data, rendered text, or argv (sentinel test)
-- [ ] --from without --dry-run, or with source names, --all, or --print, exits 2
-- [ ] docs/listening.md, README.md, and examples/listen/README.md document the capture-then-test loop; task ci passes
+- [x] tell listen --dry-run --from FILE reports the same per-route match, no-match, and duplicate receipts as a live dry-run of the same envelopes; covered by a test with fixture envelopes
+  Evidence: e32bb2c: TestListenDryRunEvents (internal/cli) runs fixture envelopes through real listen.Capture via --dry-run --events; asserts exact accepted/duplicate/route dry_run/no_match receipts, same format code as live runSources. Binary smoke: 5000-line file -> 15000 receipts exit 0; GitHub digest duplicate verified.
+- [x] With source credentials unset and no network it succeeds, and no connection, bind, executable resolution, or action start occurs; covered by a test
+  Evidence: TestListenDryRunEvents sets TELL_TEST_SLACK_SECRET empty, route run script marker never created; file path builds only fileSpec (no slack/github spec, no bind). Binary run with env -u credential succeeded offline.
+- [x] Malformed lines get body-free receipts with line numbers, valid lines still process, and the exit is 1; no receipt contains envelope data, rendered text, or argv (sentinel test)
+  Evidence: TestListenDryRunEvents: invalid_json line=3, invalid_envelope line=6, event_size line=7 receipts; later lines processed; exit 1; stderr contains no 'sentinel' data, argv path, or rendered 'Alert' text.
+- [x] --from without --dry-run, or with source names, --all, or --print, exits 2
+  Evidence: TestListenCLISelection table: listen --events -, --dry-run --events - slack, --dry-run --events - --all, --print --events - all exit 2; binary also exit 2 with --json.
+- [x] docs/listening.md, README.md, and examples/listen/README.md document the capture-then-test loop; task ci passes
+  Evidence: docs/listening.md 'Testing routes offline' + CLI/exit tables, README.md command list, examples/listen/README.md capture-then-test loop, docs/configuration.md flag list. task ci exit 0 after rebase onto 23fbcfa (go test, -race, staticcheck, govulncheck, smoke).
+
+## Notes
+
+Worktree: .worktrees/tell-46-listen-from branch tell-46-listen-from (session 5ce4f1e5-a034-4c18-af9e-55883dfaf12e). Plan: implement --from file ingress through existing dry-run path, merge to main.
+
+Flag renamed --from -> --events (user decision 2026-11-17): global --from already sets send.from and listen inherits it for send actions. Criteria below refer to --from; --events is the implemented flag. Merged to main as e32bb2c (ff from tell-46-listen-from). Self-review fix: GitHub file envelopes also dedupe by body digest like live admission.
