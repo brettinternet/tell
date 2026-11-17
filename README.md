@@ -45,7 +45,7 @@ Optional routes need their own executable on PATH:
 | Route | Needs |
 | --- | --- |
 | stderr | nothing |
-| desktop | `osascript` or Tell.app from `task macos:install` (macOS), or `notify-send` + desktop D-Bus (Linux) |
+| desktop | `osascript` or Tell.app from `task macos:install` (macOS), or `notify-send` + desktop D-Bus (Linux; `task linux:install` adds click actions on GNOME) |
 | alert | `osascript` (macOS) or `notify-send` 0.7.10+ and `gdbus` (Linux) |
 | apprise | `apprise` and its own config |
 | shoutrrr | nothing (built in); URLs in an env var you name |
@@ -167,7 +167,7 @@ See [configuration](docs/configuration.md) for every key and flag, and
 | Route | Example |
 | --- | --- |
 | stderr (default) | `tell notify "Done"` |
-| desktop | `tell notify --via desktop "Done"` (exits 3, `not_sent/unattended`, when the screen is locked; with Tell.app, a click returns to the [origin](docs/design.md#click-actions) terminal and Herdr tab) |
+| desktop | `tell notify --via desktop "Done"` (exits 3, `not_sent/unattended`, when the screen is locked; with Tell.app or the GNOME click helper, a click returns to the [origin](docs/design.md#click-actions) terminal and Herdr tab) |
 | alert | `tell notify --via alert "Disk full"` (waits up to 2m for Acknowledge; exits 0 only if clicked) |
 | apprise | `tell notify --via apprise --apprise-tag phone "Done"` |
 | shoutrrr | `PHONE_URLS='ntfy://ntfy.sh/topic' tell notify --via shoutrrr --shoutrrr-urls-env PHONE_URLS "Done"` |
@@ -178,7 +178,7 @@ See [configuration](docs/configuration.md) for every key and flag, and
 
 `-t`/`--title` defaults to the project directory name; `-n`/`--type` is
 `info`, `success`, `warning`, or `failure`. `--url` links an http or https URL:
-clicking a Tell.app notification opens it, Pushover sends it as its native
+clicking a Tell.app or GNOME notification opens it, Pushover sends it as its native
 link, and other routes add it as the last body line.
 
 ```sh

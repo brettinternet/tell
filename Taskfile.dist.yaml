@@ -4,6 +4,7 @@ includes:
   setup: .taskfiles/setup.yaml
   cli: .taskfiles/cli.yaml
   macos: .taskfiles/macos.yaml
+  linux: .taskfiles/linux.yaml
 
 tasks:
   default:

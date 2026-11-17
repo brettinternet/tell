@@ -23,6 +23,20 @@ func TestDesktopLiteralArguments(t *testing.T) {
 			t.Setenv("PATH", dir)
 			t.Setenv("HOME", dir) // no Tell.app: the osascript fallback is unchanged
 			t.Setenv("FIXTURE_RECORD", record)
+			// An installed Linux click helper without a session that serves
+			// org.gtk.Notifications must keep notify-send.
+			t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(dir, "no-bus"))
+			for _, path := range []string{
+				filepath.Join(dir, ".local", "share", "applications", desktopAppID+".desktop"),
+				filepath.Join(dir, ".local", "share", "dbus-1", "services", desktopAppID+".service"),
+			} {
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			for _, name := range []string{"osascript", "notify-send"} {
 				if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nprintf '%s\\000' \"$@\" > \"$FIXTURE_RECORD\"\n"), 0o700); err != nil {
 					t.Fatal(err)
@@ -32,7 +46,8 @@ func TestDesktopLiteralArguments(t *testing.T) {
 			if readiness.Ready != (platform != "windows") || (platform == "windows" && readiness.Reason != "unsupported_platform") {
 				t.Fatalf("readiness: %+v", readiness)
 			}
-			if platform == "darwin" && (readiness.Provider != "osascript" || readiness.Permission != "") {
+			if platform == "darwin" && (readiness.Provider != "osascript" || readiness.Permission != "") ||
+				platform == "linux" && readiness.Provider != "notify-send" {
 				t.Fatalf("fallback provider: %+v", readiness)
 			}
 			if _, err := os.Stat(record); !os.IsNotExist(err) {
@@ -177,7 +192,7 @@ func TestDesktopPresence(t *testing.T) {
 // app, workspace, and tab through absolute paths the click relaunch can run.
 func TestDesktopOrigin(t *testing.T) {
 	none := captureOrigin(func(string) string { return "" }, "/work")
-	if actions := clickActions(none, nil, ""); actions != nil {
+	if actions := clickActions(none, nil, "", "darwin"); actions != nil {
 		t.Fatalf("no-origin click actions: %+v", actions)
 	}
 	env := map[string]string{
@@ -191,13 +206,26 @@ func TestDesktopOrigin(t *testing.T) {
 		{Argv: []string{"/opt/herdr", "workspace", "focus", "wQY"}, Env: socket},
 		{Argv: []string{"/opt/herdr", "tab", "focus", "wQY:t1"}, Env: socket},
 	}
-	if got := clickActions(origin, nil, ""); !reflect.DeepEqual(got, want) {
+	if got := clickActions(origin, nil, "", "darwin"); !reflect.DeepEqual(got, want) {
 		t.Fatalf("origin click actions: %+v", got)
 	}
 	// A linked notification opens its URL instead of returning to the origin.
 	link := []clickAction{{Argv: []string{"/usr/bin/open", "https://example.com/run/1"}}}
-	if got := clickActions(origin, nil, "https://example.com/run/1"); !reflect.DeepEqual(got, link) {
+	if got := clickActions(origin, nil, "https://example.com/run/1", "darwin"); !reflect.DeepEqual(got, link) {
 		t.Fatalf("URL click actions: %+v", got)
+	}
+	// Linux opens links with an absolute xdg-open and has no terminal activation.
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "xdg-open"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	link = []clickAction{{Argv: []string{filepath.Join(bin, "xdg-open"), "https://example.com/run/1"}}}
+	if got := clickActions(origin, nil, "https://example.com/run/1", "linux"); !reflect.DeepEqual(got, link) {
+		t.Fatalf("Linux URL click actions: %+v", got)
+	}
+	if got := clickActions(origin, nil, "", "linux"); !reflect.DeepEqual(got, want[1:]) {
+		t.Fatalf("Linux origin click actions: %+v", got)
 	}
 }
 

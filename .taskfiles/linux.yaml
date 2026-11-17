@@ -1,0 +1,24 @@
+version: "3"
+
+vars:
+  LINUX_SRC: linux
+  LINUX_ID: com.brettinternet.tell
+  LINUX_SHARE: "{{.HOME}}/.local/share"
+  # The installed tell that runs click actions; override with TELL=/path/to/tell.
+  TELL:
+    sh: command -v tell || true
+
+tasks:
+  install:
+    desc: Register tell for desktop notification click actions under ~/.local/share (Linux, GNOME)
+    platforms: [linux]
+    preconditions:
+      - sh: case "{{.TELL}}" in /*) test -x "{{.TELL}}";; *) false;; esac
+        msg: "tell is not on PATH; install it first or pass TELL=/absolute/path/to/tell"
+    cmds:
+      - mkdir -p "{{.LINUX_SHARE}}/applications" "{{.LINUX_SHARE}}/dbus-1/services" "{{.LINUX_SHARE}}/icons/hicolor/scalable/apps"
+      - sed 's|@TELL@|{{.TELL}}|' "{{.LINUX_SRC}}/{{.LINUX_ID}}.desktop" > "{{.LINUX_SHARE}}/applications/{{.LINUX_ID}}.desktop"
+      - sed 's|@TELL@|{{.TELL}}|' "{{.LINUX_SRC}}/{{.LINUX_ID}}.service" > "{{.LINUX_SHARE}}/dbus-1/services/{{.LINUX_ID}}.service"
+      - cp "{{.LINUX_SRC}}/{{.LINUX_ID}}.svg" "{{.LINUX_SHARE}}/icons/hicolor/scalable/apps/{{.LINUX_ID}}.svg"
+      # Ask the running session bus to rescan service files; this starts nothing.
+      - gdbus call --session -d org.freedesktop.DBus -o /org/freedesktop/DBus -m org.freedesktop.DBus.ReloadConfig >/dev/null 2>&1 || true

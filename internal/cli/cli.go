@@ -108,6 +108,10 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 				}, Action: initialize},
 			pushoverCommand(),
 			{Name: "mcp", Usage: "Serve notify, send, and doctor as MCP tools over stdio", Action: mcpCommand(build.Version)},
+			// D-Bus activation runs this when a Linux desktop notification is clicked.
+			{Name: "desktop-click", Hidden: true, Action: func(ctx context.Context, _ *urfave.Command) error {
+				return delivery.ServeDesktopClicks(ctx)
+			}},
 		},
 	}
 	_ = root.Walk(func(cmd *urfave.Command) error {

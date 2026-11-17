@@ -39,6 +39,8 @@ github.com/gitleaks/go-gitdiff v0.9.1 h1:ni6z6/3i9ODT685OLCTf+s/ERlWUNWQF4x1pvoN
 github.com/gitleaks/go-gitdiff v0.9.1/go.mod h1:pKz0X4YzCKZs30BL+weqBIG7mx0jl4tF1uXV9ZyNvrA=
 github.com/go-sprout/sprout v1.0.3 h1:LLuz0D3aYazgbVTOwCVuMor3LOUVYinipXRIdjA/D+I=
 github.com/go-sprout/sprout v1.0.3/go.mod h1:cFFzpnyGGry3cmN0UNCAM1f7AGok6vPVabeYQzBMBZY=
+github.com/godbus/dbus/v5 v5.2.4 h1:F2gUCy++NMIxGmo9J+z5le/+ZC8W1OgeR51P4i9ZB/U=
+github.com/godbus/dbus/v5 v5.2.4/go.mod h1:3AAv2+hPq5rdnr5txxxRwiGjPXamgoIHgz9FPBfOp3c=
 github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
 github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/google/go-cmp v0.5.2/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=

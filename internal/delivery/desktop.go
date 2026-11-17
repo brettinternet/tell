@@ -14,7 +14,7 @@ import (
 // local executables on either development/CI host.
 func notifyDesktop(ctx context.Context, timeout time.Duration, message Message, platform, project string, onClick []string) *Result {
 	const route = "desktop"
-	// Without Tell.app there is no click action, so the link joins the body.
+	// Without a click helper the link joins the body.
 	linked := message.linked()
 	var name string
 	var args []string
@@ -42,6 +42,12 @@ func notifyDesktop(ctx context.Context, timeout time.Duration, message Message, 
 	}
 	if helper := desktopHelper(platform); helper != "" {
 		return notifyDesktopHelper(ctx, timeout, helper, message, project, onClick)
+	}
+	if platform == "linux" {
+		if conn := gtkNotifications(ctx, timeout); conn != nil {
+			defer func() { _ = conn.Close() }()
+			return notifyGTK(ctx, timeout, conn, message, onClick)
+		}
 	}
 	code, failure := RunProcess(ctx, timeout, route, name, args)
 	if failure != nil {
@@ -80,7 +86,7 @@ func notifyDesktopHelper(ctx context.Context, timeout time.Duration, helper stri
 		Thread  string        `json:"thread,omitempty"`
 		Sound   bool          `json:"sound,omitempty"`
 		Actions []clickAction `json:"actions,omitempty"`
-	}{message.Title, message.Body, project, message.Type == "failure", clickActions(captureOrigin(os.Getenv, cwd), onClick, message.URL)})
+	}{message.Title, message.Body, project, message.Type == "failure", clickActions(captureOrigin(os.Getenv, cwd), onClick, message.URL, "darwin")})
 	if err != nil {
 		return NewResult(route, "failed", "provider_failure", "could not encode desktop notification")
 	}
@@ -134,7 +140,8 @@ type clickAction struct {
 // clickActions opens the message URL, or activates the origin terminal and
 // focuses its Herdr workspace and tab. A personal on_click command replaces
 // that default and receives the origin as TELL_ORIGIN_* and the URL as TELL_URL.
-func clickActions(origin desktopOrigin, onClick []string, url string) []clickAction {
+// Linux has no terminal activation and opens URLs with xdg-open.
+func clickActions(origin desktopOrigin, onClick []string, url, platform string) []clickAction {
 	if len(onClick) > 0 {
 		argv := append([]string{}, onClick...)
 		if path, err := exec.LookPath(argv[0]); err == nil {
@@ -150,10 +157,18 @@ func clickActions(origin desktopOrigin, onClick []string, url string) []clickAct
 	}
 	// A validated http(s) URL cannot be mistaken for an open flag.
 	if url != "" {
-		return []clickAction{{Argv: []string{"/usr/bin/open", url}}}
+		opener := "/usr/bin/open"
+		if platform == "linux" {
+			// The activated helper's PATH is the session's, so store an absolute path.
+			opener = "xdg-open"
+			if path, err := exec.LookPath(opener); err == nil {
+				opener, _ = filepath.Abs(path)
+			}
+		}
+		return []clickAction{{Argv: []string{opener, url}}}
 	}
 	var actions []clickAction
-	if origin.App != "" {
+	if origin.App != "" && platform == "darwin" {
 		actions = append(actions, clickAction{Argv: []string{"/usr/bin/open", "-b", origin.App}})
 	}
 	if origin.Herdr != "" {

@@ -157,6 +157,13 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 			if helper := desktopHelper(platform); helper != "" {
 				name, result.Provider = helper, "tell-app"
 			}
+			if platform == "linux" {
+				timeout, _ := time.ParseDuration(cfg.Timeout)
+				if conn := gtkNotifications(ctx, timeout); conn != nil {
+					_ = conn.Close()
+					name, result.Provider = "", "gtk-notifications"
+				}
+			}
 		}
 	case "herdr":
 		if cfg.Herdr.Session == "" {
@@ -168,7 +175,7 @@ func checkRouteWithEnv(ctx context.Context, cfg config.Config, route, platform, 
 	default:
 		return finish("unsupported_route")
 	}
-	if _, err := exec.LookPath(name); err != nil {
+	if _, err := exec.LookPath(name); name != "" && err != nil {
 		return finish("missing_executable")
 	}
 	timeout, _ := time.ParseDuration(cfg.Timeout)

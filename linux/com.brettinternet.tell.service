@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=com.brettinternet.tell
+Exec="@TELL@" desktop-click

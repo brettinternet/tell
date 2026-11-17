@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Tell
+Icon=com.brettinternet.tell
+Exec="@TELL@" desktop-click
+DBusActivatable=true
+NoDisplay=true

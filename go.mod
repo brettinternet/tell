@@ -30,6 +30,7 @@ require (
 	github.com/fatih/semgroup v1.3.0 // indirect
 	github.com/gitleaks/go-gitdiff v0.9.1 // indirect
 	github.com/go-sprout/sprout v1.0.3 // indirect
+	github.com/godbus/dbus/v5 v5.2.4 // indirect
 	github.com/google/go-github/v72 v72.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect

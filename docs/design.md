@@ -231,6 +231,7 @@ containing a secret is dropped and counted in `redactions`; under
 | Route | URL |
 | --- | --- |
 | desktop with Tell.app | a click runs `/usr/bin/open URL` instead of the [origin action](#click-actions); `on_click` still wins and gets `TELL_URL` |
+| desktop with the Linux click helper | a click runs `xdg-open URL`; `on_click` still wins and gets `TELL_URL` |
 | pushover | native `url` field |
 | command | last body line, and `TELL_URL` |
 | every other route | last body line |
@@ -273,6 +274,7 @@ emergency Pushover results add `receipt`, the only provider value Tell returns.
 | --- | --- | --- |
 | macOS with Tell.app | `~/Applications/Tell.app/Contents/MacOS/Tell post`; title, body, project thread, sound, and [click actions](#click-actions) as JSON on stdin | `failure` → default sound, else silent |
 | macOS | `osascript` with fixed AppleScript; title and body as argv | ignored |
+| Linux with the click helper on GNOME | `org.gtk.Notifications.AddNotification` over the session bus as `com.brettinternet.tell`; [click actions](#click-actions) as the default action target | `failure` → urgent, else normal |
 | Linux | `notify-send --urgency LEVEL -- TITLE BODY` | `failure` → critical, else normal |
 | other | — | `not_sent/unsupported_platform` |
 
@@ -287,7 +289,7 @@ permission. With it installed, banners appear as **Tell** with Tell's icon,
 posted through UNUserNotificationCenter; the helper exits right after posting.
 Denied permission returns `not_sent/permission_denied` (exit 3), so a cascade
 moves on. Remove the app to return to osascript. `tell doctor --via desktop`
-shows `provider` (`tell-app`, `osascript`, or `notify-send`) and, for Tell.app,
+shows `provider` (`tell-app`, `osascript`, `gtk-notifications`, or `notify-send`) and, for Tell.app,
 `permission` (`authorized`, `denied`, `not_determined`, `provisional`, or
 `unknown`) without posting.
 
@@ -300,6 +302,17 @@ thread. A Tell.app built before grouping ignores the field and still posts.
 Tell.app plays the default notification sound only for `--type failure`;
 Tell sends `sound` and the helper applies it. Silence it in System Settings >
 Notifications > Tell.
+
+On Linux, `task linux:install` writes a desktop entry
+(`DBusActivatable=true`), a session D-Bus service, and an icon for
+`com.brettinternet.tell` under `~/.local/share`, all running the `tell` found
+on PATH (or `TELL=/path/to/tell`); no root, and nothing starts. Tell then posts
+through `org.gtk.Notifications` when that helper is installed and the session
+bus has an owner for it, so banners appear as **Tell**. That is GNOME Shell.
+KDE Plasma, dunst, mako, and other daemons don't serve it, so Tell keeps
+`notify-send` there, with no click action. Tell never autolaunches a bus or
+activates a service while posting. `tell doctor --via desktop` shows
+`provider: gtk-notifications` when it applies.
 
 ### Click actions
 
@@ -317,7 +330,11 @@ Tell turns the origin into literal argv lists and stores them in the
 notification's `userInfo`; message text is never stored there. When the
 notification is clicked, macOS relaunches Tell.app, which runs those commands
 in order (each bounded to 10 seconds, output discarded) and exits. Tell itself
-has already exited. With no terminal or Herdr origin, such as a notification
+has already exited. On GNOME the actions are the notification's default action
+target; a click makes GNOME D-Bus-activate `tell desktop-click`, which runs
+them the same way, passes the activation token as `XDG_ACTIVATION_TOKEN` so the
+opened window can take focus, and exits after a few idle seconds. Linux has no
+terminal-app origin; Herdr origins work. With no terminal or Herdr origin, such as a notification
 from Noon, a click does nothing extra.
 
 `notify.desktop.on_click: [argv...]` replaces the default action. It is
@@ -326,11 +343,12 @@ runs in the origin directory with `TELL_ORIGIN_APP`,
 `TELL_ORIGIN_HERDR_WORKSPACE`, `TELL_ORIGIN_HERDR_TAB`, `TELL_ORIGIN_CWD`, and
 `TELL_URL` (empty when unknown or unset); title and body never reach its argv or environment. A
 bare executable name resolves on Tell's PATH at send time, because the click
-relaunch only has launchd's PATH.
+relaunch only has launchd's (or the D-Bus session's) PATH.
 
 Not supported: focusing the exact Herdr pane (Herdr 0.9.5 `pane focus` only
 moves by direction), action buttons or replies, opening a terminal when there
-is no origin, click actions on Linux or with osascript, notarized
+is no origin, click actions with osascript or Linux desktops other than GNOME,
+focusing a terminal app on Linux, notarized
 distribution, and tmux or other multiplexers.
 
 Before sending, Tell checks whether anyone could see the banner. A locked
