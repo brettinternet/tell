@@ -78,10 +78,11 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 				return nil
 			}},
 			{Name: "notify", Usage: "Send a notification to a person", ArgsUsage: "MESSAGE... | -",
-				Description: "Join message words with spaces, or use a lone - to read stdin.\n\nExamples:\n  tell notify Build finished\n  tell notify --via stderr --type success --title Tests All passed\n  printf 'Build finished' | tell notify -",
+				Description: "Join message words with spaces, or use a lone - to read stdin.\n\nExamples:\n  tell notify Build finished\n  tell notify --via stderr --type success --title Tests All passed\n  tell notify --type failure --url https://github.com/owner/repo/actions Checks failed\n  printf 'Build finished' | tell notify -",
 				Flags: []urfave.Flag{
 					&urfave.StringFlag{Name: "title", Aliases: []string{"t"}, Usage: "Notification `title` (default: project directory name)"},
 					&urfave.StringFlag{Name: "type", Aliases: []string{"n"}, Value: "info", DefaultText: "info", Usage: "Notification `type`: info, success, warning, failure"},
+					&urfave.StringFlag{Name: "url", Usage: "Link the notification to an http or https `URL`"},
 					&urfave.StringFlag{Name: "pushover-tag", Usage: "Tag an emergency Pushover alert so pushover cancel --tag can stop it (`tag`)"},
 					&urfave.StringFlag{Name: "pushover-callback", Usage: "`URL` Pushover calls when an emergency alert is acknowledged"},
 				}, Action: notify},

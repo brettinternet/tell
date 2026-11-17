@@ -18,7 +18,7 @@ func TestCommandNotify(t *testing.T) {
 	record := provider(t, "tell-fixture")
 	script := `#!/bin/sh
 printf '%s\000' "$@" > "$FIXTURE_RECORD"
-printf '%s\000' "$TELL_TITLE" "$TELL_TYPE" "$TELL_PROJECT" > "$FIXTURE_RECORD.env"
+printf '%s\000' "$TELL_TITLE" "$TELL_TYPE" "$TELL_PROJECT" "$TELL_URL" > "$FIXTURE_RECORD.env"
 if [ -n "${LISTENER_SECRET+x}" ]; then exit 97; fi
 /bin/cat > "$FIXTURE_RECORD.body"
 printf 'raw-provider-output credential://private@example.invalid\n'
@@ -42,12 +42,12 @@ exit "${FIXTURE_EXIT:-0}"
 			t.Fatal("inspection launched command")
 		}
 	}
-	code, out, errOut := run("--json", "notify", "--via", "command", "--title", "title\x1b[31m", "--type", "warning", "body-sentinel\x1b[31m\nnext")
+	code, out, errOut := run("--json", "notify", "--via", "command", "--title", "title\x1b[31m", "--type", "warning", "--url", "https://example.com/run/1", "body-sentinel\x1b[31m\nnext")
 	assertResult(t, code, out, errOut, "command", "accepted", "")
 	for suffix, want := range map[string]string{
 		"":      "two words\x00\x00$(no-shell); *\x00credential://private@example.invalid\x00",
-		".env":  "title\x00warning\x00" + project + "\x00",
-		".body": "body-sentinel\nnext",
+		".env":  "title\x00warning\x00" + project + "\x00https://example.com/run/1\x00",
+		".body": "body-sentinel\nnext\nhttps://example.com/run/1",
 	} {
 		got, err := os.ReadFile(record + suffix)
 		if err != nil || string(got) != want {

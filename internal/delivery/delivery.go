@@ -75,11 +75,21 @@ func (r *Result) ExitCode() int {
 	}
 }
 
-// Message is the text every route receives. PushoverTag and PushoverCallback
-// are per-call emergency options, not message text; only Pushover uses them.
+// Message is the text every route receives. URL is a validated link that each
+// route renders its own way. PushoverTag and PushoverCallback are per-call
+// emergency options, not message text; only Pushover uses them.
 type Message struct {
-	Title, Body, Type             string
+	Title, Body, Type, URL        string
 	PushoverTag, PushoverCallback string
+}
+
+// linked renders the URL as the last body line for routes without a native link.
+func (m Message) linked() Message {
+	if m.URL != "" {
+		m.Body = strings.TrimRight(m.Body, "\n") + "\n" + m.URL
+		m.URL = ""
+	}
+	return m
 }
 
 func Notify(ctx context.Context, cfg config.Config, message Message, stderr io.Writer) *Result {
@@ -238,6 +248,10 @@ func notifyStep(ctx context.Context, cfg config.Config, step config.NotifyStep, 
 		}
 		return NewResult(route, "not_sent", reason, "notification route did not start")
 	}
+	url := message.URL
+	if route != "pushover" && route != "desktop" {
+		message = message.linked()
+	}
 	switch route {
 	case "stderr":
 		if _, err := fmt.Fprintln(stderr, message.Body); err != nil {
@@ -248,7 +262,7 @@ func notifyStep(ctx context.Context, cfg config.Config, step config.NotifyStep, 
 		if len(cfg.Notify.Command) == 0 {
 			return NewResult(route, "config", "invalid_config", "command route requires notify.command in personal config")
 		}
-		env := append(os.Environ(), "TELL_TITLE="+message.Title, "TELL_TYPE="+message.Type, "TELL_PROJECT="+cfg.Project)
+		env := append(os.Environ(), "TELL_TITLE="+message.Title, "TELL_TYPE="+message.Type, "TELL_PROJECT="+cfg.Project, "TELL_URL="+url)
 		code, failure := runProcess(ctx, timeout, route, cfg.Notify.Command[0], cfg.Notify.Command[1:], strings.NewReader(message.Body), env)
 		if failure != nil {
 			return failure

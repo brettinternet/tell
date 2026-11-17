@@ -213,8 +213,29 @@ key [REDACTED] done
 ```
 
 Scanning precedes truncation so a cut-off secret cannot leak. `redactions`
-counts occurrences in both fields (zero under `reject`). Detection has false
+counts occurrences in every field (zero under `reject`). Detection has false
 positives and misses; it is not proof a message is safe.
+
+### Links
+
+`tell notify --url URL` links one notification. The URL must be an absolute
+`http` or `https` URL with a host, no userinfo, no whitespace or control
+characters, and at most 512 bytes; anything else is a usage error (exit 2)
+before any route runs. It is CLI-only: no config key, environment variable,
+listener action, MCP, or `send` sets it.
+
+The URL is scanned with the title and body and never truncated. A URL
+containing a secret is dropped and counted in `redactions`; under
+`secrets.policy: reject` the message is rejected. JSON results never echo it.
+
+| Route | URL |
+| --- | --- |
+| desktop with Tell.app | a click runs `/usr/bin/open URL` instead of the [origin action](#click-actions); `on_click` still wins and gets `TELL_URL` |
+| pushover | native `url` field |
+| command | last body line, and `TELL_URL` |
+| every other route | last body line |
+
+Each cascade step applies its own route's rule.
 
 ## Outcomes
 
@@ -291,6 +312,7 @@ own environment:
 | Herdr workspace, tab | `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID` (with `HERDR_SOCKET_PATH`, `HERDR_BIN_PATH`) | `herdr workspace focus ID`, then `herdr tab focus ID` |
 | directory | working directory | none; passed to `on_click` |
 
+A notification sent with [`--url`](#links) opens that URL on click instead.
 Tell turns the origin into literal argv lists and stores them in the
 notification's `userInfo`; message text is never stored there. When the
 notification is clicked, macOS relaunches Tell.app, which runs those commands
@@ -301,8 +323,8 @@ from Noon, a click does nothing extra.
 `notify.desktop.on_click: [argv...]` replaces the default action. It is
 personal config only, refused in shared `tell.yaml` like `notify.command`. It
 runs in the origin directory with `TELL_ORIGIN_APP`,
-`TELL_ORIGIN_HERDR_WORKSPACE`, `TELL_ORIGIN_HERDR_TAB`, and `TELL_ORIGIN_CWD`
-(empty when unknown); title and body never reach its argv or environment. A
+`TELL_ORIGIN_HERDR_WORKSPACE`, `TELL_ORIGIN_HERDR_TAB`, `TELL_ORIGIN_CWD`, and
+`TELL_URL` (empty when unknown or unset); title and body never reach its argv or environment. A
 bare executable name resolves on Tell's PATH at send time, because the click
 relaunch only has launchd's PATH.
 
@@ -422,7 +444,7 @@ app token, and no generic library returns the receipt. `pushover.token_env`
 and `pushover.user_env` name variables holding the token and user key; the
 names may appear only in personal config, never in shared `tell.yaml`. The
 title (≤250 characters) and body (≤1024 characters, truncated with a marker)
-are sent; `--type` is not mapped to priority.
+are sent, with `--url` as the native `url`; `--type` is not mapped to priority.
 
 `priority: emergency` also sends `retry` and `expire` in seconds, and per-call
 `--pushover-tag` and `--pushover-callback` (passed literally). `--json` then
@@ -527,6 +549,7 @@ stdin         Disk 91% full        (no trailing newline, then EOF)
 TELL_TITLE    app
 TELL_TYPE     warning
 TELL_PROJECT  /Users/me/dev/app
+TELL_URL                           (with --url, also the last stdin line)
 ```
 
 Argv is passed unchanged: no shell, splitting, templates, or added arguments.

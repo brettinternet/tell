@@ -23,9 +23,11 @@ You receive:
 
 ```text
 CI failed: feat/rate-limit
-https://github.com/acme/api/pull/128
 Asked the fixer agent to investigate.
+https://github.com/acme/api/pull/128
 ```
+
+The PR link is sent with `--url`: with Tell.app, clicking the notification opens it.
 
 ## Setup
 

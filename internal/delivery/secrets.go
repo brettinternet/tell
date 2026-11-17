@@ -40,8 +40,8 @@ func scanSecrets(message Message, policy string) (Message, int, string) {
 	// Message authors cannot opt out of scanning with an inline comment
 	// (betterleaks:allow or gitleaks:allow).
 	detector.IgnoreGitleaksAllow = true
-	fields := []*string{&message.Title, &message.Body}
-	// Collect secrets from both fields before redacting either: a context rule
+	fields := []*string{&message.Title, &message.Body, &message.URL}
+	// Collect secrets from every field before redacting any: a context rule
 	// (such as api_key=...) may match in one field while the bare value repeats
 	// in the other.
 	var secrets []string

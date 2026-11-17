@@ -39,8 +39,9 @@ func TestDesktopLiteralArguments(t *testing.T) {
 				t.Fatal("desktop readiness executed provider")
 			}
 			for _, kind := range []string{"info", "success", "warning", "failure"} {
-				message := Message{Title: "-title ' \" \\\nnext", Body: "--body ' \" \\\n$(no-shell)", Type: kind}
+				message := Message{Title: "-title ' \" \\\nnext", Body: "--body ' \" \\\n$(no-shell)", Type: kind, URL: "https://example.com/run/1"}
 				result := notifyDesktop(context.Background(), time.Second, message, platform, "/project", nil)
+				message = message.linked()
 				if platform == "windows" {
 					if result.Outcome != "not_sent" || result.Failure.Reason != "unsupported_platform" {
 						t.Fatalf("%+v", result)
@@ -176,7 +177,7 @@ func TestDesktopPresence(t *testing.T) {
 // app, workspace, and tab through absolute paths the click relaunch can run.
 func TestDesktopOrigin(t *testing.T) {
 	none := captureOrigin(func(string) string { return "" }, "/work")
-	if actions := clickActions(none, nil); actions != nil {
+	if actions := clickActions(none, nil, ""); actions != nil {
 		t.Fatalf("no-origin click actions: %+v", actions)
 	}
 	env := map[string]string{
@@ -190,8 +191,13 @@ func TestDesktopOrigin(t *testing.T) {
 		{Argv: []string{"/opt/herdr", "workspace", "focus", "wQY"}, Env: socket},
 		{Argv: []string{"/opt/herdr", "tab", "focus", "wQY:t1"}, Env: socket},
 	}
-	if got := clickActions(origin, nil); !reflect.DeepEqual(got, want) {
+	if got := clickActions(origin, nil, ""); !reflect.DeepEqual(got, want) {
 		t.Fatalf("origin click actions: %+v", got)
+	}
+	// A linked notification opens its URL instead of returning to the origin.
+	link := []clickAction{{Argv: []string{"/usr/bin/open", "https://example.com/run/1"}}}
+	if got := clickActions(origin, nil, "https://example.com/run/1"); !reflect.DeepEqual(got, link) {
+		t.Fatalf("URL click actions: %+v", got)
 	}
 }
 
@@ -224,7 +230,7 @@ func TestDesktopHelper(t *testing.T) {
 	t.Setenv("HERDR_BIN_PATH", "/opt/herdr")
 	cwd, _ := os.Getwd()
 
-	message := Message{Title: "title-secret", Body: "body-secret", Type: "failure"}
+	message := Message{Title: "title-secret", Body: "body-secret", Type: "failure", URL: "https://example.com/run/1"}
 	result := notifyDesktop(context.Background(), time.Second, message, "darwin", "/project", []string{"on-click", "--flag"})
 	if result.Outcome != "accepted" {
 		t.Fatalf("%+v", result)
@@ -242,7 +248,7 @@ func TestDesktopHelper(t *testing.T) {
 		t.Fatalf("payload %s: %v", data, err)
 	}
 	want := []clickAction{{Argv: []string{filepath.Join(dir, "on-click"), "--flag"}, Dir: cwd, Env: []string{
-		"TELL_ORIGIN_APP=com.mitchellh.ghostty", "TELL_ORIGIN_HERDR_WORKSPACE=wQY", "TELL_ORIGIN_HERDR_TAB=wQY:t1", "TELL_ORIGIN_CWD=" + cwd,
+		"TELL_ORIGIN_APP=com.mitchellh.ghostty", "TELL_ORIGIN_HERDR_WORKSPACE=wQY", "TELL_ORIGIN_HERDR_TAB=wQY:t1", "TELL_ORIGIN_CWD=" + cwd, "TELL_URL=https://example.com/run/1",
 	}}}
 	if !reflect.DeepEqual(payload.Actions, want) {
 		t.Fatalf("on_click actions: %+v", payload.Actions)

@@ -2,8 +2,10 @@ package delivery
 
 import (
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/brettinternet/tell/internal/config"
@@ -27,9 +29,14 @@ func PrepareMessage(message Message, policy string) (Message, int, string) {
 	if strings.TrimSpace(message.Body) == "" {
 		return Message{}, 0, "empty_message"
 	}
+	url := message.URL
 	message, count, reason := scanSecrets(message, policy)
 	if reason != "" {
 		return Message{}, 0, reason
+	}
+	// A partially redacted link is useless, so a link with a secret is dropped.
+	if message.URL != url {
+		message.URL = ""
 	}
 	message.Title = normalize(message.Title, titleLimit)
 	message.Body = normalize(message.Body, bodyLimit)
@@ -139,4 +146,15 @@ func normalize(text string, limit int) string {
 		result = result[:end] + truncationMarker
 	}
 	return result
+}
+
+// ValidURL accepts an absolute http or https link with a host, no userinfo,
+// and at most 512 bytes. Routes append it after normalization, so whitespace,
+// controls, and invisible format characters such as bidi overrides are refused.
+func ValidURL(link string) bool {
+	if len(link) > 512 || strings.ContainsFunc(link, func(r rune) bool { return r == ' ' || !unicode.IsPrint(r) }) {
+		return false
+	}
+	u, err := url.Parse(link)
+	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && u.User == nil
 }

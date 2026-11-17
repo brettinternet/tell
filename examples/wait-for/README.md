@@ -22,7 +22,7 @@ Checks failed    lint, test (ubuntu-latest)
 ```
 
 `wait-pr-checks.sh` needs `gh` authenticated for the repository. It reports
-failing check names and the PR URL, never logs. To have an agent investigate
+failing check names and links the PR with `--url`, never logs. To have an agent investigate
 the failure, see [ci-to-agent](../ci-to-agent/README.md).
 
 ## Notes

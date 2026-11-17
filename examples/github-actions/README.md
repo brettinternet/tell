@@ -8,7 +8,7 @@ run through Apprise, using the same `tell notify` you use locally.
 acme/app nightly failed
 Branch: main
 Commit: 3f9c2e1
-Run: https://github.com/acme/app/actions/runs/1234567890
+https://github.com/acme/app/actions/runs/1234567890
 ```
 
 ## Setup

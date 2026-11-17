@@ -177,7 +177,13 @@ See [configuration](docs/configuration.md) for every key and flag, and
 | command | `tell notify --via command "Done"` |
 
 `-t`/`--title` defaults to the project directory name; `-n`/`--type` is
-`info`, `success`, `warning`, or `failure`.
+`info`, `success`, `warning`, or `failure`. `--url` links an http or https URL:
+clicking a Tell.app notification opens it, Pushover sends it as its native
+link, and other routes add it as the last body line.
+
+```sh
+tell notify --type failure --url "$RUN_URL" "Nightly failed"
+```
 
 The command route runs your executable with the body on stdin:
 
@@ -189,7 +195,7 @@ notify:
 
 ```sh
 #!/bin/sh
-# also gets TELL_TITLE, TELL_TYPE, TELL_PROJECT
+# also gets TELL_TITLE, TELL_TYPE, TELL_PROJECT, TELL_URL
 exec /usr/bin/say -f -
 ```
 

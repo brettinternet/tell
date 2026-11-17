@@ -14,6 +14,8 @@ import (
 // local executables on either development/CI host.
 func notifyDesktop(ctx context.Context, timeout time.Duration, message Message, platform, project string, onClick []string) *Result {
 	const route = "desktop"
+	// Without Tell.app there is no click action, so the link joins the body.
+	linked := message.linked()
 	var name string
 	var args []string
 	switch platform {
@@ -21,14 +23,14 @@ func notifyDesktop(ctx context.Context, timeout time.Duration, message Message, 
 		name = "osascript"
 		args = []string{"-e", "on run argv", "-e",
 			"display notification (item 2 of argv) with title (item 1 of argv)",
-			"-e", "end run", "--", message.Title, message.Body}
+			"-e", "end run", "--", linked.Title, linked.Body}
 	case "linux":
 		name = "notify-send"
 		urgency := "normal"
 		if message.Type == "failure" {
 			urgency = "critical"
 		}
-		args = []string{"--urgency", urgency, "--", message.Title, message.Body}
+		args = []string{"--urgency", urgency, "--", linked.Title, linked.Body}
 	default:
 		return NewResult(route, "not_sent", "unsupported_platform", "desktop notifications are not supported on this platform")
 	}
@@ -78,7 +80,7 @@ func notifyDesktopHelper(ctx context.Context, timeout time.Duration, helper stri
 		Thread  string        `json:"thread,omitempty"`
 		Sound   bool          `json:"sound,omitempty"`
 		Actions []clickAction `json:"actions,omitempty"`
-	}{message.Title, message.Body, project, message.Type == "failure", clickActions(captureOrigin(os.Getenv, cwd), onClick)})
+	}{message.Title, message.Body, project, message.Type == "failure", clickActions(captureOrigin(os.Getenv, cwd), onClick, message.URL)})
 	if err != nil {
 		return NewResult(route, "failed", "provider_failure", "could not encode desktop notification")
 	}
@@ -129,10 +131,10 @@ type clickAction struct {
 	Dir  string   `json:"dir,omitempty"`
 }
 
-// clickActions activates the origin terminal, then focuses its Herdr workspace
-// and tab. A personal on_click command replaces that default and receives the
-// origin only as TELL_ORIGIN_* variables.
-func clickActions(origin desktopOrigin, onClick []string) []clickAction {
+// clickActions opens the message URL, or activates the origin terminal and
+// focuses its Herdr workspace and tab. A personal on_click command replaces
+// that default and receives the origin as TELL_ORIGIN_* and the URL as TELL_URL.
+func clickActions(origin desktopOrigin, onClick []string, url string) []clickAction {
 	if len(onClick) > 0 {
 		argv := append([]string{}, onClick...)
 		if path, err := exec.LookPath(argv[0]); err == nil {
@@ -143,7 +145,12 @@ func clickActions(origin desktopOrigin, onClick []string) []clickAction {
 			"TELL_ORIGIN_HERDR_WORKSPACE=" + origin.HerdrWorkspace,
 			"TELL_ORIGIN_HERDR_TAB=" + origin.HerdrTab,
 			"TELL_ORIGIN_CWD=" + origin.CWD,
+			"TELL_URL=" + url,
 		}}}
+	}
+	// A validated http(s) URL cannot be mistaken for an open flag.
+	if url != "" {
+		return []clickAction{{Argv: []string{"/usr/bin/open", url}}}
 	}
 	var actions []clickAction
 	if origin.App != "" {

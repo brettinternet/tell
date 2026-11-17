@@ -530,6 +530,55 @@ func TestNotifySecrets(t *testing.T) {
 	})
 }
 
+// A link must never smuggle a non-web target, credentials, or terminal control
+// into a route, and a link carrying a secret must never be delivered at all.
+func TestNotifyURL(t *testing.T) {
+	environment(t)
+	record := provider(t)
+	link := "https://example.com/owner/repo/actions/runs/1"
+	code, out, errOut := run("--json", "notify", "--via", "apprise", "--url", link, "message")
+	assertResult(t, code, out, errOut, "apprise", "accepted", "")
+	data, err := os.ReadFile(record)
+	if args := strings.Split(string(data), "\x00"); err != nil || args[3] != "message\n"+link || strings.Contains(out, link) {
+		t.Fatalf("apprise body %q, result %s", args, out)
+	}
+	if code, _, errOut := run("notify", "--url", link, "message"); code != 0 || errOut != "message\n"+link+"\n" {
+		t.Fatalf("stderr: %d %q", code, errOut)
+	}
+	if err := os.Remove(record); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []string{
+		"/relative", "example.com/path", "file:///etc/passwd", "javascript:alert(1)", "https://user:pass@example.com/",
+		"https://example.com/" + strings.Repeat("a", 500), "https://example.com/a\nb", "https://example.com/a b", "https://example.com/\x1b[31m", "https://example.com/\u202egpj.exe",
+	} {
+		code, out, errOut := run("--json", "notify", "--via", "apprise", "--url", invalid, "message")
+		assertResult(t, code, out, errOut, "apprise", "usage", "invalid_input")
+		if code != 2 {
+			t.Fatalf("%q exited %d", invalid, code)
+		}
+	}
+	if _, err := os.Stat(record); !os.IsNotExist(err) {
+		t.Fatal("invalid URL launched provider")
+	}
+
+	// Construct a synthetic GitHub token, not a usable credential.
+	token := "ghp_" + "aB3dE6fG9hJ2kL5mN8pQ1rS4tU7vW0xY3zA6"
+	code, out, errOut = run("--json", "notify", "--via", "apprise", "--url", "https://example.com/?t="+token, "message")
+	assertResult(t, code, out, errOut, "apprise", "accepted", "")
+	var result delivery.Result
+	data, _ = os.ReadFile(record)
+	if err := json.Unmarshal([]byte(out), &result); err != nil || result.Redactions != 1 || strings.Split(string(data), "\x00")[3] != "message" {
+		t.Fatalf("secret URL was not dropped: %s %q", out, data)
+	}
+	writeUserConfig(t, "secrets: {policy: reject}\n")
+	code, out, errOut = run("--json", "notify", "--via", "apprise", "--url", "https://example.com/?t="+token, "message")
+	assertResult(t, code, out, errOut, "apprise", "config", "secret_detected")
+	if strings.Contains(out+errOut, token) {
+		t.Fatal("secret leaked in result")
+	}
+}
+
 func TestNotifyInterruption(t *testing.T) {
 	for _, route := range []string{"apprise", "desktop", "command", "herdr"} {
 		for _, cancelAfterStart := range []bool{false, true} {

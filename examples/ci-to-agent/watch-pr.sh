@@ -15,7 +15,7 @@ failed=$(gh pr checks "$url" --json name,bucket,link \
     --jq '.[] | select(.bucket == "fail") | "- \(.name): \(.link)"') || exit 2
 
 if [ -z "$failed" ]; then
-    tell notify --type success --title "CI passed: $branch" -- "$url" </dev/null || true
+    tell notify --type success --title "CI passed: $branch" --url "$url" -- "All checks passed" </dev/null || true
     exit 0
 fi
 
@@ -30,6 +30,5 @@ case $? in
     5) result="Agent dispatch uncertain; check before resending." ;;
     *) result="Agent dispatch failed; check before resending." ;;
 esac
-tell notify --type failure --title "CI failed: $branch" -- "$url
-$result" </dev/null || true
+tell notify --type failure --title "CI failed: $branch" --url "$url" -- "$result" </dev/null || true
 exit 1

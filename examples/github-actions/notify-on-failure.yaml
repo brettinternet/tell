@@ -34,7 +34,6 @@ jobs:
         run: |
           pipx install apprise
           mise exec github:brettinternet/tell@latest -- \
-            tell notify --type failure --title "$GITHUB_REPOSITORY nightly failed" -- \
+            tell notify --type failure --title "$GITHUB_REPOSITORY nightly failed" --url "$RUN_URL" -- \
             "Branch: $REF_NAME
-          Commit: ${GITHUB_SHA:0:7}
-          Run: $RUN_URL" || echo "::warning::notification not delivered (exit $?)"
+          Commit: ${GITHUB_SHA:0:7}" || echo "::warning::notification not delivered (exit $?)"

@@ -8,9 +8,8 @@ gh pr checks ${1:+"$1"} --watch --interval 30 >/dev/null 2>&1
 failed=$(gh pr checks ${1:+"$1"} --json name,bucket --jq '[.[] | select(.bucket == "fail") | .name] | join(", ")') || exit 2
 
 if [ -z "$failed" ]; then
-    tell notify --type success --title "Checks passed" -- "$url" </dev/null
+    tell notify --type success --title "Checks passed" --url "$url" -- "All checks passed" </dev/null
 else
-    tell notify --type failure --title "Checks failed" -- "$failed
-$url" </dev/null
+    tell notify --type failure --title "Checks failed" --url "$url" -- "$failed" </dev/null
     exit 1
 fi

@@ -80,7 +80,7 @@ func assertNoPushoverLeak(t *testing.T, result *Result) {
 // cancel by tag; lower priorities must not, and only emergency returns a receipt.
 func TestPushoverNotifyRequest(t *testing.T) {
 	emergency := config.Pushover{Priority: "emergency", Retry: "2m", Expire: "1h", Device: "phone"}
-	message := Message{Title: "Build", Body: "body-sentinel", PushoverTag: "inc-1", PushoverCallback: pushoverTestHook}
+	message := Message{Title: "Build", Body: "body-sentinel", URL: "https://example.com/run/1", PushoverTag: "inc-1", PushoverCallback: pushoverTestHook}
 
 	requests := fakePushover(t, 200, `{"status":1,"request":"r","receipt":"`+pushoverTestReceipt+`"}`, 0)
 	result := Notify(context.Background(), pushoverConfig(emergency), message, &strings.Builder{})
@@ -88,7 +88,7 @@ func TestPushoverNotifyRequest(t *testing.T) {
 		t.Fatalf("emergency: %+v", result)
 	}
 	got := requests()[0]
-	want := map[string]string{"token": pushoverTestToken, "user": pushoverTestUser, "title": "Build", "message": "body-sentinel", "priority": "2", "retry": "120", "expire": "3600", "device": "phone", "tags": "inc-1", "callback": pushoverTestHook}
+	want := map[string]string{"token": pushoverTestToken, "user": pushoverTestUser, "title": "Build", "message": "body-sentinel", "url": "https://example.com/run/1", "priority": "2", "retry": "120", "expire": "3600", "device": "phone", "tags": "inc-1", "callback": pushoverTestHook}
 	if got.method != http.MethodPost || got.path != "/1/messages.json" || len(got.form) != len(want) {
 		t.Fatalf("emergency request: %+v", got)
 	}

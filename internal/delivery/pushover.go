@@ -38,12 +38,9 @@ const (
 // ValidPushoverReceipt, ValidPushoverTag, and ValidPushoverCallback check
 // per-call values before any request. Tags and receipts become URL path
 // segments, so dot segments and separators are refused.
-func ValidPushoverReceipt(receipt string) bool { return pushoverReceipt.MatchString(receipt) }
-func ValidPushoverTag(tag string) bool         { return pushoverTagValue.MatchString(tag) }
-func ValidPushoverCallback(callback string) bool {
-	u, err := url.Parse(callback)
-	return err == nil && len(callback) <= 512 && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && u.User == nil
-}
+func ValidPushoverReceipt(receipt string) bool   { return pushoverReceipt.MatchString(receipt) }
+func ValidPushoverTag(tag string) bool           { return pushoverTagValue.MatchString(tag) }
+func ValidPushoverCallback(callback string) bool { return ValidURL(callback) }
 
 // pushoverCredentials reads the named variables. The values are credentials and
 // never leave this package except in request bodies.
@@ -156,6 +153,9 @@ func notifyPushover(ctx context.Context, timeout time.Duration, settings config.
 	form := url.Values{"token": {token}, "user": {user}, "message": {truncateRunes(message.Body, pushoverMessageLimit)}}
 	if message.Title != "" {
 		form.Set("title", truncateRunes(message.Title, pushoverTitleLimit))
+	}
+	if message.URL != "" {
+		form.Set("url", message.URL)
 	}
 	if settings.Priority != "" {
 		form.Set("priority", config.PushoverPriorities[settings.Priority])

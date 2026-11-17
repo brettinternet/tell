@@ -27,6 +27,9 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 	default:
 		return delivery.NewResult(route, "usage", "invalid_type", fmt.Sprintf("invalid --type %q; must be info, success, warning, or failure%s", usageValue(cmd, kind), config.DidYouMean(kind, "info", "success", "warning", "failure")))
 	}
+	if cmd.IsSet("url") && !delivery.ValidURL(cmd.String("url")) {
+		return delivery.NewResult(route, "usage", "invalid_input", "--url must be an absolute http or https URL without credentials, whitespace, or control characters, at most 512 bytes")
+	}
 	if failure := checkPushoverOptions(cmd, cfg); failure != nil {
 		return failure
 	}
@@ -48,7 +51,7 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 	if !cmd.IsSet("title") {
 		title = filepath.Base(cfg.Project)
 	}
-	message := delivery.Message{Title: title, Body: body, Type: kind, PushoverTag: cmd.String("pushover-tag"), PushoverCallback: cmd.String("pushover-callback")}
+	message := delivery.Message{Title: title, Body: body, Type: kind, URL: cmd.String("url"), PushoverTag: cmd.String("pushover-tag"), PushoverCallback: cmd.String("pushover-callback")}
 	result := delivery.Notify(ctx, cfg, message, cmd.ErrWriter)
 	if result.ExitCode() != 0 {
 		return result

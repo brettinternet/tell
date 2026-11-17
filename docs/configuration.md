@@ -229,7 +229,7 @@ Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
 | Scope | Flags |
 | --- | --- |
 | global (before the command) | `-C`/`--project`, `-c`/`--config`, `-j`/`--json`, `--no-color`, `--timeout`, `-h`, `-v` |
-| `notify` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`, `-n`/`--type`, `--pushover-tag`, `--pushover-callback` |
+| `notify` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`, `-n`/`--type`, `--url`, `--pushover-tag`, `--pushover-callback` |
 | `run` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`; flags end at the command |
 | `pushover` | `status RECEIPT`; `cancel --tag TAG`; bare inspects only |
 | `send` | `--send-via`, `--to`, `--from`, `--herdr-session`, `-i`/`--intent` |
@@ -242,6 +242,7 @@ Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
 tell notify --title "CI" --type failure "Tests failed"   # info|success|warning|failure
 tell notify Build finished                               # sends "Build finished"
 tell notify - < message.txt                              # stdin only for a lone -
+tell notify --url "$RUN_URL" "Nightly failed"            # http(s) link; see design.md#links
 tell notify -- --not-a-flag                              # -- before flag-like text
 tell run -t Tests -- go test ./...                       # type from the exit status
 tell send --intent request "Triage PRs"                  # inform (default) | request
