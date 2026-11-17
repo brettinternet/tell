@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Init creates the selected project's shared template. Existing files are never
@@ -36,7 +37,9 @@ func InitLocal(input Input) (path string, created bool, err error) {
 }
 
 // InitUser creates personal configuration without reading project settings.
-func InitUser(input Input) (path string, created bool, err error) {
+// desktopReady runs only when the file is absent; when it reports true, the
+// file routes notifications to the desktop instead of leaving notify.via unset.
+func InitUser(input Input, desktopReady func() bool) (path string, created bool, err error) {
 	if !filepath.IsAbs(input.UserConfigDir) {
 		return "", false, errors.New("user config directory must be absolute")
 	}
@@ -44,7 +47,12 @@ func InitUser(input Input) (path string, created bool, err error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", false, err
 	}
-	return createTemplate(filepath.Join(dir, "config.yaml"), 0o600, userHeader+personalBody)
+	path = filepath.Join(dir, "config.yaml")
+	content := userHeader + personalBody
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) && desktopReady() {
+		content = userHeader + strings.Replace(personalBody, desktopExample, desktopRoute, 1)
+	}
+	return createTemplate(path, 0o600, content)
 }
 
 func createTemplate(path string, mode os.FileMode, content string) (string, bool, error) {
@@ -88,6 +96,11 @@ const localHeader = `# yaml-language-server: $schema=https://raw.githubuserconte
 # Git never commits files inside .git. Set notify.via, then run tell doctor.
 `
 
+const (
+	desktopExample = "# Personal routing examples:\n# notify:\n#   via: stderr\n"
+	desktopRoute   = "# Personal routing:\nnotify:\n  via: desktop\n"
+)
+
 const personalBody = `# Inspection sends nothing. notify routes: stderr, desktop, alert, apprise, shoutrrr, pushover, imessage, herdr, command.
 # send transports: hcom, herdr. Acceptance is not acknowledgment.
 # --config/TELL_CONFIG selects another trusted file instead of automatic files.
@@ -95,10 +108,7 @@ const personalBody = `# Inspection sends nothing. notify routes: stderr, desktop
 # Keep credentials in your provider's configuration.
 version: 1
 # timeout: 10s
-# Personal routing examples:
-# notify:
-#   via: stderr
-#   command: [/absolute/path/to/notifier]   # required when via: command
+` + desktopExample + `#   command: [/absolute/path/to/notifier]   # required when via: command
 # apprise:
 #   config: /absolute/path/to/apprise.yaml
 #   tag: project-alerts

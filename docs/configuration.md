@@ -370,7 +370,7 @@ color.
 | Command | Creates | Mode |
 | --- | --- | --- |
 | `tell init` | `tell.yaml` (shared fields) | default |
-| `tell init -u` | user config, with parent dirs (personal routing) | 0600 |
+| `tell init -u` | user config, with parent dirs (personal routing; desktop if ready) | 0600 |
 | `tell init -l` | `tell.yaml` in the common Git directory (personal routing) | 0600 |
 
 ```console
@@ -384,8 +384,17 @@ Next: commit tell.yaml. Run tell init --user to configure personal routing.
 
 $ tell init --user
 Created "/Users/me/.config/tell/config.yaml"
-Next: set notify.via in this file, then run tell doctor.
+Next: tell notify hi shows a desktop banner; tell doctor checks routes.
+
+$ tell init --user   # desktop not ready
+Created "/Users/me/.config/tell/config.yaml"
+Next: desktop is not ready (osascript was not found on PATH; install it or choose another route); set notify.via in this file, then run tell doctor.
 ```
+
+A new user config sets `notify.via: desktop` when the desktop route passes the
+same read-only check as `tell doctor --via desktop`; a locked screen still
+counts as ready. Otherwise `notify.via` stays commented. Init sends nothing,
+probes no other route, and `--local` never probes.
 
 Existing files are kept byte-for-byte; symlinks and directories are refused.
 `--local` fails outside a Git checkout; `--user` cannot combine with `--local`

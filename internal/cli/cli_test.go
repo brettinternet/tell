@@ -173,8 +173,11 @@ func TestCLIUserInit(t *testing.T) {
 				dir = filepath.Join(base, ".config")
 			}
 			path := filepath.Join(dir, "tell", "config.yaml")
-			code, out, errOut := run("init", "--user", "--json")
-			if code != 0 || !strings.Contains(out, `"created":true`) {
+			// Without a desktop provider, routing stays commented and the next
+			// step names doctor's remediation.
+			t.Setenv("PATH", t.TempDir())
+			code, out, errOut := run("init", "--user")
+			if code != 0 || !strings.Contains(out, "osascript was not found on PATH") && !strings.Contains(out, "notify-send was not found on PATH") {
 				t.Fatalf("init user: %d %s %s", code, out, errOut)
 			}
 			info, err := os.Stat(path)
@@ -182,7 +185,7 @@ func TestCLIUserInit(t *testing.T) {
 				t.Fatalf("private file: %v %v", info, err)
 			}
 			data, err := os.ReadFile(path)
-			if err != nil || !strings.Contains(string(data), "#   config:") {
+			if err != nil || !strings.Contains(string(data), "#   config:") || !strings.Contains(string(data), "# notify:\n#   via: stderr\n") || strings.Contains(string(data), "\nnotify:") {
 				t.Fatalf("personal template: %s %v", data, err)
 			}
 			if code, out, errOut := run("config", "check"); code != 0 {
@@ -220,6 +223,27 @@ func TestCLIUserInit(t *testing.T) {
 			t.Setenv("TELL_PROJECT", base)
 			if code, out, errOut := run("init", "--user", "--json"); code != 0 || !strings.Contains(out, `"created":true`) {
 				t.Fatalf("ambient env blocked init: %d %s %s", code, out, errOut)
+			}
+			// A ready desktop provider becomes the route; probing never runs it.
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"TELL_HERDR_SESSION", "TELL_CONFIG", "TELL_PROJECT"} {
+				if err := os.Unsetenv(name); err != nil {
+					t.Fatal(err)
+				}
+			}
+			record := provider(t, "osascript", "notify-send")
+			if code, out, errOut := run("init", "--user"); code != 0 || !strings.Contains(out, "tell notify hi") {
+				t.Fatalf("desktop init: %d %s %s", code, out, errOut)
+			}
+			if _, err := os.Stat(record); !os.IsNotExist(err) {
+				t.Fatalf("init ran a provider: %v", err)
+			}
+			code, out, errOut = run("--json", "config", "check")
+			var checked struct{ Config config.Config }
+			if code != 0 || json.Unmarshal([]byte(out), &checked) != nil || checked.Config.Notify.Via != "desktop" {
+				t.Fatalf("desktop config: %d %s %s", code, out, errOut)
 			}
 		})
 	}

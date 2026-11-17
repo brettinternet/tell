@@ -459,7 +459,7 @@ func checkConfig(_ context.Context, cmd *urfave.Command) error {
 	return nil
 }
 
-func initialize(_ context.Context, cmd *urfave.Command) error {
+func initialize(ctx context.Context, cmd *urfave.Command) error {
 	if err := noArgs(cmd); err != nil {
 		return err
 	}
@@ -481,11 +481,20 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	}
 	var path string
 	var created bool
+	var desktop *delivery.Readiness
+	desktopRouted := false
 	switch {
 	case cmd.Bool("user"):
 		values.UserConfigDir, err = userConfigDir()
 		if err == nil {
-			path, created, err = config.InitUser(values)
+			path, created, err = config.InitUser(values, func() bool {
+				// The same read-only probe as tell doctor --via desktop. A locked
+				// screen is temporary, so presence does not count against it.
+				result := delivery.Doctor(ctx, config.Config{Timeout: "10s", Notify: config.Notify{Via: "desktop"}})[0]
+				desktop = &result
+				desktopRouted = result.Ready || result.Reason == "unattended"
+				return desktopRouted
+			})
 		}
 	case cmd.Bool("local"):
 		path, created, err = config.InitLocal(values)
@@ -504,9 +513,15 @@ func initialize(_ context.Context, cmd *urfave.Command) error {
 	} else {
 		fmt.Fprintf(cmd.Writer, "%s %q (not overwritten)\n", style.bold("Kept existing"), path)
 	}
-	if cmd.Bool("user") || cmd.Bool("local") {
+	switch {
+	case created && desktopRouted:
+		fmt.Fprintf(cmd.Writer, "%s tell notify hi shows a desktop banner; tell doctor checks routes.\n", style.bold("Next:"))
+	case created && desktop != nil:
+		fmt.Fprintf(cmd.Writer, "%s desktop is not ready (%s); set notify.via in this file, then run tell doctor.\n",
+			style.bold("Next:"), humanReason(desktop.Route, desktop.Reason, ""))
+	case cmd.Bool("user") || cmd.Bool("local"):
 		fmt.Fprintf(cmd.Writer, "%s set notify.via in this file, then run tell doctor.\n", style.bold("Next:"))
-	} else {
+	default:
 		fmt.Fprintf(cmd.Writer, "%s commit tell.yaml. Run tell init --user to configure personal routing.\n", style.bold("Next:"))
 	}
 	return nil

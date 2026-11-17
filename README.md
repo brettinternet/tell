@@ -110,11 +110,20 @@ apprise: not ready
   apprise was not found on PATH; install it or choose another route
 ```
 
+Personal config routes to desktop banners when `tell doctor --via desktop`
+would pass; otherwise `notify.via` stays commented and the next step says why:
+
+```console
+$ tell init --user
+Created "/Users/me/.config/tell/config.yaml"
+Next: tell notify hi shows a desktop banner; tell doctor checks routes.
+```
+
 ## Configure
 
 ```sh
 tell init           # tell.yaml: shared, committed
-tell init --user    # ~/.config/tell/config.yaml: personal (0600)
+tell init --user    # ~/.config/tell/config.yaml: personal (0600), desktop if ready
 tell init --local   # .git/tell.yaml: personal, this repo and its worktrees (0600)
 ```
 
