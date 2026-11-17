@@ -1,12 +1,12 @@
 ---
 id: TELL-48
 title: Play a sound for failure notifications on macOS
-status: todo
+status: done
 type: feature
 priority: low
 labels: [notify, desktop]
 created: 2026-11-17T19:51:46Z
-updated: 2026-11-17T19:51:46Z
+updated: 2026-11-17T20:26:39Z
 ---
 
 ## Context
@@ -37,6 +37,13 @@ macos/TellNotifier/main.swift, internal/delivery/desktop.go, internal/delivery/d
 
 ## Acceptance criteria
 
-- [ ] On a real Mac with Tell.app, a --type failure notification plays the default sound and info, success, and warning are silent; verified and recorded
-- [ ] The Tell.app payload requests sound only for failure; covered by extending the desktop helper test
-- [ ] docs/design.md Desktop delivery table documents the macOS type mapping; task ci passes
+- [x] On a real Mac with Tell.app, a --type failure notification plays the default sound and info, success, and warning are silent; verified and recorded
+  Evidence: task macos:install, then tell notify --via desktop --type info|success|warning|failure on a real Mac (Focus off): user confirmed only failure played the default sound.
+- [x] The Tell.app payload requests sound only for failure; covered by extending the desktop helper test
+  Evidence: Payload sends sound=true only for failure (internal/delivery/desktop.go); TestDesktopHelper asserts sound for failure and no sound key for info/success/warning; go test ./internal/delivery passes.
+- [x] docs/design.md Desktop delivery table documents the macOS type mapping; task ci passes
+  Evidence: docs/design.md Desktop delivery table maps failure to default sound for Tell.app; task ci passed after rebase on ee98eb6.
+
+## Summary
+
+Tell sends sound=true in the Tell.app payload only for --type failure; the helper sets UNNotificationSound.default. Commit 02ab018 on main. Verified by TestDesktopHelper, task ci, and a real-Mac listening test. Review: no defects. Note: Focus mode silences the sound.
