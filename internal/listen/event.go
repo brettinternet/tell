@@ -4,6 +4,7 @@ package listen
 import (
 	"bytes"
 	"container/list"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -198,12 +199,7 @@ func (a *admission) admitGitHub(e Envelope, data []byte, digest [32]byte, now ti
 func (a *admission) admitWithDigest(e Envelope, data []byte, now time.Time, digest *[32]byte) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for first := a.order.Front(); first != nil; first = a.order.Front() {
-		if now.Sub(first.Value.(reservation).at) < a.ttl {
-			break
-		}
-		a.remove(first)
-	}
+	a.expire(now)
 	if a.closed {
 		return "not_sent/busy"
 	}
@@ -216,6 +212,44 @@ func (a *admission) admitWithDigest(e Envelope, data []byte, now time.Time, dige
 	default:
 		return "not_sent/busy"
 	}
+	a.reserve(key, digest, now)
+	return "accepted"
+}
+
+// admitWait waits for ingress capacity rather than refusing. Only the file
+// source uses it, as the sole producer, so no other admission can intervene
+// between the duplicate check and the reservation.
+func (a *admission) admitWait(ctx context.Context, e Envelope, data []byte, digest *[32]byte, now time.Time) string {
+	key := identity{e.Source, e.ID}
+	a.mu.Lock()
+	a.expire(now)
+	closed, duplicate := a.closed, a.ids[key] != nil || (digest != nil && a.digests[*digest] != nil)
+	a.mu.Unlock()
+	if closed {
+		return "not_sent/busy"
+	}
+	if duplicate {
+		return "duplicate"
+	}
+	select {
+	case a.events <- data:
+	case <-ctx.Done():
+		return "not_sent/cancelled"
+	}
+	a.mu.Lock()
+	a.reserve(key, digest, now)
+	a.mu.Unlock()
+	return "accepted"
+}
+func (a *admission) expire(now time.Time) {
+	for first := a.order.Front(); first != nil; first = a.order.Front() {
+		if now.Sub(first.Value.(reservation).at) < a.ttl {
+			break
+		}
+		a.remove(first)
+	}
+}
+func (a *admission) reserve(key identity, digest *[32]byte, now time.Time) {
 	if a.order.Len() == a.capacity {
 		a.remove(a.order.Front())
 	}
@@ -229,7 +263,6 @@ func (a *admission) admitWithDigest(e Envelope, data []byte, now time.Time, dige
 	if digest != nil {
 		a.digests[*digest] = element
 	}
-	return "accepted"
 }
 func (a *admission) close() {
 	a.mu.Lock()

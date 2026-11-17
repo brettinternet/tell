@@ -120,6 +120,68 @@ func TestListenPreviewAndDispatchIsolation(t *testing.T) {
 	}
 }
 
+// Offline route testing must reuse admission and dry-run receipts without
+// credentials, connections, or actions, and never echo envelope contents.
+func TestListenDryRunEvents(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("TELL_TEST_SLACK_SECRET", "")
+	marker := filepath.Join(dir, "action-ran")
+	command := filepath.Join(dir, "route-command")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nprintf ran > "+marker+"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "config.yaml")
+	configuration := "listen:\n  slack: {app_token_env: TELL_TEST_SLACK_SECRET}\n  routes:\n" +
+		"    - name: incident\n      source: slack\n      type: channel_created\n      match: {event.channel.name: {prefix: inc-}}\n      run: [" + command + "]\n" +
+		"    - name: notify-channel\n      source: slack\n      type: channel_created\n      notify: {message: 'Alert ${data.event.channel.name}', via: stderr}\n"
+	if err := os.WriteFile(file, []byte(configuration), 0600); err != nil {
+		t.Fatal(err)
+	}
+	envelope := func(id, kind, data string, version int) string {
+		return `{"schema_version":` + strconv.Itoa(version) + `,"source":"slack","type":"` + kind + `","id":"` + id + `","received_at":"2026-11-17T19:00:00.000Z","data":` + data + "}\n"
+	}
+	created := envelope("Ev1", "channel_created", `{"event":{"channel":{"name":"inc-sentinel-body"}}}`, 1)
+	events := filepath.Join(dir, "events.ndjson")
+	input := created + created + "{sentinel-body\n\n" +
+		envelope("Ev2", "reaction_added", `{"event":{"reaction":"sentinel-body"}}`, 1) +
+		envelope("Ev3", "channel_created", `{"sentinel-body":true}`, 2) +
+		envelope("Ev4", "channel_created", `{"pad":"sentinel-body`+strings.Repeat("x", 256<<10)+`"}`, 1)
+	if err := os.WriteFile(events, []byte(input), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	code := Run(context.Background(), []string{"tell", "--config", file, "listen", "--dry-run", "--events", events}, config.BuildOpts{}, &out, &diag)
+	got := strings.Split(strings.TrimSpace(diag.String()), "\n")
+	sort.Strings(got)
+	want := []string{
+		`tell listen: source=file outcome=not_sent/event_size line=7`,
+		`tell listen: source=file outcome=not_sent/invalid_envelope line=6`,
+		`tell listen: source=file outcome=not_sent/invalid_json line=3`,
+		`tell listen: source=slack id="Ev1" type="channel_created" outcome=accepted`,
+		`tell listen: source=slack id="Ev1" type="channel_created" outcome=duplicate`,
+		`tell listen: source=slack id="Ev1" type="channel_created" route="incident" outcome=dry_run`,
+		`tell listen: source=slack id="Ev1" type="channel_created" route="notify-channel" outcome=dry_run`,
+		`tell listen: source=slack id="Ev2" type="reaction_added" outcome=accepted`,
+		`tell listen: source=slack id="Ev2" type="reaction_added" route="" outcome=no_match`,
+	}
+	if code != 1 || out.Len() != 0 || !reflect.DeepEqual(got, want) {
+		t.Fatalf("code=%d out=%q receipts:\n%s", code, out.String(), strings.Join(got, "\n"))
+	}
+	if strings.Contains(diag.String(), "sentinel") || strings.Contains(diag.String(), command) || strings.Contains(diag.String(), "Alert") {
+		t.Fatal("receipt leaked envelope data, rendered text, or argv")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("events dry-run executed the route")
+	}
+	out.Reset()
+	diag.Reset()
+	if code := Run(context.Background(), []string{"tell", "--config", file, "listen", "--dry-run", "--events", events + ".missing"}, config.BuildOpts{}, &out, &diag); code != 1 {
+		t.Fatalf("unreadable events file exit = %d", code)
+	}
+}
+
 func TestListenDryRunHonorsContextCancellation(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
@@ -258,6 +320,7 @@ func TestListenCLISelection(t *testing.T) {
 		{[]string{"listen", "--print"}, 2}, {[]string{"listen", "slack", "slack"}, 2}, {[]string{"listen", "github"}, 1},
 		{[]string{"listen", "--all", "slack"}, 2}, {[]string{"--json", "listen", "--print", "slack"}, 2}, {[]string{"listen", "--dry-run", "slack"}, 1}, {[]string{"listen", "--print", "--dry-run", "slack"}, 2},
 		{[]string{"listen", "slack"}, 1}, {[]string{"listen", "--print", "slack"}, 1}, {[]string{"listen", "--all", "--print"}, 1},
+		{[]string{"listen", "--events", "-"}, 2}, {[]string{"listen", "--dry-run", "--events", "-", "slack"}, 2}, {[]string{"listen", "--dry-run", "--events", "-", "--all"}, 2}, {[]string{"listen", "--print", "--events", "-"}, 2},
 	} {
 		var out, diag bytes.Buffer
 		code := Run(context.Background(), append([]string{"tell", "--config", file}, tc.args...), config.BuildOpts{}, &out, &diag)

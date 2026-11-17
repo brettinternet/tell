@@ -75,7 +75,15 @@ tell listen --dry-run slack
 ```
 
 `--dry-run` requires the selected source's credential and routes, but performs no
-subprocess or target probes. Start real dispatch explicitly with
+subprocess or target probes. To iterate without waiting for new events, capture
+once and test against the file; it needs no credential or connection:
+
+```sh
+tell listen --print slack > events.ndjson   # sensitive; delete when done
+tell listen --dry-run --events events.ndjson
+```
+
+Start real dispatch explicitly with
 `tell listen slack`. Every matching route is admitted in config order; four
 commands run concurrently and 64 can wait. This does not order command starts or
 side effects. Keep commands short and use `exec` in wrappers; Tell has no

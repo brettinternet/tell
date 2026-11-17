@@ -20,11 +20,12 @@ type listenerFailure struct{ error }
 func listenCommand() *urfave.Command {
 	return &urfave.Command{
 		Name: "listen", Usage: "Inspect configured sources or explicitly capture events", ArgsUsage: "[slack|github...]",
-		Description: "With no source, inspect and exit without connecting. Explicit source selection starts a foreground listener.\n--print exports sensitive envelopes; --dry-run validates matching actions without delivery.\nRun actions use literal argv, receive the envelope on stdin, and have stdout/stderr discarded. Native notify/send actions use single-pass scalar envelope templates.\n\nExamples:\n  tell listen\n  tell --json listen\n  tell listen slack\n  tell listen github\n  tell listen slack github\n  tell listen --dry-run github\n  tell listen --print github\n  tell listen --dry-run --all",
+		Description: "With no source, inspect and exit without connecting. Explicit source selection starts a foreground listener.\n--print exports sensitive envelopes; --dry-run validates matching actions without delivery.\nRun actions use literal argv, receive the envelope on stdin, and have stdout/stderr discarded. Native notify/send actions use single-pass scalar envelope templates.\n\nExamples:\n  tell listen\n  tell --json listen\n  tell listen slack\n  tell listen github\n  tell listen slack github\n  tell listen --dry-run github\n  tell listen --print github\n  tell listen --dry-run --all\n  tell listen --print slack > events.ndjson\n  tell listen --dry-run --events events.ndjson",
 		Flags: []urfave.Flag{
 			&urfave.BoolFlag{Name: "all", Usage: "Start every configured source (cannot accompany source names)"},
 			&urfave.BoolFlag{Name: "print", Usage: "Export sensitive NDJSON events without matching or running actions"},
 			&urfave.BoolFlag{Name: "dry-run", Usage: "Report body-free route matches without running actions"},
+			&urfave.StringFlag{Name: "events", Usage: "With --dry-run, match --print NDJSON from `FILE` (- for stdin) instead of sources"},
 		},
 		ShellComplete: func(_ context.Context, cmd *urfave.Command) { fmt.Fprintln(cmd.Writer, "slack github") },
 		Action:        listenAction,
@@ -57,7 +58,11 @@ func runListen(ctx context.Context, cmd *urfave.Command, capture func(context.Co
 	if cmd.Bool("all") && len(names) > 0 {
 		return usage("--all cannot accompany source names")
 	}
-	live := len(names) > 0 || cmd.Bool("all")
+	fromFile := cmd.IsSet("events")
+	if fromFile && (!cmd.Bool("dry-run") || cmd.Bool("print") || cmd.Bool("all") || len(names) > 0) {
+		return usage("--events requires --dry-run and cannot accompany sources, --all, or --print")
+	}
+	live := len(names) > 0 || cmd.Bool("all") || fromFile
 	preview := cmd.Bool("print") || cmd.Bool("dry-run")
 	if preview && !live {
 		return usage("--print and --dry-run require a source name or --all")
@@ -69,6 +74,33 @@ func runListen(ctx context.Context, cmd *urfave.Command, capture func(context.Co
 	cfg, err := loadSettings(cmd)
 	if err != nil {
 		return err
+	}
+	dryRun := func(event listen.Envelope, report func(string, string, string), _ io.Writer) {
+		matched := listen.Matches(cfg.Listen.Routes, event)
+		if len(matched) == 0 {
+			report("", "no_match", "")
+			return
+		}
+		for _, route := range matched {
+			outcome, reason := listen.ValidateAction(ctx, cfg, route, event)
+			report(route.Name, outcome, reason)
+		}
+	}
+	if fromFile {
+		input := io.Reader(os.Stdin)
+		if path := cmd.String("events"); path != "-" {
+			file, err := os.Open(path)
+			if err != nil {
+				return fmt.Errorf("cannot read --events input: %w", err)
+			}
+			defer file.Close()
+			input = file
+		}
+		// Receipts already name each malformed line; exit 1 without a message.
+		if err := capture(ctx, listen.CaptureOptions{From: input, Out: cmd.Writer, Err: cmd.ErrWriter, OnEvent: dryRun}); err != nil {
+			return &listenerFailure{err}
+		}
+		return nil
 	}
 	if !live {
 		sources := []string{}
@@ -171,17 +203,7 @@ func runListen(ctx context.Context, cmd *urfave.Command, capture func(context.Co
 	options := listen.CaptureOptions{Sources: sources, Out: cmd.Writer, Err: cmd.ErrWriter}
 	var executor *listen.Executor
 	if cmd.Bool("dry-run") {
-		options.OnEvent = func(event listen.Envelope, report func(string, string, string), _ io.Writer) {
-			matched := listen.Matches(cfg.Listen.Routes, event)
-			if len(matched) == 0 {
-				report("", "no_match", "")
-				return
-			}
-			for _, route := range matched {
-				outcome, reason := listen.ValidateAction(ctx, cfg, route, event)
-				report(route.Name, outcome, reason)
-			}
-		}
+		options.OnEvent = dryRun
 	} else if !cmd.Bool("print") {
 		cwd, err := os.Getwd()
 		if err != nil {

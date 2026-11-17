@@ -235,7 +235,7 @@ Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
 | `send` | `--send-via`, `--to`, `--from`, `--herdr-session`, `-i`/`--intent` |
 | `targets` | `--send-via`, `--herdr-session` |
 | `doctor`, `config [show\|check]`, `mcp` | every setting flag above |
-| `listen` | `--all`, `--print`, `--dry-run`; sources `slack`, `github` |
+| `listen` | `--all`, `--print`, `--dry-run`, `--events`; sources `slack`, `github` |
 | `init` | `-u`/`--user` or `-l`/`--local`; rejects `--config`, `--timeout`, and setting flags |
 
 ```sh

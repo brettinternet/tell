@@ -338,6 +338,7 @@ tell listen                    # inspect only; no connections
 tell listen --dry-run slack    # match and validate; deliver nothing
 tell listen slack              # run matching actions
 tell listen --print slack      # sensitive NDJSON export; no actions
+tell listen --dry-run --events events.ndjson  # test routes against a capture offline
 ```
 
 Each route has one `run`, `notify`, or inform-only `send` action. Run one

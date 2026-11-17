@@ -10,6 +10,19 @@ import (
 // Capture starts selected sources with one shared ingress buffer and dispatcher.
 // Preparation (including loopback binds) completes before any provider connects.
 func Capture(ctx context.Context, opts CaptureOptions) error {
+	if opts.From != nil {
+		if len(opts.Sources) > 0 || opts.OnEvent == nil {
+			return errors.New("file input requires route evaluation and no listener sources")
+		}
+		malformed := false
+		if err := runSources(ctx, opts, []sourceSpec{fileSpec(opts.From, &malformed)}); err != nil {
+			return err
+		}
+		if malformed {
+			return errMalformedInput
+		}
+		return nil
+	}
 	if len(opts.Sources) == 0 {
 		return errors.New("no listener sources selected")
 	}
@@ -57,6 +70,15 @@ func runSources(ctx context.Context, opts CaptureOptions, specs []sourceSpec) er
 		}
 	}
 	queueDiagnostic := func(line string) {
+		// File input outpaces any terminal, so it waits for receipt output
+		// instead of failing; a stalled writer still cancels outputCtx.
+		if opts.From != nil {
+			select {
+			case diagnostics <- &outputRequest{data: []byte(line)}:
+			case <-outputCtx.Done():
+			}
+			return
+		}
 		select {
 		case diagnostics <- &outputRequest{data: []byte(line)}:
 		default:
@@ -69,7 +91,7 @@ func runSources(ctx context.Context, opts CaptureOptions, specs []sourceSpec) er
 		receipts[name] = func(e Envelope, outcome string) {
 			line := fmt.Sprintf("tell listen: source=%s outcome=%s\n", name, outcome)
 			if e.ID != "" {
-				line = fmt.Sprintf("tell listen: source=%s id=%q type=%q outcome=%s\n", name, e.ID, e.Type, outcome)
+				line = fmt.Sprintf("tell listen: source=%s id=%q type=%q outcome=%s\n", e.Source, e.ID, e.Type, outcome)
 			}
 			queueDiagnostic(line)
 		}

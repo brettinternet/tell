@@ -17,11 +17,12 @@ callers such as Noon. Connections recover; actions never retry or replay.
 | `tell listen --dry-run SOURCE…` | selected sources | match and validate only | `dry_run` receipts |
 | `tell listen --print SOURCE…` | selected sources | none, no matching | NDJSON envelopes on stdout |
 | `tell listen --print --all` | every configured source | none | NDJSON envelopes |
+| `tell listen --dry-run --events FILE` | none | match and validate only | `dry_run` receipts for exported envelopes (`-` reads stdin) |
 
 | Exit | When |
 | --- | --- |
-| 2 | `--print`/`--dry-run` without sources or `--all`; `--all` with names; repeated or unknown names; conflicting modes; `--json` on a live run |
-| 1 | selected source unconfigured or its credential unset/empty; `--all` with no sources; dispatch or dry-run with no route for a selected source; bind failure; fatal source or output error |
+| 2 | `--print`/`--dry-run` without sources or `--all`; `--all` with names; repeated or unknown names; conflicting modes; `--json` on a live run; `--events` without `--dry-run` or with sources, `--all`, or `--print` |
+| 1 | selected source unconfigured or its credential unset/empty; `--all` with no sources; dispatch or dry-run with no route for a selected source; bind failure; fatal source or output error; unreadable or malformed `--events` input |
 | 0 | graceful stop (not proof that actions succeeded) |
 
 All checks above run before any network I/O. Configuration loads once; restart
@@ -119,6 +120,25 @@ output.
 `--print` is **sensitive data export, not diagnostics**: one full envelope per
 line, which may contain private text and secrets. Only Slack's legacy top-level
 `token` is removed. Never pipe it into an untrusted log.
+
+## Testing routes offline
+
+Capture real events once, then iterate on `match` and templates against the
+file without a credential, connection, or action:
+
+```sh
+tell listen --print slack > events.ndjson     # sensitive; Ctrl-C when done
+tell listen --dry-run --events events.ndjson  # rerun after each config edit
+```
+
+`--events` runs each line through the same admission (duplicate suppression),
+matching, rendering, and preparation as `--dry-run SOURCE`, with the same
+receipts. It reads no source credentials, binds nothing, resolves no
+executables, and probes no targets. Each line must be a `--print` envelope
+(`schema_version: 1`, valid identity, at most 256 KiB); a rejected line gets a
+body-free `source=file … line=N` receipt, later lines still run, and the exit is
+1. Blank lines are skipped. It never runs actions, prints rendered text, or
+watches the file. Delete the capture when finished.
 
 ## Slack source
 

@@ -36,7 +36,9 @@ type SourceOptions struct {
 }
 
 type CaptureOptions struct {
-	Sources  []SourceOptions
+	Sources []SourceOptions
+	// From replaces sources with exported NDJSON envelopes; it requires OnEvent.
+	From     io.Reader
 	Out, Err io.Writer
 	OnEvent  func(Envelope, func(route, outcome, reason string), io.Writer)
 	OnStop   func()
