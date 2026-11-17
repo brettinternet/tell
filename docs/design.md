@@ -250,7 +250,7 @@ emergency Pushover results add `receipt`, the only provider value Tell returns.
 
 | Platform | Runs | Type |
 | --- | --- | --- |
-| macOS with Tell.app | `~/Applications/Tell.app/Contents/MacOS/Tell post`; title, body, project thread, and [click actions](#click-actions) as JSON on stdin | ignored |
+| macOS with Tell.app | `~/Applications/Tell.app/Contents/MacOS/Tell post`; title, body, project thread, sound, and [click actions](#click-actions) as JSON on stdin | `failure` → default sound, else silent |
 | macOS | `osascript` with fixed AppleScript; title and body as argv | ignored |
 | Linux | `notify-send --urgency LEVEL -- TITLE BODY` | `failure` → critical, else normal |
 | other | — | `not_sent/unsupported_platform` |
@@ -275,6 +275,10 @@ path as `thread`, and the helper sets it as the notification's
 `threadIdentifier`, so Notification Center stacks each repository separately
 under Tell. The path is never displayed, and message text never becomes the
 thread. A Tell.app built before grouping ignores the field and still posts.
+
+Tell.app plays the default notification sound only for `--type failure`;
+Tell sends `sound` and the helper applies it. Silence it in System Settings >
+Notifications > Tell.
 
 ### Click actions
 

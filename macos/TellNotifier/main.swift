@@ -4,7 +4,7 @@
 // this helper only executes the stored argv lists.
 //
 // Usage:
-//   Tell post    JSON payload on stdin: {"title", "body", "thread", "actions"}
+//   Tell post    JSON payload on stdin: {"title", "body", "thread", "sound", "actions"}
 //   Tell status  prints authorized, denied, not_determined, or provisional
 //   Tell         launched by macOS for a click; otherwise requests permission
 //
@@ -22,6 +22,7 @@ struct Payload: Decodable {
     let title: String
     let body: String
     let thread: String?
+    let sound: Bool?
     let actions: [Action]?
 }
 
@@ -55,6 +56,7 @@ final class Helper: NSObject, NSApplicationDelegate, UNUserNotificationCenterDel
             content.title = payload.title
             content.body = payload.body
             if let thread = payload.thread { content.threadIdentifier = thread }
+            if payload.sound == true { content.sound = .default }
             if let actions = payload.actions, !actions.isEmpty,
                let encoded = try? JSONEncoder().encode(actions) {
                 content.userInfo = ["actions": String(decoding: encoded, as: UTF8.self)]

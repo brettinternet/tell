@@ -68,6 +68,7 @@ func desktopHelper(platform string) string {
 // notifyDesktopHelper sends the message on stdin so it never appears in argv.
 // Only click actions, never message text, are stored with the notification.
 // The project path is the thread, so Notification Center groups by project.
+// Only failures request the default sound.
 func notifyDesktopHelper(ctx context.Context, timeout time.Duration, helper string, message Message, project string, onClick []string) *Result {
 	const route = "desktop"
 	cwd, _ := os.Getwd()
@@ -75,8 +76,9 @@ func notifyDesktopHelper(ctx context.Context, timeout time.Duration, helper stri
 		Title   string        `json:"title"`
 		Body    string        `json:"body"`
 		Thread  string        `json:"thread,omitempty"`
+		Sound   bool          `json:"sound,omitempty"`
 		Actions []clickAction `json:"actions,omitempty"`
-	}{message.Title, message.Body, project, clickActions(captureOrigin(os.Getenv, cwd), onClick)})
+	}{message.Title, message.Body, project, message.Type == "failure", clickActions(captureOrigin(os.Getenv, cwd), onClick)})
 	if err != nil {
 		return NewResult(route, "failed", "provider_failure", "could not encode desktop notification")
 	}

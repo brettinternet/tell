@@ -196,7 +196,7 @@ func TestDesktopOrigin(t *testing.T) {
 }
 
 // Tell.app receives message text only on stdin and groups by the project path,
-// never message text. on_click replaces the default
+// never message text. Only failures request sound. on_click replaces the default
 // action, sees the origin only as TELL_ORIGIN_* variables, and never receives
 // message text; denied permission must advance a cascade.
 func TestDesktopHelper(t *testing.T) {
@@ -224,7 +224,7 @@ func TestDesktopHelper(t *testing.T) {
 	t.Setenv("HERDR_BIN_PATH", "/opt/herdr")
 	cwd, _ := os.Getwd()
 
-	message := Message{Title: "title-secret", Body: "body-secret"}
+	message := Message{Title: "title-secret", Body: "body-secret", Type: "failure"}
 	result := notifyDesktop(context.Background(), time.Second, message, "darwin", "/project", []string{"on-click", "--flag"})
 	if result.Outcome != "accepted" {
 		t.Fatalf("%+v", result)
@@ -235,9 +235,10 @@ func TestDesktopHelper(t *testing.T) {
 	}
 	var payload struct {
 		Title, Body, Thread string
+		Sound               bool
 		Actions             []clickAction
 	}
-	if err := json.Unmarshal(data, &payload); err != nil || payload.Title != message.Title || payload.Body != message.Body || payload.Thread != "/project" {
+	if err := json.Unmarshal(data, &payload); err != nil || payload.Title != message.Title || payload.Body != message.Body || payload.Thread != "/project" || !payload.Sound {
 		t.Fatalf("payload %s: %v", data, err)
 	}
 	want := []clickAction{{Argv: []string{filepath.Join(dir, "on-click"), "--flag"}, Dir: cwd, Env: []string{
@@ -251,6 +252,16 @@ func TestDesktopHelper(t *testing.T) {
 	}
 	if env, _ := os.ReadFile(record + ".env"); strings.Contains(string(env), "HERDR_") || strings.Contains(string(env), "secret") {
 		t.Fatalf("helper environment: %s", env)
+	}
+
+	for _, kind := range []string{"info", "success", "warning"} {
+		quiet := Message{Title: "title", Body: "body", Type: kind}
+		if result := notifyDesktop(context.Background(), time.Second, quiet, "darwin", "/project", nil); result.Outcome != "accepted" {
+			t.Fatalf("%s: %+v", kind, result)
+		}
+		if data, _ := os.ReadFile(record); strings.Contains(string(data), `"sound"`) {
+			t.Fatalf("%s requested sound: %s", kind, data)
+		}
 	}
 
 	t.Setenv("FIXTURE_EXIT", "3")
