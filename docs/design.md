@@ -178,7 +178,7 @@ Every route gets the same prepared title and body, in order:
 2. **Strip controls**: C0, DEL, C1, CR (CRLF → LF). Newline and tab stay.
 3. **Strip terminal sequences**: CSI, OSC, DCS, SOS, PM, APC, and ESC forms, through BEL/ST or end of input.
 4. **Strip bidi controls** (U+202A–U+202E, U+2066–U+2069). Invalid UTF-8 becomes U+FFFD. No Markdown/HTML sanitizing.
-5. **Scan for secrets** offline with Gitleaks v8 default rules. Matches become `[REDACTED]` everywhere they appear; `secrets.policy: reject` exits 1 `config/secret_detected`; scanner errors fail closed (`config/secret_scan_failed`). `gitleaks:allow` does not bypass.
+5. **Scan for secrets** offline with Betterleaks v1 default rules. Matches become `[REDACTED]` everywhere they appear; `secrets.policy: reject` exits 1 `config/secret_detected`; scanner errors fail closed (`config/secret_scan_failed`). `betterleaks:allow` and `gitleaks:allow` do not bypass.
 6. **Truncate** titles to 256 bytes and bodies to 16,384 bytes on a UTF-8 boundary, ending in `[truncated]`.
 7. **Reject empty** bodies: exit 1, `config/empty_message`.
 

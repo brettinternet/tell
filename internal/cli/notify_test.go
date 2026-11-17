@@ -499,6 +499,7 @@ func TestNotifySecrets(t *testing.T) {
 				}
 				for _, input := range []string{
 					token + " " + token + " # gitleaks:allow",
+					token + " # betterleaks:allow",
 					"ghp_\x1b[31m" + strings.TrimPrefix(token, "ghp_"),
 					strings.Repeat("x", 16370) + " " + token,
 				} {

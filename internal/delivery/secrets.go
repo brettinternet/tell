@@ -1,29 +1,22 @@
 package delivery
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/spf13/viper"
-	leaksconfig "github.com/zricethezav/gitleaks/v8/config"
-	"github.com/zricethezav/gitleaks/v8/detect"
+	leaksconfig "github.com/betterleaks/betterleaks/config"
+	"github.com/betterleaks/betterleaks/detect"
 )
 
 // Load only the embedded rules, never environment, repository files, or user
 // allowlists. Cache configuration, not a detector's mutable per-scan state.
-var secretRules = sync.OnceValues(func() (leaksconfig.Config, error) {
-	v := viper.New()
-	v.SetConfigType("toml")
-	if err := v.ReadConfig(strings.NewReader(leaksconfig.DefaultConfig)); err != nil {
-		return leaksconfig.Config{}, err
-	}
-	var cfg leaksconfig.ViperConfig
-	if err := v.Unmarshal(&cfg); err != nil {
-		return leaksconfig.Config{}, err
-	}
-	return cfg.Translate()
-})
+var secretRules = sync.OnceValues(leaksconfig.Default)
+
+// Building a detector writes to its config, so scans sharing the cached config
+// must not overlap.
+var secretScan sync.Mutex
 
 // RedactDiagnostic removes detected credentials from user input echoed in errors.
 // Unlike message preparation, it neither truncates nor changes diagnostic wording.
@@ -40,8 +33,12 @@ func scanSecrets(message Message, policy string) (Message, int, string) {
 	if err != nil {
 		return Message{}, 0, "secret_scan_failed"
 	}
-	detector := detect.NewDetector(cfg)
-	// Message authors cannot opt out of scanning with an inline comment.
+	secretScan.Lock()
+	defer secretScan.Unlock()
+	// Zero ValidationOptions keep scanning offline: no live secret validation.
+	detector := detect.NewDetectorContext(context.Background(), cfg, detect.ValidationOptions{})
+	// Message authors cannot opt out of scanning with an inline comment
+	// (betterleaks:allow or gitleaks:allow).
 	detector.IgnoreGitleaksAllow = true
 	fields := []*string{&message.Title, &message.Body}
 	// Collect secrets from both fields before redacting either: a context rule
