@@ -85,6 +85,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 					&urfave.StringFlag{Name: "pushover-tag", Usage: "Tag an emergency Pushover alert so pushover cancel --tag can stop it (`tag`)"},
 					&urfave.StringFlag{Name: "pushover-callback", Usage: "`URL` Pushover calls when an emergency alert is acknowledged"},
 				}, Action: notify},
+			runCommand(),
 			{Name: "send", Usage: "Send a message to an existing agent", ArgsUsage: "MESSAGE... | -",
 				Description: "Use a configured recipient, or select one with --to. The recipient must already exist.\nJoin message words with spaces, or use a lone - to read stdin.\n\nExamples (with a participating hcom agent named reviewer):\n  tell send --send-via hcom --to reviewer Tests passed\n  tell send --send-via hcom --to reviewer --intent request Review the changes",
 				Flags: []urfave.Flag{
@@ -114,7 +115,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 			switch cmd.Name {
 			case "tell":
 				include = spec.key == "timeout"
-			case "notify":
+			case "notify", "run":
 				include = strings.HasPrefix(spec.key, "notify.") || strings.HasPrefix(spec.key, "apprise.") || strings.HasPrefix(spec.key, "shoutrrr.") || spec.key == "imessage.to" || spec.key == "herdr.session"
 			case "send":
 				include = strings.HasPrefix(spec.key, "send.") || spec.key == "herdr.session"

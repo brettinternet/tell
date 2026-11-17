@@ -7,25 +7,25 @@ Pick a route you will notice in personal config, for example
 `notify.via: desktop` in `~/.config/tell/config.yaml`. The default stderr
 route only prints to the same terminal.
 
-## `tn`: wrap one command
-
-[tn.sh](tn.sh) defines a `tn` function for bash and zsh:
+## `tell run`: wrap one command
 
 ```sh
-. ~/dev/tell/examples/shell/tn.sh
-
-tn go test ./...
-tn docker build -t app .
-tn ollama pull qwen3:32b
-tn bun run build && tn bun run e2e
+tell run go test ./...
+tell run docker build -t app .
+tell run ollama pull qwen3:32b
+tell run bun run build && tell run bun run e2e
+alias tn='tell run'   # optional shorthand
 ```
 
 ```text
-Done: go               go test ./... finished in 84s
-Failed: docker         docker build -t app . exited 1 after 212s
+go test ./... finished in 1m24s
+docker build -t app . failed with exit 1 after 3m32s
 ```
 
-`tn` returns the command's exit status, so it composes with `&&` and `||`.
+`tell run` exits with the command's status, so it composes with `&&` and `||`.
+Flags after the command belong to it; put Tell's flags first
+(`tell run --via desktop -- make deploy`). Ctrl-C stops the command without a
+notification.
 
 ## Automatic: notify for anything slow (zsh)
 
@@ -46,4 +46,3 @@ never waits on it. Output is discarded, so use a route other than stderr.
 
 - The command line goes into the notification. Tell redacts detected secrets,
   but prefer passing credentials through the environment rather than argv.
-- One-off: `make release; tell notify "release: exit $?"`.

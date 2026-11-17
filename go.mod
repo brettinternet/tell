@@ -11,6 +11,7 @@ require (
 	github.com/nicholas-fedor/shoutrrr v0.25.0
 	github.com/urfave/cli/v3 v3.14.0
 	go.yaml.in/yaml/v3 v3.0.6
+	golang.org/x/sys v0.50.0
 )
 
 require (
@@ -70,7 +71,6 @@ require (
 	golang.org/x/net v0.63.0 // indirect
 	golang.org/x/oauth2 v0.38.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
-	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/term v0.48.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.16.0 // indirect

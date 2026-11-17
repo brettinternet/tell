@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -532,5 +533,58 @@ func TestShoutrrrBinaryStreams(t *testing.T) {
 		if !tc.jsonOut && tc.args[0] == "notify" && tc.wantCode == 0 && out.Len()+errOut.Len() != 0 {
 			t.Fatalf("%v: accepted notify must be silent: %q %q", tc.args, out.String(), errOut.String())
 		}
+	}
+}
+
+// Ctrl-C reaches the whole foreground process group: Tell must not double the
+// interrupt or notify the user who pressed it. A SIGTERM to Tell alone must
+// reach the command, and the resulting exit is notified.
+func TestRunSignals(t *testing.T) {
+	binary, err := filepath.Abs("../bin/tell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	for _, tc := range []struct {
+		name   string
+		signal func(*exec.Cmd) error
+		code   int
+		notice string
+	}{
+		{"interrupt group", func(cmd *exec.Cmd) error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGINT) }, 130, ""},
+		{"terminate tell", func(cmd *exec.Cmd) error { return cmd.Process.Signal(syscall.SIGTERM) }, 143, "killed by SIGTERM after"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, binary, "run", "--via", "stderr", "--", "/bin/sh", "-c", "echo ready; exec /bin/sleep 30")
+			cmd.Dir = home
+			cmd.Env = []string{"HOME=" + home}
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var errOut bytes.Buffer
+			cmd.Stderr = &errOut
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			ready := make([]byte, len("ready\n"))
+			if _, err := io.ReadFull(stdout, ready); err != nil {
+				t.Fatal(err)
+			}
+			if err := tc.signal(cmd); err != nil {
+				t.Fatal(err)
+			}
+			err = cmd.Wait()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != tc.code {
+				t.Fatalf("exit: %v %s", err, errOut.String())
+			}
+			if tc.notice == "" && errOut.Len() != 0 || !strings.Contains(errOut.String(), tc.notice) {
+				t.Fatalf("notification: %q", errOut.String())
+			}
+		})
 	}
 }

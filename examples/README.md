@@ -12,7 +12,7 @@ Start with a visible personal route, for example `notify.via: desktop` in
 
 | Example | Scenario | Level | Also uses |
 | --- | --- | --- | --- |
-| [shell](shell/README.md) | Notify when a slow command finishes; auto-notify for anything over 30s | basic | zsh |
+| [shell](shell/README.md) | `tell run` when a slow command finishes; auto-notify for anything over 30s | basic | zsh |
 | [taskfile](taskfile/README.md) | Notify from Taskfile `defer` and a Make `%-notify` rule | basic | Task, Make |
 | [git-hooks](git-hooks/README.md) | Warn after pull/checkout when lockfiles or migrations changed | basic | Git, Lefthook |
 | [wait-for](wait-for/README.md) | Wait for a dev server, PR checks, or a process, then notify | basic | curl, gh |

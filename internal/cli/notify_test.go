@@ -229,6 +229,11 @@ func TestNotifyOutcomes(t *testing.T) {
 			t.Fatalf("usage: %d %s %s", code, out, errOut)
 		}
 	}
+	// A delivery problem must never replace the wrapped command's own status.
+	code, out, errOut = run("run", "--via", "apprise", "--", "/bin/sh", "-c", "echo output; exit 7")
+	if code != 7 || out != "output\n" || strings.Count(errOut, "\n") != 1 || !strings.Contains(errOut, "apprise") {
+		t.Fatalf("run delivery failure: %d %q %q", code, out, errOut)
+	}
 	code, out, errOut = run("--json", "notify", "--unknown=body-sentinel")
 	assertResult(t, code, out, errOut, "", "usage", "invalid_invocation")
 	code, out, errOut = run("--json", "--timeout", "body-sentinel", "notify", "body-sentinel")

@@ -6,6 +6,7 @@ Send one notification to a person, or one message to an agent, then exit.
 
 ```sh
 tell notify "Build finished"                               # person: stderr, desktop, alert, Apprise, Shoutrrr, Pushover, iMessage, Herdr, or your command
+tell run go test ./...                                     # person, when the command finishes
 tell send --intent request "Triage PRs; report blockers"   # agent: hcom mailbox or idle Herdr pane
 tell listen slack github                                   # foreground: route Slack/GitHub events to actions
 ```
@@ -182,6 +183,23 @@ notify:
 # also gets TELL_TITLE, TELL_TYPE, TELL_PROJECT
 exec /usr/bin/say -f -
 ```
+
+### Run a command, then notify
+
+`tell run` runs one command in the foreground and notifies when it exits. The
+command keeps the terminal, environment, and directory; Tell exits with its
+status (128+N when killed by signal N).
+
+```sh
+tell run go test ./...                     # notifies "go test ./... finished in 1m24s" (success)
+tell run --via desktop -t CI -- make test  # flags after the command belong to it
+```
+
+Ctrl-C stops the command without notifying. SIGTERM and SIGHUP sent to Tell
+are forwarded, and the resulting exit is notified. A command that cannot start
+exits 127 (not found) or 126 and sends nothing. Delivery problems print one line
+on stderr and never change the exit status. `--json` is a usage error: stdout
+belongs to the command.
 
 ### Pushover receipts
 

@@ -230,6 +230,7 @@ Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
 | --- | --- |
 | global (before the command) | `-C`/`--project`, `-c`/`--config`, `-j`/`--json`, `--no-color`, `--timeout`, `-h`, `-v` |
 | `notify` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`, `-n`/`--type`, `--pushover-tag`, `--pushover-callback` |
+| `run` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`; flags end at the command |
 | `pushover` | `status RECEIPT`; `cancel --tag TAG`; bare inspects only |
 | `send` | `--send-via`, `--to`, `--from`, `--herdr-session`, `-i`/`--intent` |
 | `targets` | `--send-via`, `--herdr-session` |
@@ -242,6 +243,7 @@ tell notify --title "CI" --type failure "Tests failed"   # info|success|warning|
 tell notify Build finished                               # sends "Build finished"
 tell notify - < message.txt                              # stdin only for a lone -
 tell notify -- --not-a-flag                              # -- before flag-like text
+tell run -t Tests -- go test ./...                       # type from the exit status
 tell send --intent request "Triage PRs"                  # inform (default) | request
 tell send --send-via herdr --to reviewer "..."           # --via is notify-only
 tell --via desktop doctor                                # rejected: routing flag before command

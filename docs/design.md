@@ -10,6 +10,7 @@ person / script / scheduler hook / MCP client
           │
          tell
           ├── notify → one route or an ordered fallback cascade
+          ├── run CMD → wait for CMD, then notify its outcome
           ├── send   → hcom mailbox | idle Herdr agent pane
           ├── targets → read-only list of send recipients
           ├── listen SOURCE → bounded run | notify | send actions
@@ -39,6 +40,29 @@ plugin registry.
 services; Shoutrrr fans out in-process with no extra runtime; Pushover calls its API
 directly and returns emergency receipts; iMessage texts a
 phone through macOS Messages; command runs one personal executable.
+
+`run` wraps the most common notify: "tell me when this finishes". It runs one
+command in the foreground with Tell's stdin, stdout, stderr, environment, and
+working directory (the user's own command, so child-environment stripping does
+not apply), with no timeout. `--timeout` covers delivery only. It then sends one
+notification through the normal pipeline: type `success` on exit 0, else
+`failure`; the body is the shell-quoted command (about 120 characters at most)
+and its outcome: `go test ./... finished in 1m24s`, `… failed with exit 1 after
+3m32s`, `… killed by SIGKILL after 12s`.
+
+| Event | Exit | Notification |
+| --- | --- | --- |
+| command exits N | N | yes |
+| command killed by signal N | 128+N | yes |
+| not found / not executable | 127 / 126 | no; one diagnostic line |
+| Ctrl-C (SIGINT seen by Tell) | the command's | no |
+| SIGTERM/SIGHUP to Tell | forwarded; the command's | yes |
+| delivery fails | the command's | one diagnostic line |
+| no command, or `--json` | 2 | no; nothing runs |
+
+The terminal delivers Ctrl-C to the whole foreground process group, so Tell
+records SIGINT rather than forwarding it. Another signal after the command exits
+abandons delivery. `run` is not exposed through MCP or listener actions.
 
 `send` gives one existing agent information (`--intent inform`) or an
 instruction (`--intent request`) over one transport. It never falls through to
