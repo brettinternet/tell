@@ -2,12 +2,12 @@
 staticcheck = "go:honnef.co/go/tools/cmd/staticcheck"
 
 [tools]
-go = "1.27.3"
+go = "1.27.4"
 task = "latest"
 lefthook = "latest"
 gitleaks = "latest"
 git-cliff = "latest"
-worktrunk = "0.80.0"
+worktrunk = "0.82.0"
 staticcheck = "0.8.2"
 "go:golang.org/x/vuln/cmd/govulncheck" = "1.9.0"
 "github:brettinternet/backlog" = "latest"
