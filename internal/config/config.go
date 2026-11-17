@@ -309,7 +309,7 @@ func validateRouteSyntax(routes []Route) error {
 				return errors.New("listen.routes notify title has invalid template syntax")
 			}
 			if route.Notify.Type != "" && route.Notify.Type != "info" && route.Notify.Type != "success" && route.Notify.Type != "warning" && route.Notify.Type != "failure" {
-				return errors.New("listen.routes notify type must be info, success, warning, or failure")
+				return errors.New("listen.routes notify type must be info, success, warning, or failure" + DidYouMean(route.Notify.Type, "info", "success", "warning", "failure"))
 			}
 			if route.Notify.Via != "" {
 				if !validTemplateFreeSelector(route.Notify.Via) {
@@ -318,7 +318,7 @@ func validateRouteSyntax(routes []Route) error {
 				switch route.Notify.Via {
 				case "stderr", "desktop", "apprise", "shoutrrr", "imessage", "herdr", "command":
 				default:
-					return errors.New("listen.routes notify via must be stderr, desktop, apprise, shoutrrr, imessage, herdr, or command")
+					return errors.New("listen.routes notify via must be stderr, desktop, apprise, shoutrrr, imessage, herdr, or command" + DidYouMean(route.Notify.Via, "stderr", "desktop", "apprise", "shoutrrr", "imessage", "herdr", "command"))
 				}
 			}
 			if route.Notify.HerdrSession != "" && !validTemplateFreeSelector(route.Notify.HerdrSession) {
@@ -337,7 +337,7 @@ func validateRouteSyntax(routes []Route) error {
 				return errors.New("listen.routes send message has invalid template syntax")
 			}
 			if route.Send.Via != "" && route.Send.Via != "hcom" && route.Send.Via != "herdr" {
-				return errors.New("listen.routes send via must be hcom or herdr")
+				return errors.New("listen.routes send via must be hcom or herdr" + DidYouMean(route.Send.Via, "hcom", "herdr"))
 			}
 			if route.Send.To != "" && !validTemplateFreeSelector(route.Send.To) {
 				return errors.New("listen.routes send to is invalid")
@@ -346,7 +346,7 @@ func validateRouteSyntax(routes []Route) error {
 				return errors.New("listen.routes send herdr_session is invalid")
 			}
 			if route.Send.Intent != "" && route.Send.Intent != "inform" {
-				return errors.New("listen.routes send intent must be inform")
+				return errors.New("listen.routes send intent must be inform" + DidYouMean(route.Send.Intent, "inform"))
 			}
 		}
 		if actions != 1 {
@@ -750,7 +750,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		cfg.Listen.Slack.AppTokenEnv = value
 	case "secrets.policy":
 		if value != "redact" && value != "reject" {
-			return errors.New("secrets.policy must be redact or reject")
+			return errors.New("secrets.policy must be redact or reject" + DidYouMean(value, "redact", "reject"))
 		}
 		cfg.Secrets.Policy = value
 	case "timeout":
@@ -775,11 +775,11 @@ func (cfg *Config) apply(key, value, base, source string) error {
 				cfg.Origins["notify.fallback_notice"] = "default"
 			}
 		default:
-			return errors.New("notify.via must be stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, herdr, command, or an ordered route list")
+			return errors.New("notify.via must be stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, herdr, command, or an ordered route list" + DidYouMean(value, notifyRoutes...))
 		}
 	case "notify.fallback_notice":
 		if value != "none" && value != "title" {
-			return errors.New("notify.fallback_notice must be none or title")
+			return errors.New("notify.fallback_notice must be none or title" + DidYouMean(value, "none", "title"))
 		}
 		cfg.Notify.FallbackNotice = value
 		cfg.Notify.NoticeSet = true
@@ -795,7 +795,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		case "text", "markdown", "html":
 			cfg.Apprise.Format = value
 		default:
-			return errors.New("apprise.format must be text, markdown, or html")
+			return errors.New("apprise.format must be text, markdown, or html" + DidYouMean(value, "text", "markdown", "html"))
 		}
 	case "shoutrrr.urls_env":
 		if !environmentName.MatchString(value) {
@@ -815,7 +815,7 @@ func (cfg *Config) apply(key, value, base, source string) error {
 		cfg.Herdr.Session = value
 	case "send.via":
 		if value != "hcom" && value != "herdr" {
-			return errors.New("send.via must be hcom or herdr")
+			return errors.New("send.via must be hcom or herdr" + DidYouMean(value, "hcom", "herdr"))
 		}
 		cfg.Send.Via = value
 	case "send.to":

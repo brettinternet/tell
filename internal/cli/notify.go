@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/brettinternet/tell/internal/config"
 	"github.com/brettinternet/tell/internal/delivery"
 	urfave "github.com/urfave/cli/v3"
 )
@@ -24,7 +25,7 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 	switch kind {
 	case "info", "success", "warning", "failure":
 	default:
-		return delivery.NewResult(route, "usage", "invalid_type", fmt.Sprintf("invalid --type %q; must be info, success, warning, or failure", usageValue(cmd, kind)))
+		return delivery.NewResult(route, "usage", "invalid_type", fmt.Sprintf("invalid --type %q; must be info, success, warning, or failure%s", usageValue(cmd, kind), config.DidYouMean(kind, "info", "success", "warning", "failure")))
 	}
 	if failure := checkPushoverOptions(cmd, cfg); failure != nil {
 		return failure

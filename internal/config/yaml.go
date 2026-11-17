@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -49,6 +50,52 @@ func parse(data []byte) ([]fileValue, error) {
 	return values, nil
 }
 
+type fieldKind int
+
+const (
+	fieldUnknown fieldKind = iota
+	fieldVersion
+	fieldListen // a mapping that also marks its listener as configured
+	fieldMapping
+	fieldRoutes
+	fieldRepositoryIDs
+	fieldNotifyVia
+	fieldFallbackOn
+	fieldArgv
+	fieldString
+	fieldBool
+)
+
+// fields is the file schema: every accepted dotted key and how it parses.
+var fields = map[string]fieldKind{
+	"version": fieldVersion,
+	"listen":  fieldListen, "listen.slack": fieldListen, "listen.github": fieldListen, "listen.http": fieldListen,
+	"listen.routes": fieldRoutes, "listen.github.repository_ids": fieldRepositoryIDs,
+	"listen.slack.app_token_env": fieldString, "listen.github.secret_env": fieldString, "listen.http.addr": fieldString,
+	"notify": fieldMapping, "notify.desktop": fieldMapping, "apprise": fieldMapping, "shoutrrr": fieldMapping, "imessage": fieldMapping,
+	"pushover": fieldMapping, "herdr": fieldMapping, "send": fieldMapping, "secrets": fieldMapping, "mcp": fieldMapping,
+	"notify.via": fieldNotifyVia, "notify.fallback_on": fieldFallbackOn, "notify.fallback_notice": fieldString,
+	"notify.command": fieldArgv, "notify.desktop.on_click": fieldArgv,
+	"secrets.policy": fieldString, "timeout": fieldString,
+	"apprise.config": fieldString, "apprise.tag": fieldString, "apprise.format": fieldString,
+	"shoutrrr.urls_env": fieldString, "imessage.to": fieldString, "herdr.session": fieldString,
+	"send.via": fieldString, "send.to": fieldString, "send.from": fieldString,
+	"pushover.token_env": fieldString, "pushover.user_env": fieldString, "pushover.priority": fieldString,
+	"pushover.retry": fieldString, "pushover.expire": fieldString, "pushover.device": fieldString,
+	"mcp.agent_targets": fieldBool,
+}
+
+// fieldsUnder lists the key names accepted directly within prefix.
+func fieldsUnder(prefix string) []string {
+	var names []string
+	for name := range fields {
+		if rest, ok := strings.CutPrefix(name, prefix); ok && !strings.Contains(rest, ".") {
+			names = append(names, rest)
+		}
+	}
+	return names
+}
+
 func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 	if node.Kind != yaml.MappingNode || node.Tag != "!!map" || node.Anchor != "" {
 		return fmt.Errorf("line %d: %s must be a mapping without anchors or aliases", node.Line, prefixName(prefix))
@@ -70,29 +117,29 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 		if value.Anchor != "" || value.Kind == yaml.AliasNode {
 			return fmt.Errorf("line %d: anchors and aliases are not supported", value.Line)
 		}
-		switch name {
-		case "version":
+		switch fields[name] {
+		case fieldVersion:
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!int" || value.Value != "1" {
 				return fmt.Errorf("line %d: version must be 1", value.Line)
 			}
-		case "listen", "listen.slack", "listen.github", "listen.http":
+		case fieldListen:
 			*values = append(*values, fileValue{key: name, text: "configured", line: value.Line})
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
 			}
-		case "listen.routes":
+		case fieldRoutes:
 			routes, err := parseRoutes(value)
 			if err != nil {
 				return err
 			}
 			*values = append(*values, fileValue{key: name, routes: routes, line: value.Line})
-		case "listen.github.repository_ids":
+		case fieldRepositoryIDs:
 			repositoryIDs, err := parseRepositoryIDs(value)
 			if err != nil {
 				return err
 			}
 			*values = append(*values, fileValue{key: name, repoIDs: repositoryIDs, line: value.Line})
-		case "notify.via":
+		case fieldNotifyVia:
 			if value.Kind == yaml.SequenceNode {
 				steps, err := parseNotifySteps(value)
 				if err != nil {
@@ -104,17 +151,17 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 			} else {
 				return fmt.Errorf("line %d: notify.via must be a route string or an ordered route list", value.Line)
 			}
-		case "notify.fallback_on":
+		case fieldFallbackOn:
 			fallback, err := parseStringList(value, "notify.fallback_on")
 			if err != nil {
 				return err
 			}
 			*values = append(*values, fileValue{key: name, strings: fallback, line: value.Line})
-		case "notify", "notify.desktop", "apprise", "shoutrrr", "imessage", "pushover", "herdr", "send", "secrets", "mcp":
+		case fieldMapping:
 			if err := parseMapping(value, name+".", values); err != nil {
 				return err
 			}
-		case "notify.command", "notify.desktop.on_click":
+		case fieldArgv:
 			if value.Kind != yaml.SequenceNode || value.Tag != "!!seq" || len(value.Content) == 0 {
 				return fmt.Errorf("line %d: %s must be a non-empty argv list", value.Line, name)
 			}
@@ -129,19 +176,22 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 				return fmt.Errorf("line %d: %s executable must not be empty", value.Line, name)
 			}
 			*values = append(*values, fileValue{key: name, argv: argv, line: value.Line})
-		case "listen.slack.app_token_env", "listen.github.secret_env", "listen.http.addr", "secrets.policy", "timeout", "notify.fallback_notice", "apprise.config", "apprise.tag", "apprise.format", "shoutrrr.urls_env", "imessage.to", "herdr.session", "send.via", "send.to", "send.from",
-			"pushover.token_env", "pushover.user_env", "pushover.priority", "pushover.retry", "pushover.expire", "pushover.device":
+		case fieldString:
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 				return fmt.Errorf("line %d: %s must be a string", value.Line, name)
 			}
 			*values = append(*values, fileValue{key: name, text: value.Value, line: value.Line})
-		case "mcp.agent_targets":
+		case fieldBool:
 			if value.Kind != yaml.ScalarNode || value.Tag != "!!bool" {
 				return fmt.Errorf("line %d: %s must be a boolean", value.Line, name)
 			}
 			*values = append(*values, fileValue{key: name, text: value.Value, line: value.Line})
 		default:
-			return fmt.Errorf("line %d: unknown field %q", key.Line, name)
+			suggestion := ""
+			if closest := Closest(key.Value, fieldsUnder(prefix)...); closest != "" {
+				suggestion = fmt.Sprintf("; did you mean %q?", prefix+closest)
+			}
+			return fmt.Errorf("line %d: unknown field %q%s", key.Line, name, suggestion)
 		}
 	}
 	return nil
@@ -173,7 +223,7 @@ func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
 		if item.Kind == yaml.ScalarNode && item.Tag == "!!str" {
 			step := NotifyStep{Via: item.Value}
 			if !validNotifyRoute(step.Via) || strings.ContainsAny(step.Via, "\x00\x1b\r\n") {
-				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, herdr, or command", item.Line)
+				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, herdr, or command%s", item.Line, DidYouMean(step.Via, notifyRoutes...))
 			}
 			steps = append(steps, step)
 			continue
@@ -183,7 +233,7 @@ func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
 		}
 		key, options := item.Content[0], item.Content[1]
 		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" || !validNotifyRoute(key.Value) {
-			return nil, fmt.Errorf("line %d: notify.via step has an unknown route", key.Line)
+			return nil, fmt.Errorf("line %d: notify.via step has an unknown route%s", key.Line, DidYouMean(key.Value, notifyRoutes...))
 		}
 		if options.Anchor != "" || options.Kind == yaml.AliasNode || options.Kind != yaml.MappingNode || options.Tag != "!!map" {
 			return nil, fmt.Errorf("line %d: notify.via %s options must be a mapping without aliases", options.Line, key.Value)
@@ -197,14 +247,9 @@ func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
 	return steps, nil
 }
 
-func validNotifyRoute(route string) bool {
-	switch route {
-	case "stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "pushover", "herdr", "command":
-		return true
-	default:
-		return false
-	}
-}
+var notifyRoutes = []string{"stderr", "desktop", "alert", "apprise", "shoutrrr", "imessage", "pushover", "herdr", "command"}
+
+func validNotifyRoute(route string) bool { return slices.Contains(notifyRoutes, route) }
 
 func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
 	seen := map[string]bool{}
@@ -228,7 +273,7 @@ func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
 				step.Tag = value.Value
 			case "format":
 				if value.Value != "text" && value.Value != "markdown" && value.Value != "html" {
-					return fmt.Errorf("line %d: apprise step format must be text, markdown, or html", value.Line)
+					return fmt.Errorf("line %d: apprise step format must be text, markdown, or html%s", value.Line, DidYouMean(value.Value, "text", "markdown", "html"))
 				}
 				step.Format = value.Value
 			case "urls_env":
@@ -237,7 +282,7 @@ func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
 				}
 				step.UrlsEnv = value.Value
 			default:
-				return fmt.Errorf("line %d: unknown apprise step option %q", key.Line, key.Value)
+				return fmt.Errorf("line %d: unknown apprise step option %q%s", key.Line, key.Value, DidYouMean(key.Value, "config", "tag", "format", "urls_env"))
 			}
 		} else if step.Via == "shoutrrr" && key.Value == "urls_env" {
 			if !environmentName.MatchString(value.Value) {
@@ -245,14 +290,14 @@ func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
 			}
 			step.UrlsEnv = value.Value
 		} else if step.Via == "shoutrrr" {
-			return fmt.Errorf("line %d: unknown shoutrrr step option %q", key.Line, key.Value)
+			return fmt.Errorf("line %d: unknown shoutrrr step option %q%s", key.Line, key.Value, DidYouMean(key.Value, "urls_env"))
 		} else if step.Via == "imessage" && key.Value == "to" {
 			if !ValidIMessageHandle(value.Value) {
 				return fmt.Errorf("line %d: imessage step to must be an E.164 phone number or an email address", value.Line)
 			}
 			step.To = value.Value
 		} else if step.Via == "imessage" {
-			return fmt.Errorf("line %d: unknown imessage step option %q", key.Line, key.Value)
+			return fmt.Errorf("line %d: unknown imessage step option %q%s", key.Line, key.Value, DidYouMean(key.Value, "to"))
 		} else if step.Via == "pushover" {
 			if err := applyPushoverOption(&step.Pushover, key.Value, value.Value); err != nil {
 				return fmt.Errorf("line %d: %w", key.Line, err)
@@ -260,14 +305,14 @@ func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
 		} else if step.Via == "herdr" && key.Value == "session" {
 			step.Session = value.Value
 		} else if step.Via == "herdr" {
-			return fmt.Errorf("line %d: unknown herdr step option %q", key.Line, key.Value)
+			return fmt.Errorf("line %d: unknown herdr step option %q%s", key.Line, key.Value, DidYouMean(key.Value, "session"))
 		} else if step.Via == "alert" && key.Value == "wait" {
 			if wait, err := time.ParseDuration(value.Value); err != nil || wait <= 0 {
 				return fmt.Errorf("line %d: alert step wait must be a positive Go duration, such as 2m", value.Line)
 			}
 			step.Wait = value.Value
 		} else if step.Via == "alert" {
-			return fmt.Errorf("line %d: unknown alert step option %q", key.Line, key.Value)
+			return fmt.Errorf("line %d: unknown alert step option %q%s", key.Line, key.Value, DidYouMean(key.Value, "wait"))
 		} else {
 			return fmt.Errorf("line %d: route %s does not accept step options", key.Line, step.Via)
 		}
@@ -391,7 +436,7 @@ func parseRoute(node *yaml.Node) (Route, error) {
 			}
 			route.Send = &action
 		default:
-			return Route{}, fmt.Errorf("line %d: unknown route field %q", key.Line, key.Value)
+			return Route{}, fmt.Errorf("line %d: unknown route field %q%s", key.Line, key.Value, DidYouMean(key.Value, "name", "source", "type", "match", "run", "notify", "send"))
 		}
 	}
 	return route, nil
@@ -429,7 +474,7 @@ func parseNotifyAction(node *yaml.Node) (NotifyAction, error) {
 		case "apprise_tag":
 			action.AppriseTag = value.Value
 		default:
-			return action, fmt.Errorf("line %d: unknown notify action field %q", key.Line, key.Value)
+			return action, fmt.Errorf("line %d: unknown notify action field %q%s", key.Line, key.Value, DidYouMean(key.Value, "message", "title", "type", "via", "herdr_session", "apprise_tag"))
 		}
 	}
 	return action, nil
@@ -465,7 +510,7 @@ func parseSendAction(node *yaml.Node) (SendAction, error) {
 		case "intent":
 			action.Intent = value.Value
 		default:
-			return action, fmt.Errorf("line %d: unknown send action field %q", key.Line, key.Value)
+			return action, fmt.Errorf("line %d: unknown send action field %q%s", key.Line, key.Value, DidYouMean(key.Value, "message", "via", "to", "herdr_session", "intent"))
 		}
 	}
 	return action, nil

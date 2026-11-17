@@ -515,6 +515,30 @@ func TestRejectAmbiguousOrInvalidConfiguration(t *testing.T) {
 	}
 }
 
+// Suggestions name only schema entries: never the typed value, never a guess
+// for distant typos or free-form values.
+func TestTypoSuggestions(t *testing.T) {
+	for _, tc := range []struct{ data, want string }{
+		{"notify: {vai: desktop}\n", `unknown field "notify.vai"; did you mean "notify.via"?`},
+		{"notify: {via: dekstop}\n", `; did you mean "desktop"?`},
+		{"listen: {routes: [{name: a, source: slack, type: message, notify: {message: x, tpye: info}}]}\n", `; did you mean "type"?`},
+		{"notify: {via: [{apprise: {fromat: html}}]}\n", `; did you mean "format"?`},
+		{"notify: {via: dekstop-sentinel}\n", ""},
+		{"notify: {zzzzz: desktop}\n", ""},
+		{"imessage: {to: desktopp-sentinel}\n", ""},
+	} {
+		input := fixture(t)
+		writeFile(t, filepath.Join(input.UserConfigDir, "tell", "config.yaml"), tc.data)
+		_, err := config.Load(input)
+		if err == nil || strings.Contains(err.Error(), "sentinel") || strings.Contains(err.Error(), "dekstop") {
+			t.Fatalf("%q: %v", tc.data, err)
+		}
+		if (tc.want == "") == strings.Contains(err.Error(), "did you mean") || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%q: %v", tc.data, err)
+		}
+	}
+}
+
 // Worktrees use .git files: discovery must not walk past them and load a parent
 // project's notification policy. An explicit -C also must not walk upward.
 func TestProjectBoundaries(t *testing.T) {

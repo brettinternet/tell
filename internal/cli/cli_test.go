@@ -275,11 +275,13 @@ func TestActionableErrors(t *testing.T) {
 		message, outcome, reason string
 		code                     int
 	}{
-		{[]string{"notify", "--tittle", "x", "body-sentinel"}, "flag provided but not defined: -tittle; run tell notify --help", "usage", "invalid_invocation", 2},
-		{[]string{"send", "--tittle", "x", "body-sentinel"}, "flag provided but not defined: -tittle; run tell send --help", "usage", "invalid_invocation", 2},
+		{[]string{"notify", "--tittle", "x", "body-sentinel"}, "flag provided but not defined: -tittle; did you mean \"--title\"?; run tell notify --help", "usage", "invalid_invocation", 2},
+		{[]string{"send", "--qqqqq", "x", "body-sentinel"}, "flag provided but not defined: -qqqqq; run tell send --help", "usage", "invalid_invocation", 2},
 		{[]string{"notify", "--title"}, "flag needs an argument: --title; run tell notify --help", "usage", "invalid_invocation", 2},
 		{[]string{"send", "--intent"}, "flag needs an argument: --intent; run tell send --help", "usage", "invalid_invocation", 2},
-		{[]string{"notify", "--type", "sucess", "body-sentinel"}, "invalid --type \"sucess\"; must be info, success, warning, or failure", "usage", "invalid_type", 2},
+		{[]string{"notify", "--vai", "x", "body-sentinel"}, "flag provided but not defined: -vai; did you mean \"--via\"?; run tell notify --help", "usage", "invalid_invocation", 2},
+		{[]string{"notify", "--type", "sucess", "body-sentinel"}, "invalid --type \"sucess\"; must be info, success, warning, or failure; did you mean \"success\"?", "usage", "invalid_type", 2},
+		{[]string{"notify", "--type", "body-sentinel", "body-sentinel"}, "invalid --type \"[message omitted]\"; must be info, success, warning, or failure", "usage", "invalid_type", 2},
 		{[]string{"send", "--intent", "req", "body-sentinel"}, "invalid --intent \"req\"; must be inform or request", "usage", "invalid_intent", 2},
 		{[]string{"notfy", "body-sentinel"}, "unknown command \"notfy\"; did you mean \"notify\"?; run tell --help", "usage", "", 2},
 	} {

@@ -135,6 +135,9 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		cmd.HideHelpCommand = len(cmd.Commands) == 0
 		cmd.OnUsageError = func(_ context.Context, _ *urfave.Command, err error, _ bool) error {
 			message := err.Error()
+			if name, ok := strings.CutPrefix(message, "flag provided but not defined: -"); ok {
+				message += flagSuggestion(cmd, name)
+			}
 			// Parser values can be message text or credentials. Keep the flag
 			// and cause, but do not repeat arbitrary rejected boolean values.
 			if strings.HasPrefix(message, "invalid value ") {
@@ -298,6 +301,22 @@ func usageValue(cmd *urfave.Command, value string) string {
 		}
 	}
 	return delivery.RedactDiagnostic(value)
+}
+
+// flagSuggestion names the one flag of cmd, including inherited and help flags,
+// close to an undefined flag name.
+func flagSuggestion(cmd *urfave.Command, name string) string {
+	var names []string
+	for _, flag := range append(append(cmd.VisibleFlags(), cmd.VisiblePersistentFlags()...), urfave.HelpFlag) {
+		if flag != nil {
+			names = append(names, flag.Names()...)
+		}
+	}
+	// Closest never returns a single-rune name, so suggestions are long flags.
+	if suggestion := config.Closest(name, names...); suggestion != "" {
+		return fmt.Sprintf("; did you mean %q?", "--"+suggestion)
+	}
+	return ""
 }
 
 func noArgs(cmd *urfave.Command) error {

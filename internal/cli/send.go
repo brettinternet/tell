@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/brettinternet/tell/internal/config"
 	"github.com/brettinternet/tell/internal/delivery"
 	urfave "github.com/urfave/cli/v3"
 )
@@ -23,7 +24,7 @@ func send(ctx context.Context, cmd *urfave.Command) error {
 	case cmd.NArg() == 0:
 		result = delivery.NewResult(cfg.Send.Via, "usage", "invalid_input", "send requires a message or - for stdin")
 	case intent != "inform" && intent != "request":
-		result = delivery.NewResult(cfg.Send.Via, "usage", "invalid_intent", fmt.Sprintf("invalid --intent %q; must be inform or request", usageValue(cmd, intent)))
+		result = delivery.NewResult(cfg.Send.Via, "usage", "invalid_intent", fmt.Sprintf("invalid --intent %q; must be inform or request%s", usageValue(cmd, intent), config.DidYouMean(intent, "inform", "request")))
 	default:
 		body := strings.Join(cmd.Args().Slice(), " ")
 		if cmd.NArg() == 1 && body == "-" {

@@ -37,7 +37,7 @@ func applyPushoverOption(p *Pushover, key, value string) error {
 		}
 	case "priority":
 		if _, ok := PushoverPriorities[value]; !ok {
-			return errors.New("pushover priority must be lowest, low, normal, high, or emergency")
+			return errors.New("pushover priority must be lowest, low, normal, high, or emergency" + DidYouMean(value, "lowest", "low", "normal", "high", "emergency"))
 		}
 		p.Priority = value
 	case "retry":
@@ -56,7 +56,7 @@ func applyPushoverOption(p *Pushover, key, value string) error {
 		}
 		p.Device = value
 	default:
-		return errors.New("unknown pushover option " + key)
+		return errors.New("unknown pushover option " + key + DidYouMean(key, "token_env", "user_env", "priority", "retry", "expire", "device"))
 	}
 	return nil
 }
