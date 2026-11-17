@@ -10,13 +10,21 @@ import (
 	"github.com/betterleaks/betterleaks/detect"
 )
 
-// Load only the embedded rules, never environment, repository files, or user
-// allowlists. Cache configuration, not a detector's mutable per-scan state.
-var secretRules = sync.OnceValues(leaksconfig.Default)
-
-// Building a detector writes to its config, so scans sharing the cached config
-// must not overlap.
-var secretScan sync.Mutex
+// Build one detector from only the embedded rules, never environment,
+// repository files, or user allowlists. Construction costs milliseconds, while
+// DetectString keeps no findings and guards its lazy caches, so scans share it.
+var secretDetector = sync.OnceValues(func() (*detect.Detector, error) {
+	cfg, err := leaksconfig.Default()
+	if err != nil {
+		return nil, err
+	}
+	// Zero ValidationOptions keep scanning offline: no live secret validation.
+	detector := detect.NewDetectorContext(context.Background(), cfg, detect.ValidationOptions{})
+	// Message authors cannot opt out of scanning with an inline comment
+	// (betterleaks:allow or gitleaks:allow).
+	detector.IgnoreGitleaksAllow = true
+	return detector, nil
+})
 
 // RedactDiagnostic removes detected credentials from user input echoed in errors.
 // Unlike message preparation, it neither truncates nor changes diagnostic wording.
@@ -29,17 +37,10 @@ func RedactDiagnostic(text string) string {
 }
 
 func scanSecrets(message Message, policy string) (Message, int, string) {
-	cfg, err := secretRules()
+	detector, err := secretDetector()
 	if err != nil {
 		return Message{}, 0, "secret_scan_failed"
 	}
-	secretScan.Lock()
-	defer secretScan.Unlock()
-	// Zero ValidationOptions keep scanning offline: no live secret validation.
-	detector := detect.NewDetectorContext(context.Background(), cfg, detect.ValidationOptions{})
-	// Message authors cannot opt out of scanning with an inline comment
-	// (betterleaks:allow or gitleaks:allow).
-	detector.IgnoreGitleaksAllow = true
 	fields := []*string{&message.Title, &message.Body, &message.URL}
 	// Collect secrets from every field before redacting any: a context rule
 	// (such as api_key=...) may match in one field while the bare value repeats
