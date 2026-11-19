@@ -228,6 +228,7 @@ pushover: {token_env: PUSHOVER_TOKEN, user_env: PUSHOVER_USER, priority: emergen
 
 ```sh
 tell --json notify --via pushover --pushover-tag inc-1 "Disk full"   # {"outcome":"accepted","receipt":"…",…}
+tell notify --via pushover --pushover-priority high "Deploy stuck"   # one-call priority override
 tell pushover status RECEIPT     # one request; exit 0 acknowledged, 3 not yet
 tell pushover cancel --tag inc-1 # stop the repeating alert
 ```

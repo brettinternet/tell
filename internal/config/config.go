@@ -628,6 +628,9 @@ func EffectiveNotifySteps(cfg Config) ([]NotifyStep, error) {
 			step.To = cfg.IMessage.To
 		}
 		if step.Via == "pushover" {
+			if isOneShot(cfg.Origins["pushover.priority"]) {
+				step.Pushover.Priority = cfg.Pushover.Priority
+			}
 			step.Pushover = step.Pushover.merge(cfg.Pushover)
 		}
 	}

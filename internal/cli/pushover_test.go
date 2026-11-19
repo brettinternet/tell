@@ -88,3 +88,18 @@ func TestPushoverPerCallOptionsNeedEmergency(t *testing.T) {
 		}
 	}
 }
+
+// --pushover-priority must replace a cascade step's own priority, or an
+// escalation sent with it would silently go out at the configured level.
+func TestPushoverPriorityOverridesStep(t *testing.T) {
+	environment(t)
+	writeUserConfig(t, "notify:\n  via:\n    - pushover: {token_env: PO_TOKEN, user_env: PO_USER, priority: emergency}\n")
+	if code, output, diagnostics := run("config", "check", "--pushover-priority", "high"); code != 0 {
+		t.Fatalf("override to high: %d %s %s", code, output, diagnostics)
+	}
+	writeUserConfig(t, "notify:\n  via:\n    - pushover: {token_env: PO_TOKEN, user_env: PO_USER, priority: low}\n")
+	t.Setenv("TELL_PUSHOVER_PRIORITY", "emergency")
+	if code, _, diagnostics := run("config", "check"); code == 0 || !strings.Contains(diagnostics, "requires retry and expire") {
+		t.Fatalf("override to emergency: %d %s", code, diagnostics)
+	}
+}

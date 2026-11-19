@@ -133,7 +133,8 @@ does not change the project; no repository code runs.
 | `apprise.tag` | — | `TELL_APPRISE_TAG` | `--apprise-tag` |
 | `apprise.format` | — | `TELL_APPRISE_FORMAT` | `--apprise-format` |
 | `shoutrrr.urls_env` | — | `TELL_SHOUTRRR_URLS_ENV` | `--shoutrrr-urls-env` |
-| `pushover.token_env`, `.user_env`, `.priority`, `.retry`, `.expire`, `.device` | — | — | — |
+| `pushover.priority` | Pushover normal | `TELL_PUSHOVER_PRIORITY` | `--pushover-priority` |
+| `pushover.token_env`, `.user_env`, `.retry`, `.expire`, `.device` | — | — | — |
 | `imessage.to` | — | `TELL_IMESSAGE_TO` | `--imessage-to` |
 | `herdr.session` | — | `TELL_HERDR_SESSION` | `--herdr-session` |
 | `send.via` | — | `TELL_SEND_VIA` | `--send-via` |
@@ -178,7 +179,7 @@ send:
 | `apprise.format` | `text`, `markdown`, `html` |
 | `shoutrrr.urls_env` | environment variable name; required for the `shoutrrr` route unless each step sets `urls_env` |
 | `pushover.token_env`, `pushover.user_env` | environment variable names holding the app token and user/group key; required for the `pushover` route unless each step sets them |
-| `pushover.priority` | `lowest`, `low`, `normal`, `high`, `emergency`; default is Pushover's normal |
+| `pushover.priority` | `lowest`, `low`, `normal`, `high`, `emergency`; default is Pushover's normal. The flag or environment variable overrides every `pushover` step's priority |
 | `pushover.retry`, `pushover.expire` | whole-second Go durations, required for `emergency`: retry ≥ `30s`, expire ≤ `3h` |
 | `pushover.device` | comma-separated device names; default all devices |
 | `imessage.to` | one E.164 phone number (`+15551234567`) or Apple ID email; required for the `imessage` route unless each step sets `to` |

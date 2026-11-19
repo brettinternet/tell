@@ -49,6 +49,7 @@ var settings = []settingSpec{
 	{"apprise.tag", "apprise-tag", "TELL_APPRISE_TAG", "Apprise tag `expression` (default: no tag filter)"},
 	{"apprise.format", "apprise-format", "TELL_APPRISE_FORMAT", "Apprise body `format`: text, markdown, html (default: provider setting)"},
 	{"shoutrrr.urls_env", "shoutrrr-urls-env", "TELL_SHOUTRRR_URLS_ENV", "Environment variable `name` holding whitespace-separated Shoutrrr URLs (default: unset; required for shoutrrr)"},
+	{"pushover.priority", "pushover-priority", "TELL_PUSHOVER_PRIORITY", "Pushover `priority` for pushover steps: lowest, low, normal, high, emergency (default: config, else Pushover normal)"},
 	{"imessage.to", "imessage-to", "TELL_IMESSAGE_TO", "iMessage recipient `handle`: E.164 phone number or email (default: unset; required for imessage)"},
 	{"herdr.session", "herdr-session", "TELL_HERDR_SESSION", "Herdr `session` name or ID (default: unset; required for herdr)"},
 	{"send.via", "send-via", "TELL_SEND_VIA", "Agent `route`: hcom or herdr (default: unset)"},
@@ -121,7 +122,7 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 			case "tell":
 				include = spec.key == "timeout"
 			case "notify", "run":
-				include = strings.HasPrefix(spec.key, "notify.") || strings.HasPrefix(spec.key, "apprise.") || strings.HasPrefix(spec.key, "shoutrrr.") || spec.key == "imessage.to" || spec.key == "herdr.session"
+				include = strings.HasPrefix(spec.key, "notify.") || strings.HasPrefix(spec.key, "apprise.") || strings.HasPrefix(spec.key, "shoutrrr.") || spec.key == "imessage.to" || spec.key == "herdr.session" || spec.key == "pushover.priority"
 			case "send":
 				include = strings.HasPrefix(spec.key, "send.") || spec.key == "herdr.session"
 			case "targets":

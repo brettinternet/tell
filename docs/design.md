@@ -462,7 +462,8 @@ app token, and no generic library returns the receipt. `pushover.token_env`
 and `pushover.user_env` name variables holding the token and user key; the
 names may appear only in personal config, never in shared `tell.yaml`. The
 title (≤250 characters) and body (≤1024 characters, truncated with a marker)
-are sent, with `--url` as the native `url`; `--type` is not mapped to priority.
+are sent, with `--url` as the native `url`; `--type` is not mapped to priority;
+`--pushover-priority` overrides the configured priority for one call.
 
 `priority: emergency` also sends `retry` and `expire` in seconds, and per-call
 `--pushover-tag` and `--pushover-callback` (passed literally). `--json` then
