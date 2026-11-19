@@ -1,12 +1,12 @@
 ---
 id: TELL-53
 title: Route notifications by --level
-status: todo
+status: done
 type: feature
 priority: medium
 labels: [notify]
 created: 2026-11-19T16:29:53Z
-updated: 2026-11-19T16:29:53Z
+updated: 2026-11-19T16:40:37Z
 ---
 
 ## Context
@@ -39,7 +39,11 @@ Focused `go test ./internal/cli ./internal/config ./internal/mcp`, direct runs a
 
 ## Acceptance criteria
 
-- [ ] notify --level L with notify.levels.L runs exactly that cascade; an unmapped level and no flag use notify.via; a via override beats the level; covered by a CLI test against local routes
-- [ ] An invalid --level is a usage error (exit 2) with did-you-mean; notify.levels with an unknown key, a normal key, or in shared tell.yaml is a config error
-- [ ] MCP notify accepts level with the same resolution, and tell doctor --level L checks that level's steps
-- [ ] README, docs/configuration.md, docs/design.md and both schemas document levels; task ci passes
+- [x] notify --level L with notify.levels.L runs exactly that cascade; an unmapped level and no flag use notify.via; a via override beats the level; covered by a CLI test against local routes
+  Evidence: TestNotifyLevelRouting (internal/cli/notify_cascade_test.go): no flag/low->stderr, high->command, critical [command,stderr] advances on not_sent, --via stderr beats level; go test ./internal/cli PASS; direct runs with /tmp build also verified TELL_NOTIFY_VIA override
+- [x] An invalid --level is a usage error (exit 2) with did-you-mean; notify.levels with an unknown key, a normal key, or in shared tell.yaml is a config error
+  Evidence: TestNotifyLevelRouting: notify --level hgih exit 2, reason invalid_level, did you mean "high"; run/doctor --level bogus exit 2 (direct); config tests reject levels.normal, levels.urgent, shared tell.yaml notify.levels (internal/config/notify_test.go PASS)
+- [x] MCP notify accepts level with the same resolution, and tell doctor --level L checks that level's steps
+  Evidence: internal/mcp/server_test.go: level high->apprise, low->stderr, bogus->usage/invalid_level PASS; TestNotifyLevelRouting: doctor --level critical reports steps [command, stderr]
+- [x] README, docs/configuration.md, docs/design.md and both schemas document levels; task ci passes
+  Evidence: README Notification levels, docs/configuration.md Notify levels + tables, docs/design.md Notification levels, tell.schema.json notify.levels + notifyRoute def, tell.shared.schema.json levels:false (ajv cases ok); task ci PASS (vet, staticcheck, govulncheck, test, race, smoke)
