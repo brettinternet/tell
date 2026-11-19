@@ -117,6 +117,24 @@ Apprise config or URLs.
 `tell doctor` lists steps in order and is ready if any step is. Listener
 `notify` actions without `via` use the cascade within the action timeout.
 
+### Notification levels
+
+`notify --level`, `run --level`, and MCP `level` take `low`, `normal`, `high`,
+or `critical` (default `normal`). The route is the first of:
+
+1. a one-shot via (`--via`, `TELL_NOTIFY_VIA`, MCP `via`)
+2. `notify.levels[level]` from personal config
+3. `notify.via`
+
+Callers know urgency; only the user knows which channels may wake them. So the
+caller sends a level, and personal `notify.levels` (never shared `tell.yaml`)
+maps it to a route or cascade. A level's steps merge with provider blocks and
+overrides like `notify.via`. `normal` is `notify.via`, so `levels.normal` is
+rejected. There is no level environment variable, no mapping from `--type`,
+and no fallback to a nearby level: an unmapped level uses `notify.via`.
+Listener actions take no level. `tell doctor --level L` checks that level's
+route.
+
 ### Escalation
 
 Tell sends once and keeps no state, so repeat-until-acknowledged escalation

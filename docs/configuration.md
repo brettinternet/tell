@@ -17,7 +17,8 @@ Lowest to highest priority:
 | 6 | flags | yes |
 
 Settings merge by field. `notify.command`, `notify.desktop.on_click`, list-valued `notify.via`, and
-`listen.routes` replace lower values whole.
+`listen.routes` replace lower values whole. `notify.levels` merges by level;
+each level replaces the lower one whole.
 
 `.git/tell.yaml` lives in the common Git directory, so linked worktrees share
 it and clones cannot supply it. Tell resolves `.git` and `commondir` pointer
@@ -50,7 +51,7 @@ Origins are `default`, a file path, `env NAME`, or `flag --name`.
 ### Personal routing
 
 These fields choose destinations, so shared `tell.yaml` rejects them even if a
-higher layer overrides them: `notify.via`, `notify.fallback_on`,
+higher layer overrides them: `notify.via`, `notify.levels`, `notify.fallback_on`,
 `notify.fallback_notice`, `notify.command`, `notify.desktop.on_click`, `apprise.config`,
 `shoutrrr.urls_env`, the whole `pushover` block, `imessage.to`, `herdr.session`, `send.via`, `send.to`, `send.from`, `secrets.policy`, `mcp.agent_targets`, and
 the whole `listen` block.
@@ -103,6 +104,23 @@ A higher-layer string `via` replaces a lower cascade with its `fallback_on`
 and `fallback_notice`. `--via`, `TELL_NOTIFY_VIA`, and MCP `via` select one
 route. See [fallback cascades](design.md#notify-fallback-cascades).
 
+### Notify levels
+
+```yaml
+notify:
+  via: desktop
+  levels:
+    low: stderr
+    critical: [alert, desktop]
+  fallback_on: [not_sent]
+```
+
+`notify --level`, `run --level`, and MCP `level` pick `notify.levels[level]`;
+`normal` and unmapped levels use `notify.via`. A one-shot via wins over the
+level. Level steps take the same provider blocks, overrides, `fallback_on`, and
+`fallback_notice` as `notify.via`. `tell doctor --level L` checks that level.
+See [notification levels](design.md#notification-levels).
+
 ### Inbound listeners
 
 The personal `listen` block configures Slack, GitHub, the loopback HTTP
@@ -124,6 +142,7 @@ does not change the project; no repository code runs.
 | --- | --- | --- | --- |
 | `timeout` | `10s` | `TELL_TIMEOUT` | `--timeout` |
 | `notify.via` | `stderr` | `TELL_NOTIFY_VIA` | `--via` |
+| `notify.levels.low`, `.high`, `.critical` | — | — | — |
 | `notify.fallback_on` | `[not_sent]` | — | — |
 | `notify.fallback_notice` | `none` | — | — |
 | `notify.command` | — | — | — |
@@ -169,6 +188,7 @@ send:
 | --- | --- |
 | `timeout` | positive Go duration (`0s` refused) |
 | `notify.via` | `stderr`, `desktop`, `alert`, `apprise`, `shoutrrr`, `pushover`, `imessage`, `command`, `herdr`, or a nonempty list of those names, `apprise: {config, tag, format, urls_env}`, `shoutrrr: {urls_env}`, `pushover: {token_env, user_env, priority, retry, expire, device}`, `imessage: {to}`, `herdr: {session}`, and `alert: {wait}` steps (positive Go duration, default `2m`) |
+| `notify.levels` | map of `low`, `high`, `critical` to a `notify.via` value; `normal` is rejected (set `notify.via`) |
 | `notify.fallback_on` | nonempty subset of `not_sent`, `failed`; cascade only |
 | `notify.fallback_notice` | `none` or `title` (prefix later titles with the first step's label and reason); cascade only |
 | `notify.command` | nonempty argv list; nonblank executable; no NUL |
@@ -230,12 +250,12 @@ Removed settings are rejected: `notify.via: stdout`, `hcom.to`, `TELL_HCOM_TO`
 | Scope | Flags |
 | --- | --- |
 | global (before the command) | `-C`/`--project`, `-c`/`--config`, `-j`/`--json`, `--no-color`, `--timeout`, `-h`, `-v` |
-| `notify` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`, `-n`/`--type`, `--url`, `--pushover-tag`, `--pushover-callback` |
-| `run` | `--via`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`; flags end at the command |
+| `notify` | `--via`, `--level`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`, `-n`/`--type`, `--url`, `--pushover-tag`, `--pushover-callback` |
+| `run` | `--via`, `--level`, `--apprise-config`, `--apprise-tag`, `--apprise-format`, `--shoutrrr-urls-env`, `--imessage-to`, `--herdr-session`, `-t`/`--title`; flags end at the command |
 | `pushover` | `status RECEIPT`; `cancel --tag TAG`; bare inspects only |
 | `send` | `--send-via`, `--to`, `--from`, `--herdr-session`, `-i`/`--intent` |
 | `targets` | `--send-via`, `--herdr-session` |
-| `doctor`, `config [show\|check]`, `mcp` | every setting flag above |
+| `doctor`, `config [show\|check]`, `mcp` | every setting flag above; `doctor` also takes `--level` |
 | `listen` | `--all`, `--print`, `--dry-run`, `--events`; sources `slack`, `github` |
 | `init` | `-u`/`--user` or `-l`/`--local`; rejects `--config`, `--timeout`, and setting flags |
 

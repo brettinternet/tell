@@ -97,10 +97,17 @@ func (p Pushover) validate() error {
 }
 
 // PushoverSettings returns the settings receipt commands and bare inspection
-// use: the first effective emergency pushover step (its token issued the
-// receipts), else the first pushover step, else the top-level pushover block.
+// use: the first effective emergency pushover step in notify.via, then
+// notify.levels (its token issued the receipts), else the first pushover step,
+// else the top-level pushover block.
 func PushoverSettings(cfg Config) Pushover {
 	steps, _ := EffectiveNotifySteps(cfg)
+	for _, level := range NotifyLevels {
+		if route, ok := cfg.Notify.Levels[level]; ok {
+			levelSteps, _ := EffectiveNotifySteps(cfg.routedBy(route))
+			steps = append(steps, levelSteps...)
+		}
+	}
 	first := cfg.Pushover
 	found := false
 	for _, step := range steps {

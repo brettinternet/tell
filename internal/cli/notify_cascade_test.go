@@ -92,6 +92,57 @@ func TestNotifyViaOverrideDisablesCascade(t *testing.T) {
 	}
 }
 
+// --level selects only the personal route mapped to that level; unmapped levels
+// keep notify.via, and a one-shot via override beats the level.
+func TestNotifyLevelRouting(t *testing.T) {
+	base := environment(t)
+	record := filepath.Join(base, "command.log")
+	t.Setenv("LEVEL_EXIT", "0")
+	writeUserConfig(t, "notify:\n  via: stderr\n  command: [/bin/sh, -c, 'cat >> \"$0\"; exit \"$LEVEL_EXIT\"', "+record+"]\n  levels:\n    high: command\n    critical: [command, stderr]\n")
+	for _, tc := range []struct {
+		name        string
+		args        []string
+		commandExit string
+		routes      []string
+		stderr      string
+	}{
+		{"default level", nil, "0", []string{"stderr"}, "body\n"},
+		{"unmapped level", []string{"--level", "low"}, "0", []string{"stderr"}, "body\n"},
+		{"mapped route", []string{"--level", "high"}, "0", []string{"command"}, ""},
+		{"mapped cascade", []string{"--level", "critical"}, "3", []string{"command", "stderr"}, "body\n"},
+		{"via override", []string{"--level", "high", "--via", "stderr"}, "0", []string{"stderr"}, "body\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_ = os.Remove(record)
+			t.Setenv("LEVEL_EXIT", tc.commandExit)
+			code, output, diagnostics := run(append(append([]string{"--json", "notify"}, tc.args...), "body")...)
+			var result delivery.Result
+			if json.Unmarshal([]byte(output), &result) != nil || code != 0 || diagnostics != tc.stderr {
+				t.Fatalf("level notify: %d %s %q", code, output, diagnostics)
+			}
+			var routes []string
+			for _, attempt := range result.Attempts {
+				routes = append(routes, attempt.Route)
+			}
+			if !reflect.DeepEqual(routes, tc.routes) {
+				t.Fatalf("attempted routes %v, want %v", routes, tc.routes)
+			}
+			if _, err := os.Stat(record); (err == nil) != (tc.routes[0] == "command") {
+				t.Fatalf("command route ran unexpectedly: %v", err)
+			}
+		})
+	}
+	code, output, diagnostics := run("--json", "notify", "--level", "hgih", "body")
+	if code != 2 || !strings.Contains(output, `"reason":"invalid_level"`) || !strings.Contains(output, `did you mean \"high\"`) || diagnostics != "" {
+		t.Fatalf("invalid level: %d %s %q", code, output, diagnostics)
+	}
+	code, output, _ = run("--json", "doctor", "--level", "critical")
+	var report struct{ Steps []delivery.Readiness }
+	if json.Unmarshal([]byte(output), &report) != nil || len(report.Steps) != 2 || report.Steps[0].Route != "command" || report.Steps[1].Route != "stderr" {
+		t.Fatalf("doctor --level critical: %d %s", code, output)
+	}
+}
+
 // Missing provider capability is an explicit safe outcome and can advance.
 func TestNotifyCascadeUnavailableStepsAdvance(t *testing.T) {
 	for _, tc := range []struct {

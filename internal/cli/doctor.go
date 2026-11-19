@@ -33,6 +33,9 @@ func doctor(ctx context.Context, cmd *urfave.Command) error {
 	if err != nil {
 		return err
 	}
+	if message := selectLevel(cmd, &cfg); message != "" {
+		return &failure{Code: "usage", Message: message, usage: true}
+	}
 	routes := delivery.Doctor(ctx, cfg)
 	stepCount := len(cfg.Notify.Steps)
 	if stepCount == 0 {

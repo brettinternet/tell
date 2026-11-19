@@ -120,6 +120,10 @@ func TestNotifyCascadeStrictValidation(t *testing.T) {
 		"notify: {via: [{alert: {wait: -5s}}]}\n",
 		"notify: {via: [{alert: {wait: soon}}]}\n",
 		"notify: {via: [{alert: {tag: phone}}]}\n",
+		// normal is notify.via; only low, high, and critical name levels.
+		"notify: {levels: {normal: stderr}}\n",
+		"notify: {levels: {urgent: stderr}}\n",
+		"notify: {levels: {high: [command]}}\n",
 	} {
 		input := fixture(t)
 		file := filepath.Join(input.UserConfigDir, "tell", "config.yaml")
@@ -142,6 +146,11 @@ func TestNotifyCascadeStrictValidation(t *testing.T) {
 	writeFile(t, filepath.Join(input.CWD, "tell.yaml"), "imessage: {to: '+15551234567'}\n")
 	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal routing") {
 		t.Fatalf("shared imessage.to was accepted: %v", err)
+	}
+	input = fixture(t)
+	writeFile(t, filepath.Join(input.CWD, "tell.yaml"), "notify: {levels: {critical: desktop}}\n")
+	if _, err := config.Load(input); err == nil || !strings.Contains(err.Error(), "personal routing") {
+		t.Fatalf("shared notify.levels was accepted: %v", err)
 	}
 	input = fixture(t)
 	writeFile(t, filepath.Join(input.UserConfigDir, "tell", "config.yaml"), "notify: {via: [imessage, {imessage: {to: friend@example.com}}]}\nimessage: {to: '+15551234567'}\n")

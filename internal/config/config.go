@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,60 @@ type Notify struct {
 	// DesktopOnClick is trusted personal argv run when a macOS desktop
 	// notification is clicked, replacing the default origin focus.
 	DesktopOnClick []string `json:"-"`
+	// Levels maps low, high, and critical to a route or cascade; normal is Via.
+	Levels map[string]NotifyLevel `json:"-"`
+}
+
+// NotifyLevels are the urgency levels a caller may state, least urgent first.
+var NotifyLevels = []string{"low", "normal", "high", "critical"}
+
+// NotifyLevel is one level's route or cascade, in the same form as notify.via.
+type NotifyLevel struct {
+	Via   string
+	Steps []NotifyStep
+}
+
+func (l NotifyLevel) MarshalJSON() ([]byte, error) {
+	if len(l.Steps) > 0 {
+		return json.Marshal(l.Steps)
+	}
+	return json.Marshal(l.Via)
+}
+
+func (l *NotifyLevel) UnmarshalJSON(data []byte) error {
+	var level NotifyLevel
+	if err := json.Unmarshal(data, &level.Via); err == nil {
+		*l = level
+		return nil
+	}
+	if err := json.Unmarshal(data, &level.Steps); err != nil {
+		return err
+	}
+	if len(level.Steps) > 0 {
+		level.Via = level.Steps[0].Via
+	}
+	*l = level
+	return nil
+}
+
+// SelectLevel routes one notification by urgency. A one-shot route override
+// wins, then notify.levels[level], then notify.via.
+func (cfg *Config) SelectLevel(level string) error {
+	if !slices.Contains(NotifyLevels, level) {
+		return errors.New("level must be low, normal, high, or critical")
+	}
+	route, ok := cfg.Notify.Levels[level]
+	if !ok || isOneShot(cfg.Origins["notify.via"]) {
+		return nil
+	}
+	*cfg = cfg.routedBy(route)
+	return nil
+}
+
+// routedBy returns cfg with notify.via replaced by a level's route.
+func (cfg Config) routedBy(route NotifyLevel) Config {
+	cfg.Notify.Via, cfg.Notify.Steps = route.Via, route.Steps
+	return cfg
 }
 
 // NotifyStep selects one notification provider. Provider settings are references,
@@ -77,6 +132,8 @@ func (n Notify) MarshalJSON() ([]byte, error) {
 	fallbackOn, fallbackNotice := n.FallbackOn, n.FallbackNotice
 	if len(n.Steps) > 0 {
 		via = n.Steps
+	}
+	if n.cascades() {
 		if len(fallbackOn) == 0 {
 			fallbackOn = []string{"not_sent"}
 		}
@@ -85,17 +142,33 @@ func (n Notify) MarshalJSON() ([]byte, error) {
 		}
 	}
 	return json.Marshal(struct {
-		Via            any      `json:"via"`
-		FallbackOn     []string `json:"fallback_on,omitempty"`
-		FallbackNotice string   `json:"fallback_notice,omitempty"`
-	}{via, fallbackOn, fallbackNotice})
+		Via            any                    `json:"via"`
+		FallbackOn     []string               `json:"fallback_on,omitempty"`
+		FallbackNotice string                 `json:"fallback_notice,omitempty"`
+		Levels         map[string]NotifyLevel `json:"levels,omitempty"`
+	}{via, fallbackOn, fallbackNotice, n.Levels})
+}
+
+// cascades reports whether notify.via or any level is an ordered route list,
+// which is what fallback settings apply to.
+func (n Notify) cascades() bool {
+	if len(n.Steps) > 0 {
+		return true
+	}
+	for _, level := range n.Levels {
+		if len(level.Steps) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (n *Notify) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Via            json.RawMessage `json:"via"`
-		FallbackOn     []string        `json:"fallback_on"`
-		FallbackNotice string          `json:"fallback_notice"`
+		Via            json.RawMessage        `json:"via"`
+		FallbackOn     []string               `json:"fallback_on"`
+		FallbackNotice string                 `json:"fallback_notice"`
+		Levels         map[string]NotifyLevel `json:"levels"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -103,6 +176,7 @@ func (n *Notify) UnmarshalJSON(data []byte) error {
 	var notify Notify
 	notify.FallbackOn = raw.FallbackOn
 	notify.FallbackNotice = raw.FallbackNotice
+	notify.Levels = raw.Levels
 	if len(raw.Via) == 0 {
 		*n = notify
 		return nil
@@ -543,10 +617,27 @@ func Load(input Input) (Config, error) {
 }
 
 func validateNotify(cfg Config, requireCommands bool) error {
-	if len(cfg.Notify.Steps) == 0 {
-		if cfg.Notify.FallbackOnSet || cfg.Notify.NoticeSet {
-			return errors.New("notify.fallback_on and notify.fallback_notice require a list notify.via")
+	if !cfg.Notify.cascades() && (cfg.Notify.FallbackOnSet || cfg.Notify.NoticeSet) {
+		return errors.New("notify.fallback_on and notify.fallback_notice require a list notify.via or notify.levels value")
+	}
+	if err := validateNotifyRoute(cfg, requireCommands); err != nil {
+		return err
+	}
+	for _, level := range NotifyLevels {
+		route, ok := cfg.Notify.Levels[level]
+		if !ok {
+			continue
 		}
+		if err := validateNotifyRoute(cfg.routedBy(route), requireCommands); err != nil {
+			return fmt.Errorf("notify.levels.%s: %w", level, err)
+		}
+	}
+	return nil
+}
+
+// validateNotifyRoute checks the selected notify.via route or cascade.
+func validateNotifyRoute(cfg Config, requireCommands bool) error {
+	if len(cfg.Notify.Steps) == 0 {
 		if requireCommands && cfg.Notify.Via == "shoutrrr" && cfg.Shoutrrr.UrlsEnv == "" {
 			return errors.New("shoutrrr.urls_env is required for the shoutrrr route")
 		}
@@ -676,7 +767,7 @@ func (cfg Config) Values() map[string]string {
 	}
 	fallbackOn := strings.Join(cfg.Notify.FallbackOn, ",")
 	fallbackNotice := cfg.Notify.FallbackNotice
-	if len(cfg.Notify.Steps) > 0 {
+	if cfg.Notify.cascades() {
 		if fallbackOn == "" {
 			fallbackOn = "not_sent"
 		}
@@ -684,7 +775,7 @@ func (cfg Config) Values() map[string]string {
 			fallbackNotice = "none"
 		}
 	}
-	return map[string]string{
+	values := map[string]string{
 		"timeout": cfg.Timeout, "notify.via": via, "notify.fallback_on": fallbackOn,
 		"notify.fallback_notice": fallbackNotice, "notify.command": command, "notify.desktop.on_click": onClick,
 		"apprise.config": cfg.Apprise.Config, "apprise.tag": cfg.Apprise.Tag,
@@ -702,6 +793,17 @@ func (cfg Config) Values() map[string]string {
 		"listen.http.addr":             cfg.HTTPAddr(),
 		"listen.routes":                strconv.Itoa(len(cfg.Listen.Routes)),
 	}
+	for _, level := range NotifyLevels {
+		if level == "normal" {
+			continue
+		}
+		values["notify.levels."+level] = ""
+		if route, ok := cfg.Notify.Levels[level]; ok {
+			encoded, _ := json.Marshal(route)
+			values["notify.levels."+level] = strings.Trim(string(encoded), `"`)
+		}
+	}
+	return values
 }
 
 func (cfg *Config) apply(key, value, base, source string) error {
@@ -881,8 +983,9 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 			if strings.HasPrefix(value.key, "listen") {
 				return fmt.Errorf("config %s:%d: listen is personal configuration; use user config, .git/tell.yaml, or --config", path, value.line)
 			}
-			// Pushover settings name credentials and page a personal device.
-			if strings.HasPrefix(value.key, "pushover.") {
+			// Pushover settings name credentials and page a personal device;
+			// levels choose personal destinations and have no one-shot form.
+			if strings.HasPrefix(value.key, "pushover.") || value.key == "notify.levels" {
 				return fmt.Errorf("config %s:%d: %s is personal routing; set it in user config, .git/tell.yaml, or --config instead of shared tell.yaml", path, value.line, value.key)
 			}
 			switch value.key {
@@ -907,6 +1010,17 @@ func (cfg *Config) applyFile(path string, optional, shared bool) error {
 			cfg.Notify.Steps = steps
 			cfg.Notify.Via = steps[0].Via
 			cfg.Origins[value.key] = path
+			continue
+		}
+		if value.key == "notify.levels" {
+			for level, route := range value.levels {
+				route.Steps = resolveNotifySteps(route.Steps, filepath.Dir(path))
+				if cfg.Notify.Levels == nil {
+					cfg.Notify.Levels = map[string]NotifyLevel{}
+				}
+				cfg.Notify.Levels[level] = route
+				cfg.Origins["notify.levels."+level] = path
+			}
 			continue
 		}
 		if value.key == "notify.fallback_on" {

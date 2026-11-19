@@ -29,6 +29,7 @@ func runCommand() *urfave.Command {
 		StopOnNthArg: &first,
 		Flags: []urfave.Flag{
 			&urfave.StringFlag{Name: "title", Aliases: []string{"t"}, Usage: "Notification `title` (default: project directory name)"},
+			levelFlag(),
 		}, Action: runAndNotify}
 }
 
@@ -42,6 +43,9 @@ func runAndNotify(ctx context.Context, cmd *urfave.Command) error {
 	cfg, err := loadSettings(cmd)
 	if err != nil {
 		return err
+	}
+	if message := selectLevel(cmd, &cfg); message != "" {
+		return &failure{Code: "usage", Message: message, usage: true}
 	}
 	args := cmd.Args().Slice()
 	style := commandStyle(cmd, cmd.ErrWriter)

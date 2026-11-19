@@ -215,6 +215,12 @@ exit 1
 	recovered := callTool(t, client, "notify", map[string]any{"message": "after-config-fix"})
 	assertDelivery(t, recovered, "stderr", "accepted", "", "")
 
+	// level selects the personal level route; unmapped levels keep notify.via.
+	writeConfig(t, configPath, "notify: {via: stderr, levels: {high: apprise}}\n")
+	assertDelivery(t, callTool(t, client, "notify", map[string]any{"message": "high-body", "level": "high"}), "apprise", "accepted", "", "")
+	assertDelivery(t, callTool(t, client, "notify", map[string]any{"message": "low-body", "level": "low"}), "stderr", "accepted", "", "")
+	assertFailure(t, callTool(t, client, "notify", map[string]any{"message": "bogus-body", "level": "bogus"}), "usage", "invalid_level")
+
 	defer closeClient()
 	// A live permission toggle must update discovery as well as enforcement;
 	// otherwise clients cannot discover allowed selectors or retain revoked ones.

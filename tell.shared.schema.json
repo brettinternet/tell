@@ -8,7 +8,7 @@
     {
       "properties": {
         "listen": false,
-        "notify": { "properties": { "via": false, "fallback_on": false, "fallback_notice": false, "command": false } },
+        "notify": { "properties": { "via": false, "fallback_on": false, "fallback_notice": false, "command": false, "levels": false } },
         "apprise": { "properties": { "config": false } },
         "shoutrrr": { "properties": { "urls_env": false } },
         "pushover": false,

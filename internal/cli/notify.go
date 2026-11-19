@@ -27,6 +27,9 @@ func notify(ctx context.Context, cmd *urfave.Command) error {
 	default:
 		return delivery.NewResult(route, "usage", "invalid_type", fmt.Sprintf("invalid --type %q; must be info, success, warning, or failure%s", usageValue(cmd, kind), config.DidYouMean(kind, "info", "success", "warning", "failure")))
 	}
+	if message := selectLevel(cmd, &cfg); message != "" {
+		return delivery.NewResult(route, "usage", "invalid_level", message)
+	}
 	if cmd.IsSet("url") && !delivery.ValidURL(cmd.String("url")) {
 		return delivery.NewResult(route, "usage", "invalid_input", "--url must be an absolute http or https URL without credentials, whitespace, or control characters, at most 512 bytes")
 	}

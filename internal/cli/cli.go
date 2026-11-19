@@ -79,10 +79,11 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 				return nil
 			}},
 			{Name: "notify", Usage: "Send a notification to a person", ArgsUsage: "MESSAGE... | -",
-				Description: "Join message words with spaces, or use a lone - to read stdin.\n\nExamples:\n  tell notify Build finished\n  tell notify --via stderr --type success --title Tests All passed\n  tell notify --type failure --url https://github.com/owner/repo/actions Checks failed\n  printf 'Build finished' | tell notify -",
+				Description: "Join message words with spaces, or use a lone - to read stdin.\n\nExamples:\n  tell notify Build finished\n  tell notify --via stderr --type success --title Tests All passed\n  tell notify --type failure --url https://github.com/owner/repo/actions Checks failed\n  tell notify --level critical Production is down\n  printf 'Build finished' | tell notify -",
 				Flags: []urfave.Flag{
 					&urfave.StringFlag{Name: "title", Aliases: []string{"t"}, Usage: "Notification `title` (default: project directory name)"},
 					&urfave.StringFlag{Name: "type", Aliases: []string{"n"}, Value: "info", DefaultText: "info", Usage: "Notification `type`: info, success, warning, failure"},
+					levelFlag(),
 					&urfave.StringFlag{Name: "url", Usage: "Link the notification to an http or https `URL`"},
 					&urfave.StringFlag{Name: "pushover-tag", Usage: "Tag an emergency Pushover alert so pushover cancel --tag can stop it (`tag`)"},
 					&urfave.StringFlag{Name: "pushover-callback", Usage: "`URL` Pushover calls when an emergency alert is acknowledged"},
@@ -96,7 +97,8 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 			{Name: "targets", Usage: "List recipients the configured send route accepts, without sending",
 				Description: "Read-only. send still requires one explicit recipient: copy a TO value into send.to or --to.\n\nExamples:\n  tell targets --send-via herdr --herdr-session default\n  tell --json targets --send-via hcom", Action: targets},
 			{Name: "doctor", Usage: "Check route readiness without sending or starting services",
-				Description: "Only the selected routes decide the exit code.\n\nExamples:\n  tell doctor\n  tell doctor --via desktop\n  tell --json doctor --via stderr", Action: doctor},
+				Description: "Only the selected routes decide the exit code.\n\nExamples:\n  tell doctor\n  tell doctor --level critical\n  tell doctor --via desktop\n  tell --json doctor --via stderr",
+				Flags:       []urfave.Flag{levelFlag()}, Action: doctor},
 			{Name: "config", Usage: "Show settings and where they came from",
 				Description: "Inspect or validate configuration without sending or running providers.\n\nExamples:\n  tell config\n  tell config check\n  tell --json config show", Action: showConfig, Commands: []*urfave.Command{
 					{Name: "show", Usage: "Show effective settings and origins", Action: showConfig},
@@ -157,6 +159,20 @@ func NewRootCommand(build config.BuildOpts, out, errOut io.Writer) *urfave.Comma
 		return nil
 	})
 	return root
+}
+
+func levelFlag() urfave.Flag {
+	return &urfave.StringFlag{Name: "level", Value: "normal", DefaultText: "normal", Usage: "Urgency `level`: low, normal, high, critical; notify.levels chooses routes"}
+}
+
+// selectLevel applies --level. An invalid level is a usage error that never
+// echoes message text.
+func selectLevel(cmd *urfave.Command, cfg *config.Config) string {
+	level := cmd.String("level")
+	if cfg.SelectLevel(level) == nil {
+		return ""
+	}
+	return fmt.Sprintf("invalid --level %q; must be low, normal, high, or critical%s", usageValue(cmd, level), config.DidYouMean(level, config.NotifyLevels...))
 }
 
 type failure struct {

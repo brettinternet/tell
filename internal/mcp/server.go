@@ -42,6 +42,10 @@ func NewServer(input config.Input, version string, stderr io.Writer) *protocol.S
 		if hasOverrides(args, notifyOverrideFields) && !cfg.MCP.AgentTargets {
 			return deliveryResult("notify", delivery.NewResult(cfg.Notify.Via, "usage", "agent_targets_disabled", "route overrides require mcp.agent_targets: true in personal configuration"))
 		}
+		// Level states urgency, not a destination, so it needs no agent_targets.
+		if level, ok := args["level"]; ok && cfg.SelectLevel(level) != nil {
+			return deliveryResult("notify", delivery.NewResult(cfg.Notify.Via, "usage", "invalid_level", "notification level must be low, normal, high, or critical"))
+		}
 		message, failure := notifyMessage(args, cfg)
 		if failure != nil {
 			return failureResult("notify", cfg.Notify.Via, failure)
@@ -179,7 +183,7 @@ var (
 )
 
 func notifyFields(allowTargets bool) map[string]struct{} {
-	fields := map[string]struct{}{"message": {}, "title": {}, "type": {}}
+	fields := map[string]struct{}{"message": {}, "title": {}, "type": {}, "level": {}}
 	if allowTargets {
 		for name := range notifyOverrideFields {
 			fields[name] = struct{}{}
@@ -203,6 +207,7 @@ func notifySchema(allowTargets bool) map[string]any {
 		"message": objectProperty("The message to deliver"),
 		"title":   objectProperty("Optional notification title"),
 		"type":    enumProperty("Optional notification type", "info", "success", "warning", "failure"),
+		"level":   enumProperty("Optional urgency; personal configuration chooses its routes", "low", "normal", "high", "critical"),
 	}
 	if allowTargets {
 		properties["via"] = enumProperty("Optional configured notification route", "stderr", "desktop", "apprise", "shoutrrr", "imessage", "command", "herdr")

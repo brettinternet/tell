@@ -267,6 +267,28 @@ than none. Details: [fallback](docs/design.md#notify-fallback-cascades),
 [Pushover](docs/design.md#pushover-delivery), [Herdr](docs/design.md#herdr-delivery), [command](docs/design.md#command-delivery),
 [escalation](examples/escalate/README.md).
 
+### Notification levels
+
+`--level low|normal|high|critical` (default `normal`) lets the caller state
+urgency while personal config chooses where each level goes:
+
+```yaml
+notify:
+  via: desktop                     # normal, and any unmapped level
+  levels:
+    low: stderr
+    critical: [alert, desktop]
+```
+
+```sh
+tell notify --level critical "Production is down"
+tell run --level high -- make deploy
+tell doctor --level critical     # checks that level's steps
+```
+
+`--via`, `TELL_NOTIFY_VIA`, and MCP `via` still win over a level. MCP `notify`
+accepts `level` too. Details: [levels](docs/design.md#notification-levels).
+
 ## Agent messages
 
 ```yaml

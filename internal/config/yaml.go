@@ -22,6 +22,7 @@ type fileValue struct {
 	steps     []NotifyStep
 	strings   []string
 	repoIDs   []int64
+	levels    map[string]NotifyLevel
 	line      int
 }
 
@@ -60,6 +61,7 @@ const (
 	fieldRoutes
 	fieldRepositoryIDs
 	fieldNotifyVia
+	fieldNotifyLevels
 	fieldFallbackOn
 	fieldArgv
 	fieldString
@@ -74,7 +76,7 @@ var fields = map[string]fieldKind{
 	"listen.slack.app_token_env": fieldString, "listen.github.secret_env": fieldString, "listen.http.addr": fieldString,
 	"notify": fieldMapping, "notify.desktop": fieldMapping, "apprise": fieldMapping, "shoutrrr": fieldMapping, "imessage": fieldMapping,
 	"pushover": fieldMapping, "herdr": fieldMapping, "send": fieldMapping, "secrets": fieldMapping, "mcp": fieldMapping,
-	"notify.via": fieldNotifyVia, "notify.fallback_on": fieldFallbackOn, "notify.fallback_notice": fieldString,
+	"notify.via": fieldNotifyVia, "notify.levels": fieldNotifyLevels, "notify.fallback_on": fieldFallbackOn, "notify.fallback_notice": fieldString,
 	"notify.command": fieldArgv, "notify.desktop.on_click": fieldArgv,
 	"secrets.policy": fieldString, "timeout": fieldString,
 	"apprise.config": fieldString, "apprise.tag": fieldString, "apprise.format": fieldString,
@@ -141,7 +143,7 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 			*values = append(*values, fileValue{key: name, repoIDs: repositoryIDs, line: value.Line})
 		case fieldNotifyVia:
 			if value.Kind == yaml.SequenceNode {
-				steps, err := parseNotifySteps(value)
+				steps, err := parseNotifySteps(value, name)
 				if err != nil {
 					return err
 				}
@@ -151,6 +153,12 @@ func parseMapping(node *yaml.Node, prefix string, values *[]fileValue) error {
 			} else {
 				return fmt.Errorf("line %d: notify.via must be a route string or an ordered route list", value.Line)
 			}
+		case fieldNotifyLevels:
+			levels, err := parseNotifyLevels(value)
+			if err != nil {
+				return err
+			}
+			*values = append(*values, fileValue{key: name, levels: levels, line: value.Line})
 		case fieldFallbackOn:
 			fallback, err := parseStringList(value, "notify.fallback_on")
 			if err != nil {
@@ -211,32 +219,73 @@ func parseStringList(node *yaml.Node, field string) ([]string, error) {
 	return values, nil
 }
 
-func parseNotifySteps(node *yaml.Node) ([]NotifyStep, error) {
+// parseNotifyLevels reads low, high, and critical routes, each in notify.via form.
+func parseNotifyLevels(node *yaml.Node) (map[string]NotifyLevel, error) {
+	if node.Kind != yaml.MappingNode || node.Tag != "!!map" || node.Anchor != "" {
+		return nil, fmt.Errorf("line %d: notify.levels must be a mapping without anchors or aliases", node.Line)
+	}
+	levels := map[string]NotifyLevel{}
+	for i := 0; i < len(node.Content); i += 2 {
+		key, value := node.Content[i], node.Content[i+1]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" {
+			return nil, fmt.Errorf("line %d: notify.levels keys must be strings", key.Line)
+		}
+		name := "notify.levels." + key.Value
+		switch key.Value {
+		case "low", "high", "critical":
+		case "normal":
+			return nil, fmt.Errorf("line %d: notify.levels.normal is notify.via; set notify.via instead", key.Line)
+		default:
+			return nil, fmt.Errorf("line %d: unknown field %q; levels are low, high, and critical%s", key.Line, name, DidYouMean(key.Value, "low", "high", "critical"))
+		}
+		if _, duplicate := levels[key.Value]; duplicate {
+			return nil, fmt.Errorf("line %d: duplicate field %q", key.Line, name)
+		}
+		if value.Anchor != "" || value.Kind == yaml.AliasNode {
+			return nil, fmt.Errorf("line %d: anchors and aliases are not supported", value.Line)
+		}
+		switch {
+		case value.Kind == yaml.SequenceNode:
+			steps, err := parseNotifySteps(value, name)
+			if err != nil {
+				return nil, err
+			}
+			levels[key.Value] = NotifyLevel{Via: steps[0].Via, Steps: steps}
+		case value.Kind == yaml.ScalarNode && value.Tag == "!!str" && validNotifyRoute(value.Value):
+			levels[key.Value] = NotifyLevel{Via: value.Value}
+		default:
+			return nil, fmt.Errorf("line %d: %s must be a route or an ordered route list: stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, herdr, or command%s", value.Line, name, DidYouMean(value.Value, notifyRoutes...))
+		}
+	}
+	return levels, nil
+}
+
+func parseNotifySteps(node *yaml.Node, field string) ([]NotifyStep, error) {
 	if node.Tag != "!!seq" || node.Anchor != "" || len(node.Content) == 0 {
-		return nil, fmt.Errorf("line %d: notify.via route list must not be empty", node.Line)
+		return nil, fmt.Errorf("line %d: %s route list must not be empty", node.Line, field)
 	}
 	steps := make([]NotifyStep, 0, len(node.Content))
 	for _, item := range node.Content {
 		if item.Anchor != "" || item.Kind == yaml.AliasNode {
-			return nil, fmt.Errorf("line %d: notify.via steps must not use aliases", item.Line)
+			return nil, fmt.Errorf("line %d: %s steps must not use aliases", item.Line, field)
 		}
 		if item.Kind == yaml.ScalarNode && item.Tag == "!!str" {
 			step := NotifyStep{Via: item.Value}
 			if !validNotifyRoute(step.Via) || strings.ContainsAny(step.Via, "\x00\x1b\r\n") {
-				return nil, fmt.Errorf("line %d: notify.via step must name stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, herdr, or command%s", item.Line, DidYouMean(step.Via, notifyRoutes...))
+				return nil, fmt.Errorf("line %d: %s step must name stderr, desktop, alert, apprise, shoutrrr, imessage, pushover, herdr, or command%s", item.Line, field, DidYouMean(step.Via, notifyRoutes...))
 			}
 			steps = append(steps, step)
 			continue
 		}
 		if item.Kind != yaml.MappingNode || item.Tag != "!!map" || len(item.Content) != 2 {
-			return nil, fmt.Errorf("line %d: notify.via step must be a route name or a single-key route options mapping", item.Line)
+			return nil, fmt.Errorf("line %d: %s step must be a route name or a single-key route options mapping", item.Line, field)
 		}
 		key, options := item.Content[0], item.Content[1]
 		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" || !validNotifyRoute(key.Value) {
-			return nil, fmt.Errorf("line %d: notify.via step has an unknown route%s", key.Line, DidYouMean(key.Value, notifyRoutes...))
+			return nil, fmt.Errorf("line %d: %s step has an unknown route%s", key.Line, field, DidYouMean(key.Value, notifyRoutes...))
 		}
 		if options.Anchor != "" || options.Kind == yaml.AliasNode || options.Kind != yaml.MappingNode || options.Tag != "!!map" {
-			return nil, fmt.Errorf("line %d: notify.via %s options must be a mapping without aliases", options.Line, key.Value)
+			return nil, fmt.Errorf("line %d: %s %s options must be a mapping without aliases", options.Line, field, key.Value)
 		}
 		step := NotifyStep{Via: key.Value}
 		if err := parseNotifyStepOptions(options, &step); err != nil {
@@ -256,11 +305,11 @@ func parseNotifyStepOptions(node *yaml.Node, step *NotifyStep) error {
 	for i := 0; i < len(node.Content); i += 2 {
 		key, value := node.Content[i], node.Content[i+1]
 		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || key.Anchor != "" || seen[key.Value] {
-			return fmt.Errorf("line %d: notify.via step options must be unique strings", key.Line)
+			return fmt.Errorf("line %d: route step options must be unique strings", key.Line)
 		}
 		seen[key.Value] = true
 		if value.Anchor != "" || value.Kind == yaml.AliasNode || value.Kind != yaml.ScalarNode || value.Tag != "!!str" || strings.TrimSpace(value.Value) == "" || strings.ContainsAny(value.Value, "\x00\x1b\r\n") {
-			return fmt.Errorf("line %d: notify.via step option %s must be a non-empty string without controls", value.Line, key.Value)
+			return fmt.Errorf("line %d: route step option %s must be a non-empty string without controls", value.Line, key.Value)
 		}
 		if step.Via == "apprise" {
 			switch key.Value {
