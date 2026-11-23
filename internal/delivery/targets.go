@@ -56,7 +56,7 @@ func Targets(ctx context.Context, cfg config.Config) ([]Target, *Result) {
 	index := map[string]int{}
 	for _, agent := range agents {
 		// Match probeTarget: only these states can receive; others are not recipients.
-		if !ValidRecipient(route, agent.Name) || agent.Status != "active" && agent.Status != "listening" && agent.Status != "blocked" {
+		if !ValidRecipient(route, agent.Name) || !hcomCanReceive(agent.Status) {
 			continue
 		}
 		if i, seen := index[agent.Name]; seen {

@@ -13,6 +13,10 @@ import (
 // static-recipient rules with configuration validation.
 func ValidRecipient(route, to string) bool { return config.ValidRecipient(route, to) }
 
+func hcomCanReceive(status string) bool {
+	return status == "active" || status == "listening" || status == "blocked"
+}
+
 func sendTarget(cfg config.Config) *Result {
 	route := cfg.Send.Via
 	if route != "hcom" && route != "herdr" {
@@ -142,7 +146,7 @@ func probeTarget(ctx context.Context, cfg config.Config) (string, *Result) {
 	for _, agent := range agents {
 		// hcom's mailbox can receive while active or blocked; unlike a typed
 		// Herdr turn this cannot interrupt it. Unknown/new states fail closed.
-		if agent.Name == cfg.Send.To && (agent.Status == "active" || agent.Status == "listening" || agent.Status == "blocked") {
+		if agent.Name == cfg.Send.To && hcomCanReceive(agent.Status) {
 			matches++
 		}
 	}
